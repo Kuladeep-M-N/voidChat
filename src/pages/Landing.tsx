@@ -26,18 +26,11 @@ const Landing = () => {
           <span className="text-xl font-bold text-primary text-glow-primary tracking-tight">
             WHISPR
           </span>
-          <div className="flex gap-3">
-            <Link to="/login">
-              <Button variant="ghost" className="text-foreground hover:text-primary">
-                Login
-              </Button>
-            </Link>
-            <Link to="/signup">
-              <Button className="bg-primary text-primary-foreground glow-primary hover:brightness-110">
-                Join Now
-              </Button>
-            </Link>
-          </div>
+          <Link to="/login">
+            <Button className="bg-primary text-primary-foreground glow-primary hover:brightness-110">
+              Join Now
+            </Button>
+          </Link>
         </nav>
 
         <section className="relative z-10 flex flex-col items-center text-center px-6 pt-20 pb-32 max-w-4xl mx-auto">
@@ -72,19 +65,13 @@ const Landing = () => {
           </motion.p>
 
           <motion.div
-            className="flex gap-4"
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.3 }}
           >
-            <Link to="/signup">
+            <Link to="/login">
               <Button size="lg" className="bg-primary text-primary-foreground glow-primary hover:brightness-110 text-base px-8">
                 Get Started
-              </Button>
-            </Link>
-            <Link to="/login">
-              <Button size="lg" variant="outline" className="border-border text-foreground hover:bg-muted text-base px-8">
-                Sign In
               </Button>
             </Link>
           </motion.div>
