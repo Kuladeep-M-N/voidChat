@@ -14,7 +14,200 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      chat_rooms: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          room_name: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          room_name: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          room_name?: string
+        }
+        Relationships: []
+      }
+      confessions: {
+        Row: {
+          confession_text: string
+          created_at: string
+          id: string
+          room_id: string | null
+        }
+        Insert: {
+          confession_text: string
+          created_at?: string
+          id?: string
+          room_id?: string | null
+        }
+        Update: {
+          confession_text?: string
+          created_at?: string
+          id?: string
+          room_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "confessions_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "chat_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invite_codes: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          is_used: boolean
+          used_by: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          is_used?: boolean
+          used_by?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          is_used?: boolean
+          used_by?: string | null
+        }
+        Relationships: []
+      }
+      messages: {
+        Row: {
+          created_at: string
+          id: string
+          message_text: string
+          room_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message_text: string
+          room_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message_text?: string
+          room_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "chat_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      poll_votes: {
+        Row: {
+          id: string
+          poll_id: string
+          selected_option: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          poll_id: string
+          selected_option: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          poll_id?: string
+          selected_option?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "poll_votes_poll_id_fkey"
+            columns: ["poll_id"]
+            isOneToOne: false
+            referencedRelation: "polls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      polls: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          options: string[]
+          question: string
+          room_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          options?: string[]
+          question: string
+          room_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          options?: string[]
+          question?: string
+          room_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "polls_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "chat_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      users: {
+        Row: {
+          anonymous_username: string
+          created_at: string
+          id: string
+          invite_code_used: string
+          real_name: string
+        }
+        Insert: {
+          anonymous_username: string
+          created_at?: string
+          id: string
+          invite_code_used: string
+          real_name: string
+        }
+        Update: {
+          anonymous_username?: string
+          created_at?: string
+          id?: string
+          invite_code_used?: string
+          real_name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
