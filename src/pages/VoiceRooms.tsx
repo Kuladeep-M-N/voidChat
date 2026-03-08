@@ -221,7 +221,7 @@ const VoiceRooms = () => {
                     key={uid}
                     className="flex items-center gap-2 glass rounded-full px-4 py-2"
                   >
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
                     <span className="text-sm font-medium">
                       {uid === user?.id ? `${profile?.anonymous_username} (You)` : (usernames[uid] || "Anonymous")}
                     </span>

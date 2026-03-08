@@ -11,6 +11,7 @@ import Dashboard from "./pages/Dashboard";
 import ChatRoom from "./pages/ChatRoom";
 import Confessions from "./pages/Confessions";
 import Polls from "./pages/Polls";
+import VoiceRooms from "./pages/VoiceRooms";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/chat/:roomId" element={<ChatRoom />} />
             <Route path="/confessions" element={<Confessions />} />
             <Route path="/polls" element={<Polls />} />
+            <Route path="/voice" element={<VoiceRooms />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
