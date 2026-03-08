@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Plus, MessageCircle, Flame, BarChart3, LogOut, Ghost } from "lucide-react";
+import { Plus, MessageCircle, Flame, BarChart3, LogOut, Ghost, Mic } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -94,7 +94,7 @@ const Dashboard = () => {
         </motion.div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10">
           <QuickAction
             icon={Flame}
             title="Confessions"
@@ -110,6 +110,14 @@ const Dashboard = () => {
             onClick={() => navigate("/polls")}
             color="secondary"
             delay={0.2}
+          />
+          <QuickAction
+            icon={Mic}
+            title="Voice Rooms"
+            desc="Talk live with others"
+            onClick={() => navigate("/voice")}
+            color="primary"
+            delay={0.25}
           />
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger asChild>

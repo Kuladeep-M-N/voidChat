@@ -208,6 +208,30 @@ export type Database = {
         }
         Relationships: []
       }
+      voice_rooms: {
+        Row: {
+          active_users: string[]
+          created_at: string
+          created_by: string
+          id: string
+          room_name: string
+        }
+        Insert: {
+          active_users?: string[]
+          created_at?: string
+          created_by: string
+          id?: string
+          room_name: string
+        }
+        Update: {
+          active_users?: string[]
+          created_at?: string
+          created_by?: string
+          id?: string
+          room_name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
