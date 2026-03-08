@@ -14,8 +14,6 @@ const Signup = () => {
     inviteCode: "",
     realName: "",
     anonUsername: "",
-    email: "",
-    password: "",
   });
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -50,11 +48,8 @@ const Signup = () => {
         return;
       }
 
-      // 3. Sign up with Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: form.email,
-        password: form.password,
-      });
+      // 3. Sign up anonymously with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
 
       if (authError || !authData.user) {
         toast.error(authError?.message || "Failed to create account");
@@ -142,31 +137,6 @@ const Signup = () => {
               className="bg-muted border-border focus:border-primary"
             />
           </div>
-          <div>
-            <Label htmlFor="email" className="text-muted-foreground">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="your@email.com"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              required
-              className="bg-muted border-border focus:border-primary"
-            />
-          </div>
-          <div>
-            <Label htmlFor="password" className="text-muted-foreground">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              required
-              minLength={6}
-              className="bg-muted border-border focus:border-primary"
-            />
-          </div>
 
           <Button
             type="submit"
@@ -178,7 +148,7 @@ const Signup = () => {
         </form>
 
         <p className="text-center text-sm text-muted-foreground mt-6">
-          Already have an account?{" "}
+          Already joined?{" "}
           <Link to="/login" className="text-primary hover:underline">Sign in</Link>
         </p>
       </motion.div>
