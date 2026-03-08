@@ -20,62 +20,91 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
 
+    const inviteCode = form.inviteCode.trim().toUpperCase();
+    const realName = form.realName.trim();
+    const anonUsername = form.anonUsername.trim();
+
     try {
       // 1. Validate invite code
       const { data: codeData, error: codeError } = await supabase
         .from("invite_codes")
-        .select("*")
-        .eq("code", form.inviteCode)
+        .select("id, code, is_used")
+        .eq("code", inviteCode)
         .eq("is_used", false)
-        .single();
+        .maybeSingle();
 
-      if (codeError || !codeData) {
+      if (codeError) {
+        toast.error(codeError.message || "Failed to validate invite code");
+        return;
+      }
+
+      if (!codeData) {
         toast.error("Invalid or already used invite code");
-        setLoading(false);
         return;
       }
 
       // 2. Check username uniqueness
-      const { data: existingUser } = await supabase
+      const { data: existingUser, error: existingUserError } = await supabase
         .from("users")
         .select("id")
-        .eq("anonymous_username", form.anonUsername)
-        .single();
+        .eq("anonymous_username", anonUsername)
+        .maybeSingle();
 
-      if (existingUser) {
+      if (existingUserError) {
+        toast.error(existingUserError.message || "Failed to validate username");
+        return;
+      }
+
+      // 3. Use current session if available, otherwise create anonymous session
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      let userId = session?.user?.id;
+
+      if (!userId) {
+        const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
+
+        if (authError || !authData.user) {
+          toast.error(authError?.message || "Failed to join");
+          return;
+        }
+
+        userId = authData.user.id;
+      }
+
+      if (existingUser && existingUser.id !== userId) {
         toast.error("This anonymous username is already taken");
-        setLoading(false);
         return;
       }
 
-      // 3. Sign in anonymously with Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
-
-      if (authError || !authData.user) {
-        toast.error(authError?.message || "Failed to join");
-        setLoading(false);
-        return;
-      }
-
-      // 4. Insert user profile
-      const { error: userError } = await supabase.from("users").insert({
-        id: authData.user.id,
-        real_name: form.realName,
-        anonymous_username: form.anonUsername,
-        invite_code_used: form.inviteCode,
-      });
+      // 4. Upsert user profile
+      const { error: userError } = await supabase.from("users").upsert(
+        {
+          id: userId,
+          real_name: realName,
+          anonymous_username: anonUsername,
+          invite_code_used: inviteCode,
+        },
+        { onConflict: "id" },
+      );
 
       if (userError) {
-        toast.error("Failed to create profile");
-        setLoading(false);
+        toast.error(userError.message || "Failed to create profile");
         return;
       }
 
       // 5. Mark invite code as used
-      await supabase
+      const { error: inviteUpdateError } = await supabase
         .from("invite_codes")
-        .update({ is_used: true, used_by: authData.user.id })
-        .eq("id", codeData.id);
+        .update({ is_used: true, used_by: userId })
+        .eq("id", codeData.id)
+        .eq("is_used", false);
+
+      if (inviteUpdateError) {
+        toast.error(inviteUpdateError.message || "Failed to consume invite code");
+        return;
+      }
 
       toast.success("Welcome to WHISPR!");
       navigate("/dashboard");
