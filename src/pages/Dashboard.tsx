@@ -9,6 +9,7 @@ interface Room { id: string; name: string; created_at: string; }
 const features = [
   { id: 'confessions', emoji: '🔥', label: 'Confessions', desc: 'Share anonymous secrets', path: '/confessions', color: 'from-orange-600/30 to-red-600/20', border: 'border-orange-500/20' },
   { id: 'polls', emoji: '📊', label: 'Polls', desc: 'Vote anonymously', path: '/polls', color: 'from-blue-600/30 to-cyan-600/20', border: 'border-blue-500/20' },
+  { id: 'qna', emoji: 'Q&A', label: 'Q&A', desc: 'Ask and answer anonymously', path: '/qna', color: 'from-amber-600/30 to-yellow-600/20', border: 'border-amber-500/20' },
   { id: 'voice', emoji: '🎙️', label: 'Voice Rooms', desc: 'Talk live with others', path: '/voice', color: 'from-green-600/30 to-emerald-600/20', border: 'border-green-500/20' },
   { id: 'shoutouts', emoji: '📣', label: 'Shoutouts', desc: 'Send anonymous shoutouts', path: '/shoutouts', color: 'from-pink-600/30 to-rose-600/20', border: 'border-pink-500/20' },
 ];
@@ -74,7 +75,7 @@ export default function Dashboard() {
         </motion.div>
 
         {/* Feature Cards */}
-        <motion.div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+        <motion.div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-12" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
           {features.map((f, i) => (
             <motion.button
               key={f.id}
@@ -161,3 +162,5 @@ export default function Dashboard() {
     </div>
   );
 }
+
+
