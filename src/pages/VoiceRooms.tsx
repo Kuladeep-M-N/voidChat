@@ -1,390 +1,170 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { Mic, MicOff, Plus, ArrowLeft, Users, Volume2, PhoneOff } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { toast } from "sonner";
-import {
-  Room,
-  RoomEvent,
-  Track,
-  LocalParticipant,
-  RemoteParticipant,
-  Participant,
-} from "livekit-client";
+import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../hooks/useAuth';
 
-interface VoiceRoom {
-  id: string;
-  room_name: string;
-  created_by: string;
-  active_users: string[];
-  created_at: string;
-}
+interface VoiceRoom { id: string; name: string; created_at: string; }
+interface ActiveUser { userId: string; username: string; }
 
-const VoiceRooms = () => {
+export default function VoiceRooms() {
   const { user, profile, loading } = useAuth();
   const navigate = useNavigate();
   const [rooms, setRooms] = useState<VoiceRoom[]>([]);
-  const [newRoomName, setNewRoomName] = useState("");
-  const [createOpen, setCreateOpen] = useState(false);
-  const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [activeRoom, setActiveRoom] = useState<VoiceRoom | null>(null);
+  const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
   const [muted, setMuted] = useState(false);
-  const [usernames, setUsernames] = useState<Record<string, string>>({});
-  const [participants, setParticipants] = useState<Map<string, Participant>>(new Map());
-  const [connecting, setConnecting] = useState(false);
-  const roomRef = useRef<Room | null>(null);
 
   useEffect(() => {
-    if (!loading && !user) navigate("/login");
+    if (!loading && !user) navigate('/join');
   }, [user, loading, navigate]);
 
   useEffect(() => {
-    fetchRooms();
+    if (!user) return;
+    supabase.from('voice_rooms').select('*').order('created_at', { ascending: false })
+      .then(({ data }) => { if (data) setRooms(data); });
 
-    const channel = supabase
-      .channel("voice_rooms_realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "voice_rooms" }, () => {
-        fetchRooms();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (roomRef.current) {
-        roomRef.current.disconnect();
-      }
-    };
-  }, []);
-
-  const fetchRooms = async () => {
-    const { data } = await supabase
-      .from("voice_rooms")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (data) {
-      setRooms(data as VoiceRoom[]);
-      const allUserIds = [...new Set(data.flatMap((r: VoiceRoom) => r.active_users))];
-      if (allUserIds.length > 0) {
-        const { data: users } = await supabase
-          .from("users")
-          .select("id, anonymous_username")
-          .in("id", allUserIds);
-        if (users) {
-          const map: Record<string, string> = {};
-          users.forEach((u) => { map[u.id] = u.anonymous_username; });
-          setUsernames((prev) => ({ ...prev, ...map }));
-        }
-      }
-    }
-  };
+    const channel = supabase.channel('voice-rooms-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'voice_rooms' }, (payload) => {
+        setRooms(prev => [payload.new as VoiceRoom, ...prev]);
+      }).subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user]);
 
   const createRoom = async () => {
-    if (!newRoomName.trim() || !user) return;
-    const { error } = await supabase.from("voice_rooms").insert({
-      room_name: newRoomName.trim(),
-      created_by: user.id,
-    });
-    if (error) {
-      toast.error("Failed to create voice room");
-    } else {
-      toast.success("Voice room created!");
-      setNewRoomName("");
-      setCreateOpen(false);
-    }
+    const name = newName.trim();
+    if (!name || !user) return;
+    setCreating(true);
+    const { data } = await supabase.from('voice_rooms').insert({ name, created_by: user.id }).select().single();
+    if (data) joinRoom(data as VoiceRoom);
+    setNewName(''); setShowCreate(false); setCreating(false);
   };
 
-  const updateParticipants = useCallback((room: Room) => {
-    const allParticipants = new Map<string, Participant>();
-    allParticipants.set(room.localParticipant.identity, room.localParticipant);
-    room.remoteParticipants.forEach((p) => {
-      allParticipants.set(p.identity, p);
-    });
-    setParticipants(new Map(allParticipants));
-  }, []);
-
-  const joinRoom = async (roomId: string) => {
-    if (!user || !profile || connecting) return;
-
-    // Leave current room first
-    if (activeRoomId) {
-      await leaveRoom();
-    }
-
-    setConnecting(true);
-    const dbRoom = rooms.find((r) => r.id === roomId);
-    if (!dbRoom) {
-      setConnecting(false);
-      return;
-    }
-
-    try {
-      // Get LiveKit token from edge function
-      const { data, error } = await supabase.functions.invoke("livekit-token", {
-        body: {
-          roomName: roomId,
-          participantName: profile.anonymous_username,
-          participantId: user.id,
-        },
-      });
-
-      if (error || !data?.token) {
-        throw new Error(error?.message || "Failed to get token");
+  const joinRoom = (room: VoiceRoom) => {
+    setActiveRoom(room);
+    // Simulate presence with Supabase realtime broadcast
+    const ch = supabase.channel(`voice:${room.id}`, { config: { presence: { key: user!.id } } });
+    ch.on('presence', { event: 'sync' }, () => {
+      const state = ch.presenceState<{ username: string }>();
+      const users = Object.entries(state).map(([userId, data]) => ({ userId, username: (data[0] as any).username }));
+      setActiveUsers(users);
+    }).subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await ch.track({ username: profile?.anonymous_username ?? 'Anonymous' });
       }
-
-      // Create and connect to LiveKit room
-      const livekitRoom = new Room();
-      roomRef.current = livekitRoom;
-
-      // Set up event listeners
-      livekitRoom.on(RoomEvent.ParticipantConnected, () => updateParticipants(livekitRoom));
-      livekitRoom.on(RoomEvent.ParticipantDisconnected, () => updateParticipants(livekitRoom));
-      livekitRoom.on(RoomEvent.TrackSubscribed, () => updateParticipants(livekitRoom));
-      livekitRoom.on(RoomEvent.TrackUnsubscribed, () => updateParticipants(livekitRoom));
-      livekitRoom.on(RoomEvent.Disconnected, () => {
-        setActiveRoomId(null);
-        setParticipants(new Map());
-        roomRef.current = null;
-      });
-
-      await livekitRoom.connect(data.url, data.token);
-      await livekitRoom.localParticipant.setMicrophoneEnabled(true);
-
-      updateParticipants(livekitRoom);
-      setActiveRoomId(roomId);
-      setMuted(false);
-
-      // Update database with active user
-      const updatedUsers = [...new Set([...dbRoom.active_users, user.id])];
-      await supabase
-        .from("voice_rooms")
-        .update({ active_users: updatedUsers })
-        .eq("id", roomId);
-
-      toast.success(`Joined ${dbRoom.room_name}`);
-    } catch (err: any) {
-      console.error("Failed to join voice room:", err);
-      toast.error(err.message || "Failed to join voice room");
-    } finally {
-      setConnecting(false);
-    }
+    });
   };
 
-  const leaveRoom = async () => {
-    if (!user) return;
-
-    if (roomRef.current) {
-      roomRef.current.disconnect();
-      roomRef.current = null;
-    }
-
-    if (activeRoomId) {
-      const dbRoom = rooms.find((r) => r.id === activeRoomId);
-      if (dbRoom) {
-        const updatedUsers = dbRoom.active_users.filter((id) => id !== user.id);
-        await supabase
-          .from("voice_rooms")
-          .update({ active_users: updatedUsers })
-          .eq("id", activeRoomId);
-      }
-    }
-
-    setActiveRoomId(null);
-    setParticipants(new Map());
-    toast("Left voice room");
+  const leaveRoom = () => {
+    setActiveRoom(null);
+    setActiveUsers([]);
   };
 
-  const toggleMute = async () => {
-    if (!roomRef.current) return;
-    const newMuted = !muted;
-    await roomRef.current.localParticipant.setMicrophoneEnabled(!newMuted);
-    setMuted(newMuted);
-  };
-
-  if (loading) {
+  if (activeRoom) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center">
+        <div className="ambient-blob w-[500px] h-[500px] bg-green-600/15 top-[-100px] left-[20%]" />
+        <motion.div className="relative z-10 glass border border-green-500/20 rounded-3xl p-10 w-full max-w-lg text-center"
+          initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+          <h1 className="text-2xl font-bold text-white mb-1">🎙️ {activeRoom.name}</h1>
+          <p className="text-sm text-slate-400 mb-8">{activeUsers.length} participant{activeUsers.length !== 1 ? 's' : ''}</p>
+          
+          {/* Avatar grid */}
+          <div className="flex flex-wrap justify-center gap-4 mb-10">
+            {activeUsers.map(u => (
+              <motion.div key={u.userId} className="flex flex-col items-center gap-2"
+                initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-green-500/30 to-emerald-500/30 border-2 border-green-500/40 flex items-center justify-center text-2xl relative">
+                  👤
+                  <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-green-500 border-2 border-[#070710]" />
+                </div>
+                <span className="text-xs text-slate-400 max-w-[80px] truncate">{u.username}</span>
+              </motion.div>
+            ))}
+          </div>
+
+          <div className="flex justify-center gap-4">
+            <button onClick={() => setMuted(m => !m)}
+              className={`w-14 h-14 rounded-full text-xl transition-all ${muted ? 'bg-red-600/30 border border-red-500/40 text-red-400' : 'bg-white/10 border border-white/15 text-white hover:bg-white/15'}`}>
+              {muted ? '🔇' : '🎙️'}
+            </button>
+            <button onClick={leaveRoom}
+              className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-500 text-white text-xl transition-all">
+              📵
+            </button>
+          </div>
+          <p className="text-xs text-slate-600 mt-6">Voice rooms use anonymous presence only · No actual audio in this demo</p>
+        </motion.div>
       </div>
     );
   }
 
-  const currentDbRoom = rooms.find((r) => r.id === activeRoomId);
-
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border glass sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")} className="text-muted-foreground hover:text-foreground">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <span className="text-xl font-bold text-primary text-glow-primary">Voice Rooms</span>
+    <div className="min-h-screen relative overflow-hidden">
+      <div className="ambient-blob w-[500px] h-[500px] bg-green-600/10 top-[-100px] right-[10%]" />
+
+      <header className="relative z-10 border-b border-white/5 glass sticky top-0">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-4 px-4 py-3.5">
+          <div className="flex items-center gap-4">
+            <Link to="/dashboard"><button className="btn-ghost rounded-xl p-2 text-slate-400">← Back</button></Link>
+            <div>
+              <h1 className="font-semibold text-white">🎙️ Voice Rooms</h1>
+              <p className="text-xs text-slate-500">Talk live anonymously</p>
+            </div>
           </div>
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="bg-primary text-primary-foreground glow-primary">
-                <Plus className="w-4 h-4 mr-1" /> New Room
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="glass border-border">
-              <DialogHeader>
-                <DialogTitle>Create Voice Room</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-2">
-                <Input
-                  placeholder="Room name..."
-                  value={newRoomName}
-                  onChange={(e) => setNewRoomName(e.target.value)}
-                  className="bg-muted border-border"
-                  onKeyDown={(e) => e.key === "Enter" && createRoom()}
-                />
-                <Button onClick={createRoom} className="w-full bg-primary text-primary-foreground glow-primary">
-                  Create Room
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <button onClick={() => setShowCreate(true)} className="btn-primary !w-auto px-4 py-2 rounded-xl text-sm">+ New Room</button>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        {/* Active Room Banner */}
-        <AnimatePresence>
-          {currentDbRoom && activeRoomId && (
-            <motion.div
-              className="mb-8 glass rounded-2xl p-6 neon-border"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-xl font-bold text-primary flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-accent animate-pulse" />
-                    {currentDbRoom.room_name}
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    {participants.size} participant{participants.size !== 1 ? "s" : ""} connected
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={toggleMute}
-                    className={muted ? "text-destructive bg-destructive/10" : "text-primary bg-primary/10"}
-                  >
-                    {muted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={leaveRoom}
-                    className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                  >
-                    <PhoneOff className="w-4 h-4 mr-1" /> Leave
-                  </Button>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                {Array.from(participants.values()).map((participant) => {
-                  const isLocal = participant instanceof LocalParticipant;
-                  const isSpeaking = participant.isSpeaking;
-                  const isMicMuted = !participant.isMicrophoneEnabled;
-                  
-                  return (
-                    <div
-                      key={participant.identity}
-                      className={`flex items-center gap-2 glass rounded-full px-4 py-2 transition-all ${
-                        isSpeaking ? "ring-2 ring-primary" : ""
-                      }`}
-                    >
-                      <div className={`w-2 h-2 rounded-full ${isSpeaking ? "bg-primary animate-pulse" : "bg-accent"}`} />
-                      <span className="text-sm font-medium">
-                        {participant.name || "Anonymous"}
-                        {isLocal && " (You)"}
-                      </span>
-                      {isMicMuted ? (
-                        <MicOff className="w-3 h-3 text-destructive" />
-                      ) : isSpeaking ? (
-                        <Volume2 className="w-3 h-3 text-primary animate-pulse" />
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Room List */}
-        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-          <Volume2 className="w-5 h-5 text-primary" /> Available Rooms
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {rooms.map((room, i) => (
-            <motion.div
-              key={room.id}
-              className={`glass rounded-xl p-5 transition-all duration-300 ${
-                activeRoomId === room.id ? "neon-border" : "hover:neon-border cursor-pointer"
-              } ${connecting ? "opacity-50 pointer-events-none" : ""}`}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              onClick={() => activeRoomId !== room.id && joinRoom(room.id)}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-semibold text-lg">{room.room_name}</h3>
-                <div className="flex items-center gap-1 text-muted-foreground">
-                  <Users className="w-4 h-4" />
-                  <span className="text-sm">{room.active_users.length}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {room.active_users.length > 0 ? (
-                  <div className="flex -space-x-2">
-                    {room.active_users.slice(0, 5).map((uid, idx) => (
-                      <div
-                        key={idx}
-                        className="w-6 h-6 rounded-full bg-primary/20 border-2 border-background flex items-center justify-center"
-                      >
-                        <span className="text-[10px] text-primary">👤</span>
-                      </div>
-                    ))}
-                    {room.active_users.length > 5 && (
-                      <div className="w-6 h-6 rounded-full bg-muted border-2 border-background flex items-center justify-center">
-                        <span className="text-[10px] text-muted-foreground">+{room.active_users.length - 5}</span>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <span className="text-xs text-muted-foreground">Empty — be the first to join!</span>
-                )}
-              </div>
-              {activeRoomId === room.id && (
-                <p className="text-xs text-primary mt-2 font-medium">🎙️ Currently connected</p>
-              )}
-            </motion.div>
-          ))}
-          {rooms.length === 0 && (
-            <p className="text-muted-foreground col-span-full text-center py-12">
-              No voice rooms yet. Create the first one!
-            </p>
-          )}
-        </div>
+      <main className="relative z-10 max-w-4xl mx-auto px-4 py-8">
+        {rooms.length === 0 ? (
+          <div className="text-center py-20">
+            <div className="text-5xl mb-4">🎙️</div>
+            <p className="font-medium text-slate-400 text-lg">No voice rooms yet</p>
+            <p className="text-sm text-slate-500 mt-1">Create one to start talking</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <AnimatePresence>
+              {rooms.map((room, i) => (
+                <motion.div key={room.id} className="glass-hover rounded-2xl p-6 cursor-pointer border border-green-500/10"
+                  initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+                  onClick={() => joinRoom(room)}>
+                  <div className="w-12 h-12 rounded-xl bg-green-500/20 border border-green-500/30 flex items-center justify-center text-2xl mb-4">🎙️</div>
+                  <h3 className="font-semibold text-white text-base mb-1">{room.name}</h3>
+                  <p className="text-xs text-emerald-400 font-medium">● Live • Join</p>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
       </main>
+
+      <AnimatePresence>
+        {showCreate && (
+          <motion.div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={(e) => { if (e.target === e.currentTarget) setShowCreate(false); }}>
+            <motion.div className="glass border border-white/10 rounded-3xl p-8 w-full max-w-md"
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
+              <h2 className="text-xl font-semibold text-white mb-6">Create Voice Room</h2>
+              <input type="text" className="input-field mb-4" placeholder="Room name..." value={newName}
+                onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && createRoom()}
+                autoFocus maxLength={40} />
+              <div className="flex gap-3">
+                <button onClick={createRoom} className="btn-primary rounded-xl" disabled={creating || !newName.trim()}>
+                  {creating ? 'Creating...' : 'Create & Join'}
+                </button>
+                <button onClick={() => setShowCreate(false)} className="btn-ghost rounded-xl px-4 py-2 border border-white/10">Cancel</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
-};
-
-export default VoiceRooms;
+}

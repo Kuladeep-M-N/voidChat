@@ -1,108 +1,138 @@
-import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
-import { MessageCircle, Shield, Users, Flame, Eye, Ghost } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 
 const features = [
-  { icon: Ghost, title: "Stay Anonymous", desc: "Chat freely without revealing your identity" },
-  { icon: Shield, title: "Invite Only", desc: "Exclusive access with special invite codes" },
-  { icon: MessageCircle, title: "Real-time Chat", desc: "Instant messaging with your classmates" },
-  { icon: Flame, title: "Confessions", desc: "Share secrets anonymously in the confession room" },
-  { icon: Eye, title: "Polls & Votes", desc: "Create anonymous polls and discover opinions" },
-  { icon: Users, title: "Chat Rooms", desc: "Join or create topic-based rooms" },
+  {
+    icon: '👻',
+    title: 'Stay Anonymous',
+    desc: 'No real names, no profiles, no traces. Just a username you choose.',
+  },
+  {
+    icon: '⚡',
+    title: 'Real-time Chat',
+    desc: 'Messages appear instantly. Everyone sees what you type the moment you send it.',
+  },
+  {
+    icon: '🔒',
+    title: 'Invite Only',
+    desc: 'Exclusive access via a secret invite code. No unwanted guests.',
+  },
+  {
+    icon: '🌐',
+    title: 'Shared Rooms',
+    desc: 'Create or join rooms visible to everyone. No one is excluded.',
+  },
 ];
 
-const Landing = () => {
+export default function Landing() {
   return (
-    <div className="min-h-screen bg-background overflow-hidden">
-      {/* Hero */}
-      <div className="relative">
-        {/* Ambient glows */}
-        <div className="absolute top-[-200px] left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full bg-primary/10 blur-[120px] pointer-events-none" />
-        <div className="absolute top-[100px] right-[-100px] w-[400px] h-[400px] rounded-full bg-secondary/10 blur-[100px] pointer-events-none" />
-        <div className="absolute bottom-[-100px] left-[-100px] w-[300px] h-[300px] rounded-full bg-accent/10 blur-[100px] pointer-events-none" />
+    <div className="min-h-screen relative overflow-hidden">
+      {/* Ambient blobs */}
+      <div className="ambient-blob w-[600px] h-[600px] bg-violet-600/20 top-[-200px] left-[-100px]" />
+      <div className="ambient-blob w-[500px] h-[500px] bg-cyan-500/15 bottom-[-100px] right-[-100px]" />
+      <div className="ambient-blob w-[300px] h-[300px] bg-violet-800/20 top-[40%] left-[60%]" />
 
-        <nav className="relative z-10 flex items-center justify-between px-6 py-5 max-w-7xl mx-auto">
-          <span className="text-xl font-bold text-primary text-glow-primary tracking-tight">
-            WHISPR
-          </span>
-          <Link to="/login">
-            <Button className="bg-primary text-primary-foreground glow-primary hover:brightness-110">
-              Join Now
-            </Button>
+      {/* Nav */}
+      <nav className="relative z-10 flex items-center justify-between px-6 py-5 max-w-7xl mx-auto">
+        <motion.span
+          className="text-xl font-bold text-gradient"
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          VoidChat
+        </motion.span>
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <Link to="/join">
+            <button className="btn-primary !w-auto px-6 py-2.5 text-sm">
+              Enter the Void →
+            </button>
           </Link>
-        </nav>
+        </motion.div>
+      </nav>
 
-        <section className="relative z-10 flex flex-col items-center text-center px-6 pt-20 pb-32 max-w-4xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7 }}
-          >
-            <span className="inline-block px-4 py-1.5 rounded-full text-xs font-mono font-medium text-primary border border-primary/30 bg-primary/5 mb-6">
-              INVITE ONLY · ANONYMOUS · ENCRYPTED
-            </span>
-          </motion.div>
+      {/* Hero */}
+      <section className="relative z-10 flex flex-col items-center text-center px-6 pt-20 pb-32 max-w-5xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.1 }}
+        >
+          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold text-violet-300 border border-violet-500/30 bg-violet-500/10 mb-8 tracking-widest uppercase">
+            👻 Anonymous · Invite Only · Real-time
+          </span>
+        </motion.div>
 
-          <motion.h1
-            className="text-5xl md:text-7xl font-bold leading-tight tracking-tight mb-6"
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.1 }}
-          >
-            Say anything.
-            <br />
-            <span className="text-primary text-glow-primary">Stay unknown.</span>
-          </motion.h1>
+        <motion.h1
+          className="text-6xl md:text-8xl font-bold leading-[0.95] tracking-tight mb-8"
+          initial={{ opacity: 0, y: 30, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.8, delay: 0.2, type: 'spring', stiffness: 100 }}
+        >
+          Say anything.
+          <br />
+          <span className="text-gradient">Be no one.</span>
+        </motion.h1>
 
-          <motion.p
-            className="text-lg md:text-xl text-muted-foreground max-w-2xl mb-10"
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.2 }}
-          >
-            The private anonymous chat platform for your college crew. Confess, discuss, vote — all without anyone knowing who you are.
-          </motion.p>
+        <motion.p
+          className="text-lg md:text-xl text-slate-400 max-w-2xl mb-12 leading-relaxed"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.35 }}
+        >
+          The anonymous invite-only college chat platform. Create rooms, share thoughts, 
+          have conversations — all without revealing who you are.
+        </motion.p>
 
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.3 }}
-          >
-            <Link to="/login">
-              <Button size="lg" className="bg-primary text-primary-foreground glow-primary hover:brightness-110 text-base px-8">
-                Get Started
-              </Button>
-            </Link>
-          </motion.div>
-        </section>
-      </div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.5 }}
+          className="flex flex-col sm:flex-row items-center gap-4"
+        >
+          <Link to="/join">
+            <button className="btn-primary !w-auto px-10 py-4 text-base rounded-2xl">
+              Join VoidChat
+            </button>
+          </Link>
+          <p className="text-slate-500 text-sm">You'll need an invite code</p>
+        </motion.div>
+      </section>
 
       {/* Features */}
-      <section className="relative px-6 pb-32 max-w-6xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <section className="relative z-10 px-6 pb-32 max-w-6xl mx-auto">
+        <motion.div
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5"
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ staggerChildren: 0.1 }}
+        >
           {features.map((f, i) => (
             <motion.div
               key={f.title}
-              className="glass rounded-xl p-6 hover:neon-border transition-all duration-300"
+              className="glass-hover rounded-2xl p-6 cursor-default"
               initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.4 + i * 0.1 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: i * 0.1 }}
             >
-              <f.icon className="w-8 h-8 text-primary mb-4" />
-              <h3 className="text-lg font-semibold mb-2">{f.title}</h3>
-              <p className="text-sm text-muted-foreground">{f.desc}</p>
+              <div className="text-3xl mb-4">{f.icon}</div>
+              <h3 className="font-semibold text-white text-lg mb-2">{f.title}</h3>
+              <p className="text-slate-400 text-sm leading-relaxed">{f.desc}</p>
             </motion.div>
           ))}
-        </div>
+        </motion.div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-border py-8 text-center text-sm text-muted-foreground">
-        WHISPR · Anonymous College Chat · {new Date().getFullYear()}
+      <footer className="relative z-10 border-t border-white/5 py-8 text-center text-slate-500 text-sm">
+        VoidChat · Anonymous College Chat · {new Date().getFullYear()}
       </footer>
     </div>
   );
-};
-
-export default Landing;
+}
