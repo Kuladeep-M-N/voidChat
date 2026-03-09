@@ -148,3 +148,56 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.polls;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.poll_votes;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.voice_rooms;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.shoutouts;
+
+-- 11. QnA QUESTIONS table
+CREATE TABLE IF NOT EXISTS public.qna_questions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL CHECK (char_length(title) BETWEEN 5 AND 120),
+  content TEXT NOT NULL CHECK (char_length(content) BETWEEN 10 AND 1000),
+  tag TEXT NOT NULL DEFAULT 'general',
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  upvotes INT NOT NULL DEFAULT 0,
+  views INT NOT NULL DEFAULT 0,
+  is_resolved BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+ALTER TABLE public.qna_questions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "qna_questions_select" ON public.qna_questions;
+DROP POLICY IF EXISTS "qna_questions_insert" ON public.qna_questions;
+DROP POLICY IF EXISTS "qna_questions_update" ON public.qna_questions;
+DROP POLICY IF EXISTS "qna_questions_delete" ON public.qna_questions;
+CREATE POLICY "qna_questions_select" ON public.qna_questions FOR SELECT USING (true);
+CREATE POLICY "qna_questions_insert" ON public.qna_questions FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "qna_questions_update" ON public.qna_questions FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "qna_questions_delete" ON public.qna_questions FOR DELETE USING (auth.uid() = user_id);
+
+-- 12. QnA ANSWERS table
+CREATE TABLE IF NOT EXISTS public.qna_answers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  question_id UUID NOT NULL REFERENCES public.qna_questions(id) ON DELETE CASCADE,
+  content TEXT NOT NULL CHECK (char_length(content) BETWEEN 2 AND 1200),
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  upvotes INT NOT NULL DEFAULT 0,
+  is_accepted BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+ALTER TABLE public.qna_answers ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "qna_answers_select" ON public.qna_answers;
+DROP POLICY IF EXISTS "qna_answers_insert" ON public.qna_answers;
+DROP POLICY IF EXISTS "qna_answers_update" ON public.qna_answers;
+DROP POLICY IF EXISTS "qna_answers_delete" ON public.qna_answers;
+CREATE POLICY "qna_answers_select" ON public.qna_answers FOR SELECT USING (true);
+CREATE POLICY "qna_answers_insert" ON public.qna_answers FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "qna_answers_update" ON public.qna_answers FOR UPDATE USING (
+  auth.uid() = user_id
+  OR EXISTS (
+    SELECT 1
+    FROM public.qna_questions q
+    WHERE q.id = qna_answers.question_id
+      AND q.user_id = auth.uid()
+  )
+);
+CREATE POLICY "qna_answers_delete" ON public.qna_answers FOR DELETE USING (auth.uid() = user_id);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.qna_questions;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.qna_answers;

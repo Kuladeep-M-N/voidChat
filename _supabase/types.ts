@@ -184,6 +184,86 @@ export type Database = {
           },
         ]
       }
+      qna_answers: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          is_accepted: boolean
+          question_id: string
+          updated_at: string
+          upvotes: number
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          is_accepted?: boolean
+          question_id: string
+          updated_at?: string
+          upvotes?: number
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          is_accepted?: boolean
+          question_id?: string
+          updated_at?: string
+          upvotes?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qna_answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "qna_questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qna_questions: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          is_resolved: boolean
+          tag: string
+          title: string
+          updated_at: string
+          upvotes: number
+          user_id: string
+          views: number
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          is_resolved?: boolean
+          tag?: string
+          title: string
+          updated_at?: string
+          upvotes?: number
+          user_id: string
+          views?: number
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          is_resolved?: boolean
+          tag?: string
+          title?: string
+          updated_at?: string
+          upvotes?: number
+          user_id?: string
+          views?: number
+        }
+        Relationships: []
+      }
       users: {
         Row: {
           anonymous_username: string

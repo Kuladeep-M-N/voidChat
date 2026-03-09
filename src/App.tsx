@@ -9,6 +9,7 @@ import Confessions from './pages/Confessions';
 import Polls from './pages/Polls';
 import VoiceRooms from './pages/VoiceRooms';
 import Shoutouts from './pages/Shoutouts';
+import QnA from './pages/QnA';
 
 
 const Spinner = () => (
@@ -42,6 +43,7 @@ function App() {
             <Route path="/room/:id" element={<ProtectedRoute><ChatRoom /></ProtectedRoute>} />
             <Route path="/confessions" element={<ProtectedRoute><Confessions /></ProtectedRoute>} />
             <Route path="/polls" element={<ProtectedRoute><Polls /></ProtectedRoute>} />
+            <Route path="/qna" element={<ProtectedRoute><QnA /></ProtectedRoute>} />
             <Route path="/voice" element={<ProtectedRoute><VoiceRooms /></ProtectedRoute>} />
             <Route path="/shoutouts" element={<ProtectedRoute><Shoutouts /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
