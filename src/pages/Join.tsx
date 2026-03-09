@@ -105,34 +105,50 @@ export default function Join() {
     if (!/^[a-zA-Z0-9_]+$/.test(name)) { setError('Username: letters, numbers, underscores only'); return; }
 
     setLoading(true); setError('');
-    const email = `${name.toLowerCase()}@voidchat.void`;
-    const password = `vc_${name.toLowerCase()}_secure`;
 
     try {
-      let userId: string | null = null;
-
-      // Try sign in first
-      const { data: signInData } = await supabase.auth.signInWithPassword({ email, password });
-      if (signInData?.user) {
-        userId = signInData.user.id;
-      } else {
-        // Sign up
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password });
-        if (signUpError) { setError(signUpError.message); setLoading(false); return; }
-        if (!signUpData?.user) { setError('Could not create account'); setLoading(false); return; }
-        userId = signUpData.user.id;
-
-        // Check uniqueness
-        const { data: existing } = await supabase.from('users').select('id').eq('anonymous_username', name).maybeSingle();
-        if (existing) { setError('Username taken. Try another!'); await supabase.auth.signOut(); setLoading(false); return; }
-
-        // Create profile
-        const { error: profileError } = await supabase.from('users').insert({ id: userId, anonymous_username: name });
-        if (profileError) {
-          if (profileError.code === '23505') { setError('Username taken. Try another!'); }
-          else { setError(profileError.message); }
-          await supabase.auth.signOut(); setLoading(false); return;
+      // Check if session already exists for this username (stored in localStorage)
+      const savedSession = localStorage.getItem(`vc_session_${name.toLowerCase()}`);
+      if (savedSession) {
+        const { access_token, refresh_token } = JSON.parse(savedSession);
+        const { data: sessionData, error: sessionError } = await supabase.auth.setSession({ access_token, refresh_token });
+        if (!sessionError && sessionData?.user) {
+          setStep('success');
+          setTimeout(() => navigate('/dashboard'), 1200);
+          return;
         }
+        // Session expired — clear it and sign in fresh
+        localStorage.removeItem(`vc_session_${name.toLowerCase()}`);
+      }
+
+      // Check username uniqueness before creating
+      const { data: existing } = await supabase.from('users').select('id').eq('anonymous_username', name).maybeSingle();
+      if (existing) { setError('Username taken. Try another!'); setLoading(false); return; }
+
+      // Anonymous sign-in — no email required
+      const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously({
+        options: { data: { anonymous_username: name } }
+      });
+      if (anonError) { setError(anonError.message); setLoading(false); return; }
+      if (!anonData?.user) { setError('Could not create anonymous session'); setLoading(false); return; }
+
+      const userId = anonData.user.id;
+
+      // Create user profile
+      const { error: profileError } = await supabase.from('users').insert({ id: userId, anonymous_username: name });
+      if (profileError) {
+        if (profileError.code === '23505') { setError('Username taken. Try another!'); }
+        else { setError(profileError.message); }
+        await supabase.auth.signOut(); setLoading(false); return;
+      }
+
+      // Persist session locally so same username can rejoin
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        localStorage.setItem(`vc_session_${name.toLowerCase()}`, JSON.stringify({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+        }));
       }
 
       setStep('success');
