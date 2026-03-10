@@ -16,22 +16,31 @@ export type Database = {
     Tables: {
       chat_rooms: {
         Row: {
+          category: string
           created_at: string
           created_by: string
           id: string
-          room_name: string
+          is_locked: boolean
+          name: string
+          only_admins_can_message: boolean
         }
         Insert: {
+          category?: string
           created_at?: string
           created_by: string
           id?: string
-          room_name: string
+          is_locked?: boolean
+          name: string
+          only_admins_can_message?: boolean
         }
         Update: {
+          category?: string
           created_at?: string
           created_by?: string
           id?: string
-          room_name?: string
+          is_locked?: boolean
+          name?: string
+          only_admins_can_message?: boolean
         }
         Relationships: []
       }
@@ -263,6 +272,48 @@ export type Database = {
           views?: number
         }
         Relationships: []
+      }
+      room_members: {
+        Row: {
+          id: string
+          joined_at: string
+          muted_until: string | null
+          role: string
+          room_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          joined_at?: string
+          muted_until?: string | null
+          role?: string
+          room_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          joined_at?: string
+          muted_until?: string | null
+          role?: string
+          room_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_members_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "chat_rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       users: {
         Row: {
