@@ -250,9 +250,17 @@ export default function VoiceRooms() {
     console.log('JoinRoom Debug - Room Object:', room);
     console.log('JoinRoom Debug - User ID:', user?.id);
     
-    // Everyone joins as audience initially now
-    setMyRole('audience');
-    setMuted(true);
+    // OPEN VOICE MODEL: Request mic immediately on join
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      localStreamRef.current = stream;
+      setMyRole('speaker');
+      setMuted(false);
+    } catch (err) {
+      console.warn('Microphone access denied, joining as listener only.');
+      setMyRole('audience');
+      setMuted(true);
+    }
 
     // Ensure no lingering channels from hot reloads or fast clicks
     if (channelRef.current) {
@@ -303,16 +311,14 @@ export default function VoiceRooms() {
         if (prev.find(p => p.userId === key)) return prev;
         return [...prev, { userId: key, username: info.username, speaking: false, muted: info.muted, role: info.role, handRaised: info.handRaised ?? false }];
       });
-      setChatMessages(prev => [...prev, { id: Date.now().toString(), userId: 'sys', username: 'System', text: `${info.username} joined the room.`, isSystem: true }]);
     });
 
-    ch.on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+    ch.on('presence', { event: 'leave' }, ({ key }) => {
       peersRef.current.get(key)?.close();
       peersRef.current.delete(key);
       remoteAudiosRef.current.get(key)?.remove();
       remoteAudiosRef.current.delete(key);
       setParticipants(prev => prev.filter(p => p.userId !== key));
-      setChatMessages(prev => [...prev, { id: Date.now().toString(), userId: 'sys', username: 'System', text: `${leftPresences[0]?.username || 'Someone'} left the room.`, isSystem: true }]);
     });
 
     // Handle offers and answers
@@ -357,29 +363,7 @@ export default function VoiceRooms() {
       setChatMessages(prev => [...prev, payload]);
     });
 
-    ch.on('broadcast', { event: 'promote' }, async ({ payload }) => {
-      if (payload.userId === user!.id) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-          localStreamRef.current = stream;
-          setMyRole('speaker');
-          setMuted(false);
-          setHandRaised(false);
-          
-          // Renegotiate with all existing peers to send them our new audio track
-          peersRef.current.forEach(async (pc, remoteId) => {
-            stream.getTracks().forEach(t => pc.addTrack(t, stream));
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            ch.send({ type: 'broadcast', event: 'offer', payload: { from: user!.id, to: remoteId, offer } });
-          });
-          
-          setChatMessages(prev => [...prev, { id: Date.now().toString(), userId: 'sys', username: 'System', text: `You were invited to the stage by the Host!`, isSystem: true }]);
-        } catch (err) {
-          setErrorMsg('Failed to access microphone for the stage.');
-        }
-      }
-    });
+
 
     ch.on('broadcast', { event: 'room-closed' }, () => {
       leaveRoom();
@@ -400,7 +384,7 @@ export default function VoiceRooms() {
           if (presenceStatus === 'ok') {
             setActiveRoom(room);
             setJoining(false);
-            setChatMessages([{ id: '1', userId: 'sys', username: 'System', text: `Welcome to ${room.name}! Click "Go to Stage" to speak.`, isSystem: true }]);
+            setChatMessages([{ id: '1', userId: 'sys', username: 'System', text: `Connected to ${room.name}. Everyone can speak!`, isSystem: true }]);
           } else {
              throw new Error('Presence track failed');
           }
@@ -479,26 +463,12 @@ export default function VoiceRooms() {
   };
 
   const toggleMute = useCallback(() => {
-    if (myRole === 'audience') return;
     const track = localStreamRef.current?.getAudioTracks()[0];
     if (track) track.enabled = muted;
     setMuted(m => !m);
-  }, [muted, myRole]);
+  }, [muted]);
 
-  const toggleHand = () => {
-    setHandRaised(h => !h);
-  };
 
-  const promoteUser = (userId: string) => {
-    const p = participants.find(x => x.userId === userId);
-    if (!p || myRole !== 'host') return;
-    const stageCount = participants.filter(x => x.role === 'host' || x.role === 'speaker').length;
-    if (stageCount >= 8) {
-      alert("Stage is full! (Max 8 speakers)");
-      return;
-    }
-    channelRef.current?.send({ type: 'broadcast', event: 'promote', payload: { userId } });
-  };
 
   // ─────────────────────────── ACTIVE ROOM UI ───────────────────────────
   if (activeRoom) {
@@ -509,95 +479,84 @@ export default function VoiceRooms() {
     const stageSlots = Array.from({ length: 8 }).map((_, i) => stageUsers[i] || null);
 
     return (
-      <div className="min-h-screen relative overflow-hidden flex flex-col bg-[#14142b]">
+      <div className="h-[100dvh] flex flex-col bg-[#14142b] overflow-hidden">
         {/* Top Header */}
-        <div className="glass shrink-0 px-4 py-4 flex items-center justify-between z-20 sticky top-0 border-b border-white/5 shadow-2xl">
-          <div className="flex items-center gap-3">
-            <button onClick={leaveRoom} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition">
+        <div className="glass shrink-0 px-6 py-4 flex items-center justify-between z-20 border-b border-white/5 shadow-2xl backdrop-blur-xl">
+          <div className="flex items-center gap-4">
+            <button onClick={leaveRoom} className="w-10 h-10 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 text-white transition-all border border-white/5">
               ✕
             </button>
-            <h1 className="text-white font-bold">{activeRoom.name}</h1>
+            <div>
+              <h1 className="text-white font-bold text-lg leading-tight">{activeRoom.name}</h1>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-emerald-400 text-[9px] font-black uppercase tracking-widest">Live Open Lounge</span>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold bg-violet-600 px-3 py-1 rounded-full">{participants.length}/18</span>
-            {myRole === 'host' && (
-              <button onClick={endRoom} className="text-xs bg-red-500 hover:bg-red-600 px-3 py-1 rounded-full font-semibold transition">
-                End Room
+          <div className="flex items-center gap-3">
+             <div className="bg-white/5 px-4 py-2 rounded-2xl border border-white/5 flex items-center gap-2">
+                <span className="text-violet-400 font-bold text-sm">{participants.length}</span>
+                <span className="text-white/30 text-[9px] font-black uppercase tracking-widest">Online</span>
+             </div>
+            {user?.id === activeRoom.created_by && (
+              <button 
+                onClick={() => { if(confirm('End this room for everyone?')) endRoom(); }} 
+                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-red-500/20"
+              >
+                End Session
               </button>
             )}
           </div>
         </div>
 
-        {/* Middle Scrollable Layout */}
-        <div className="flex-1 overflow-y-auto px-4 py-6 scroll-smooth flex flex-col items-center">
-          <div className="w-full max-w-xl">
-            {/* The Stage */}
-            <div className="grid grid-cols-4 sm:grid-cols-4 gap-y-8 gap-x-4 mb-10 w-full px-2">
-              {stageSlots.map((p, i) => (
-                <div key={p?.userId || `empty-${i}`} className="flex flex-col items-center gap-2 relative">
-                  {p ? (
-                    <>
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col min-h-0 relative">
+          {/* Participant Grid Section (Fixed Height or Scrollable if too large) */}
+          <div className="shrink-0 max-h-[45vh] overflow-y-auto px-6 py-4 custom-scrollbar bg-black/10">
+            <div className="max-w-xl mx-auto">
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-4 gap-y-8 gap-x-6 py-4">
+                {participants.map((p) => {
+                  const isMe = p.userId === user?.id;
+                  return (
+                    <motion.div key={p.userId} 
+                      className="flex flex-col items-center gap-2 relative"
+                      initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}>
                       <div className="relative">
-                        {p.speaking && !p.muted && (
-                          <>
-                            <motion.div className="absolute inset-0 rounded-full border-2 border-amber-400" animate={{ scale: [1, 1.3, 1], opacity: [0.8, 0, 0.8] }} transition={{ duration: 1.2, repeat: Infinity }} />
-                          </>
-                        )}
-                        <div className={`w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold text-white border-2 z-10 relative overflow-hidden shadow-lg ${
-                          p.speaking && !p.muted ? 'border-amber-400 bg-amber-500/30' : 'border-white/10 bg-slate-700/50'
+                        <div className={`w-16 h-16 rounded-3xl flex items-center justify-center text-xl font-bold text-white border-2 transition-all duration-300 shadow-lg ${
+                          p.speaking && !p.muted ? 'border-violet-500 bg-violet-500/10 shadow-[0_0_20px_rgba(139,92,246,0.5)] scale-110' : 'border-white/5 bg-white/5'
                         }`}>
-                          {p.role === 'host' && <span className="absolute top-0 text-[10px] bg-violet-600 w-full text-center tracking-widest font-black uppercase">Host</span>}
                           {p.username.slice(0, 2).toUpperCase()}
+                          {p.role === 'host' && (
+                            <div className="absolute -top-2 -left-1 bg-amber-500 text-black text-[7px] font-black px-1.5 py-0.5 rounded shadow uppercase tracking-tighter">
+                              Host
+                            </div>
+                          )}
                         </div>
-                        {p.muted && <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#14142b] border border-white/10 flex items-center justify-center text-xs z-20 shadow-md">🔇</div>}
-                      </div>
-                      <span className="text-xs text-white/90 font-medium truncate w-16 text-center">{p.userId === user?.id ? 'You' : p.username}</span>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-16 h-16 rounded-full border-2 border-dashed border-white/20 bg-white/5 flex items-center justify-center text-white/30 text-2xl">
-                        +
-                      </div>
-                      <span className="text-[10px] text-white/40">Empty</span>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* The Audience */}
-            <div className="w-full bg-white/5 rounded-2xl p-4 mb-6 shadow-xl border border-white/5">
-              <div className="text-xs font-semibold text-white/60 mb-3 flex items-center justify-between">
-                <span>Listeners ({audienceUsers.length}/10)</span>
-              </div>
-              <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide py-1">
-                {audienceUsers.length === 0 ? (
-                  <p className="text-xs text-white/30 italic">No one is listening yet.</p>
-                ) : (
-                  audienceUsers.map(p => (
-                    <div key={p.userId} className="flex flex-col items-center gap-1 shrink-0 relative cursor-pointer" onClick={() => promoteUser(p.userId)}>
-                      <div className="w-12 h-12 rounded-full border border-white/10 bg-slate-800 flex items-center justify-center text-sm font-bold text-white shadow-md relative">
-                        {p.username.slice(0, 2).toUpperCase()}
-                        {p.handRaised && (
-                          <motion.div initial={{ y: 5, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="absolute -top-3 -right-2 text-lg drop-shadow-md">
-                            ✋
-                          </motion.div>
+                        {p.muted && (
+                          <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-[#14142b] border border-white/10 rounded-lg flex items-center justify-center text-[10px] shadow-lg">
+                            🔇
+                          </div>
                         )}
                       </div>
-                      <span className="text-[10px] text-white/70 truncate w-12 text-center">{p.username}</span>
-                    </div>
-                  ))
-                )}
+                      <span className={`text-[10px] font-bold truncate w-16 text-center transition-colors ${p.speaking && !p.muted ? 'text-violet-400' : 'text-white/40'}`}>
+                        {isMe ? 'You' : p.username}
+                      </span>
+                    </motion.div>
+                  );
+                })}
               </div>
             </div>
+          </div>
 
-            {/* Chat Messages */}
-            <div className="w-full space-y-3 mb-[200px]" ref={chatScrollRef}>
+          {/* Chat Messages Section (Takes remaining space and scrolls) */}
+          <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar" ref={chatScrollRef}>
+            <div className="max-w-xl mx-auto space-y-3">
               {chatMessages.map(msg => (
                 <div key={msg.id} className="flex flex-col">
                   {msg.isSystem ? (
-                    <div className="bg-violet-500/10 border border-violet-500/20 text-violet-300 text-xs px-3 py-2 rounded-xl self-center max-w-[85%] text-center">
-                      <span className="font-semibold">{msg.username}</span>: {msg.text}
+                    <div className="bg-white/5 border border-white/5 text-white/30 text-[10px] font-bold uppercase tracking-widest px-4 py-1.5 rounded-full self-center">
+                      {msg.text}
                     </div>
                   ) : (
                     <div className="bg-white/5 border border-white/5 rounded-2xl px-3 py-2 text-sm text-white/90 max-w-[90%] w-fit shadow-md backdrop-blur-sm">
@@ -612,59 +571,13 @@ export default function VoiceRooms() {
         </div>
 
         {/* Bottom Bar: Chat Input & Controls */}
-        <div className="absolute bottom-0 w-full glass border-t border-white/10 p-3 flex flex-col gap-3 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-20">
+        <div className="shrink-0 bg-[#1a1a35] border-t border-white/10 p-3 flex flex-col gap-3 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-20">
           {/* Quick controls row */}
           <div className="flex items-center justify-between px-2">
              <div className="flex gap-3">
-               {(myRole === 'host' || myRole === 'speaker') ? (
-                 <div className="flex gap-2">
-                   <button onClick={toggleMute} className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shadow-md transition ${muted ? 'bg-red-500/20 border border-red-500 text-red-500' : 'bg-white/10 hover:bg-white/20 text-white'}`}>
-                     {muted ? '🔇' : '🎙️'}
-                   </button>
-                   <button 
-                     onClick={() => {
-                        localStreamRef.current?.getTracks().forEach(t => t.stop());
-                        localStreamRef.current = null;
-                        setMyRole('audience');
-                        setMuted(true);
-                     }}
-                     className="bg-white/5 hover:bg-white/10 text-white/60 px-4 h-10 rounded-full font-semibold text-xs transition"
-                   >
-                     Leave Stage
-                   </button>
-                 </div>
-               ) : (
-                 <div className="flex gap-2">
-                   <button onClick={toggleHand} className={`flex items-center gap-2 px-4 h-10 rounded-full font-semibold text-sm shadow-md transition ${handRaised ? 'bg-amber-500 text-amber-900 shadow-amber-500/20' : 'bg-white/10 hover:bg-white/20 text-white'}`}>
-                     ✋ {handRaised ? 'Raised' : 'Raise Hand'}
-                   </button>
-                   
-                   <button 
-                     onClick={async () => {
-                       const hasHost = participants.some(p => p.role === 'host' && String(p.userId) !== String(user?.id));
-                       const stageCount = participants.filter(p => p.role === 'host' || p.role === 'speaker').length;
-                       
-                       if (stageCount >= 8) {
-                         alert("The stage is currently full! (Max 8)");
-                         return;
-                       }
-
-                       try {
-                         localStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                         const newRole = hasHost ? 'speaker' : 'host';
-                         setMyRole(newRole);
-                         setMuted(false);
-                         setHandRaised(false);
-                       } catch (e) {
-                         alert("Please allow microphone access to go to the stage.");
-                       }
-                     }}
-                     className="bg-violet-600 hover:bg-violet-500 px-4 h-10 rounded-full font-semibold text-sm text-white shadow-lg transition"
-                   >
-                     {participants.some(p => p.role === 'host') ? 'Join Stage' : 'Join as Host'}
-                   </button>
-                 </div>
-               )}
+               <button onClick={toggleMute} className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shadow-md transition ${muted ? 'bg-red-500/20 border border-red-500 text-red-500' : 'bg-white/10 hover:bg-white/20 text-white'}`}>
+                 {muted ? '🔇' : '🎙️'}
+               </button>
              </div>
              <div className="flex gap-2 text-2xl">
                <button 
