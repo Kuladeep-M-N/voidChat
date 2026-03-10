@@ -4,7 +4,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 
-interface Room { id: string; name: string; created_at: string; }
+interface Room { id: string; name: string; category: string; created_at: string; }
+
+const roomThemes = {
+  general: { bg: 'bg-gradient-to-br from-blue-600/20 to-cyan-600/20', icon: '💬', border: 'border-blue-500/30' },
+  gaming: { bg: 'bg-gradient-to-br from-purple-600/20 to-green-600/20', icon: '🎮', border: 'border-purple-500/30' },
+  confessions: { bg: 'bg-gradient-to-br from-red-600/20 to-pink-600/20', icon: '🔥', border: 'border-red-500/30' },
+  music: { bg: 'bg-gradient-to-br from-purple-600/20 to-cyan-600/20', icon: '🎵', border: 'border-purple-500/30' },
+  qa: { bg: 'bg-gradient-to-br from-amber-600/20 to-yellow-600/20', icon: '❓', border: 'border-amber-500/30' },
+  memes: { bg: 'bg-gradient-to-br from-pink-600/20 to-orange-600/20', icon: '😂', border: 'border-pink-500/30' },
+};
 
 const features = [
   { id: 'confessions', emoji: '🔥', label: 'Confessions', desc: 'Share anonymous secrets', path: '/confessions', color: 'from-orange-600/30 to-red-600/20', border: 'border-orange-500/20' },
@@ -28,7 +37,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from('chat_rooms').select('*').order('created_at', { ascending: false })
+    supabase.from('chat_rooms').select('id, name, category, created_at').order('created_at', { ascending: false })
       .then(({ data }) => { if (data) setRooms(data); });
 
     const channel = supabase.channel('rooms-realtime')
@@ -42,7 +51,7 @@ export default function Dashboard() {
     const name = newRoomName.trim();
     if (!name || !user) return;
     setCreating(true);
-    await supabase.from('chat_rooms').insert({ name, created_by: user.id });
+    await supabase.from('chat_rooms').insert({ name, created_by: user.id, category: 'general' });
     setNewRoomName(''); setShowCreate(false); setCreating(false);
   };
 
@@ -115,21 +124,29 @@ export default function Dashboard() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               <AnimatePresence>
-                {rooms.map((room, i) => (
-                  <motion.div key={room.id} onClick={() => navigate(`/room/${room.id}`)}
-                    className="glass-hover rounded-2xl p-5 cursor-pointer"
-                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.25, delay: i * 0.04 }}
-                    layout>
-                    <div className="w-10 h-10 rounded-xl bg-violet-500/20 border border-violet-500/30 flex items-center justify-center text-lg mb-4">💬</div>
-                    <h3 className="font-semibold text-white text-base mb-1 truncate">{room.name}</h3>
-                    <p className="text-xs text-slate-500">
-                      {new Date(room.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </motion.div>
-                ))}
+                {rooms.map((room, i) => {
+                  const theme = roomThemes[room.category as keyof typeof roomThemes] || roomThemes.general;
+                  return (
+                    <motion.div key={room.id} onClick={() => navigate(`/room/${room.id}`)}
+                      className={`glass-hover rounded-2xl p-5 cursor-pointer ${theme.bg} border ${theme.border}`}
+                      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={{ duration: 0.25, delay: i * 0.04 }}
+                      layout
+                      whileHover={{ scale: 1.02, y: -2 }}
+                      whileTap={{ scale: 0.98 }}>
+                      <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-lg mb-4">{theme.icon}</div>
+                      <h3 className="font-semibold text-white text-base mb-1 truncate">{room.name}</h3>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-slate-500">
+                          {new Date(room.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        </p>
+                        <span className="text-xs text-slate-400 capitalize">{room.category}</span>
+                      </div>
+                    </motion.div>
+                  );
+                })}
               </AnimatePresence>
             </div>
           )}

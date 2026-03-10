@@ -9,6 +9,7 @@ interface Message {
   user_id: string; anonymous_username: string; optimistic?: boolean;
 }
 interface TypingUser { id: string; username: string; }
+interface RoomMember { user_id: string; role: string; anonymous_username: string; }
 
 const EMOJI_REACTIONS = ['❤️', '😂', '🔥', '👀', '😮', '👍'];
 const COLORS = ['#7c3aed','#0891b2','#059669','#d97706','#dc2626','#be185d','#4338ca','#7c3aed'];
@@ -22,11 +23,18 @@ export default function ChatRoom() {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [roomName, setRoomName] = useState('');
+  const [roomCategory, setRoomCategory] = useState('');
+  const [onlyAdminsCanMessage, setOnlyAdminsCanMessage] = useState(false);
+  const [userRole, setUserRole] = useState<string>('member');
+  const [members, setMembers] = useState<RoomMember[]>([]);
+  const [userRoles, setUserRoles] = useState<Map<string, string>>(new Map());
   const [onlineCount, setOnlineCount] = useState(1);
   const [text, setText] = useState('');
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
   const [reactions, setReactions] = useState<Record<string, Record<string, string[]>>>({});
   const [picker, setPicker] = useState<string | null>(null);
+  const [showMembers, setShowMembers] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -40,8 +48,51 @@ export default function ChatRoom() {
   useEffect(() => {
     if (!roomId || !user) return;
 
-    supabase.from('chat_rooms').select('name').eq('id', roomId).single()
-      .then(({ data }) => { if (data) setRoomName(data.name); });
+    supabase.from('chat_rooms').select('name, category, only_admins_can_message').eq('id', roomId).single()
+      .then(({ data }) => { 
+        if (data) { 
+          setRoomName(data.name); 
+          setRoomCategory(data.category); 
+          setOnlyAdminsCanMessage(data.only_admins_can_message); 
+        } 
+      });
+
+    // Fetch user role and members
+    const fetchRoleAndMembers = async () => {
+      let { data: memberData } = await supabase
+        .from('room_members')
+        .select('role')
+        .eq('room_id', roomId)
+        .eq('user_id', user.id)
+        .single();
+      
+      if (!memberData) {
+        // Auto-join as member
+        await supabase.from('room_members').insert({ room_id: roomId, user_id: user.id, role: 'member' });
+        memberData = { role: 'member' };
+      }
+      
+      setUserRole(memberData.role);
+
+      const { data: allMembers } = await supabase
+        .from('room_members')
+        .select('user_id, role, users!inner(anonymous_username)')
+        .eq('room_id', roomId);
+      if (allMembers) {
+        const rolesMap = new Map<string, string>();
+        setMembers(allMembers.map(m => {
+          rolesMap.set(m.user_id, m.role);
+          return {
+            user_id: m.user_id,
+            role: m.role,
+            anonymous_username: (m.users as any).anonymous_username
+          };
+        }));
+        setUserRoles(rolesMap);
+      }
+    };
+
+    fetchRoleAndMembers();
 
     const fetchMessages = async () => {
       const { data, error } = await supabase
@@ -155,6 +206,10 @@ export default function ChatRoom() {
   const sendMessage = useCallback(async () => {
     const content = text.trim();
     if (!content || !user || !roomId || !profile || sending.current) return;
+
+    // Check permissions
+    if (onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole)) return;
+
     sending.current = true;
 
     const tempId = `OPT_${Date.now()}`;
@@ -209,7 +264,9 @@ export default function ChatRoom() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-[#07070f]" onClick={() => setPicker(null)}>
+    <div className="h-screen flex bg-[#07070f]" onClick={() => setPicker(null)}>
+      {/* Main Chat Area */}
+      <div className={`flex flex-col ${showMembers ? 'flex-1' : 'w-full'}`}>
       {/* Header */}
       <header className="border-b border-white/5 glass shrink-0 z-50">
         <div className="max-w-3xl mx-auto flex items-center gap-3 px-4 py-3">
@@ -228,6 +285,14 @@ export default function ChatRoom() {
               {onlineCount} online
             </p>
           </div>
+          <button onClick={() => setShowMembers(!showMembers)} className="btn-ghost rounded-xl p-2 text-slate-400 shrink-0">
+            👥
+          </button>
+          {['creator', 'admin'].includes(userRole) && (
+            <button onClick={() => setShowSettings(true)} className="btn-ghost rounded-xl p-2 text-slate-400 shrink-0">
+              ⚙️
+            </button>
+          )}
         </div>
       </header>
 
@@ -263,10 +328,18 @@ export default function ChatRoom() {
                   <div className={`max-w-[68%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                     {/* Name shown on first bubble of group */}
                     {msg.isFirst && (
-                      <span className="text-[11px] font-semibold mb-1 px-1"
-                        style={{ color: isMe ? '#a78bfa' : color }}>
-                        {isMe ? `You (${profile?.anonymous_username ?? ''})` : msg.anonymous_username}
-                      </span>
+                      <div className="flex items-center gap-1 mb-1 px-1">
+                        <span className="text-[11px] font-semibold"
+                          style={{ color: isMe ? '#a78bfa' : color }}>
+                          {isMe ? `You (${profile?.anonymous_username ?? ''})` : msg.anonymous_username}
+                        </span>
+                        {(() => {
+                          const role = userRoles.get(msg.user_id);
+                          if (role === 'creator') return <span className="text-xs bg-yellow-500/20 text-yellow-300 px-1 rounded">👑</span>;
+                          if (role === 'admin') return <span className="text-xs bg-blue-500/20 text-blue-300 px-1 rounded">⭐</span>;
+                          return null;
+                        })()}
+                      </div>
                     )}
 
                     {/* Bubble */}
@@ -373,17 +446,18 @@ export default function ChatRoom() {
           <input
             type="text"
             className="input-field flex-1 py-2.5 rounded-2xl"
-            placeholder="Message..."
+            placeholder={onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole) ? "Only admins can message" : "Message..."}
             value={text}
             onChange={e => { setText(e.target.value); if (e.target.value) emitTyping(); }}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
             maxLength={2000}
+            disabled={onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole)}
           />
           <motion.button
             onClick={sendMessage}
-            disabled={!text.trim()}
+            disabled={!text.trim() || (onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole))}
             className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-all"
-            style={{ background: text.trim() ? 'linear-gradient(135deg, #7c3aed, #5b21b6)' : 'rgba(255,255,255,0.05)' }}
+            style={{ background: text.trim() && !(onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole)) ? 'linear-gradient(135deg, #7c3aed, #5b21b6)' : 'rgba(255,255,255,0.05)' }}
             whileTap={{ scale: 0.88 }}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={text.trim() ? 'white' : '#64748b'} strokeWidth="2.5">
               <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
@@ -391,6 +465,109 @@ export default function ChatRoom() {
           </motion.button>
         </div>
       </div>
+
+      {/* Members Sidebar */}
+      <AnimatePresence>
+        {showMembers && (
+          <motion.div
+            className="w-64 border-l border-white/5 glass flex flex-col"
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'tween', duration: 0.2 }}>
+            <div className="p-4 border-b border-white/5">
+              <h3 className="font-semibold text-white">Members ({members.length})</h3>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {members.map(member => (
+                <div key={member.user_id} className="flex items-center gap-3 p-3 hover:bg-white/5">
+                  <div className="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center text-xs font-bold text-white">
+                    {member.anonymous_username.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-white truncate">{member.anonymous_username}</div>
+                    <div className="text-xs text-slate-400 capitalize flex items-center gap-1">
+                      {member.role === 'creator' && '👑'}
+                      {member.role === 'admin' && '⭐'}
+                      {member.role}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Settings Modal */}
+    <AnimatePresence>
+      {showSettings && (
+        <motion.div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
+          <motion.div className="glass border border-white/10 rounded-3xl p-8 w-full max-w-md"
+            initial={{ scale: 0.9, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }}
+            exit={{ scale: 0.9, y: 20, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
+            <h2 className="text-xl font-semibold text-white mb-6">Room Settings</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={onlyAdminsCanMessage}
+                    onChange={async (e) => {
+                      const newValue = e.target.checked;
+                      await supabase.from('chat_rooms').update({ only_admins_can_message: newValue }).eq('id', roomId);
+                      setOnlyAdminsCanMessage(newValue);
+                    }}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-white">Only admins can send messages</span>
+                </label>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setShowSettings(false)} className="btn-primary rounded-xl flex-1">Close</button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+    </div>
+    {/* Settings Modal */}
+    <AnimatePresence>
+      {showSettings && (
+        <motion.div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
+          <motion.div className="glass border border-white/10 rounded-3xl p-8 w-full max-w-md"
+            initial={{ scale: 0.9, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }}
+            exit={{ scale: 0.9, y: 20, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
+            <h2 className="text-xl font-semibold text-white mb-6">Room Settings</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={onlyAdminsCanMessage}
+                    onChange={async (e) => {
+                      const newValue = e.target.checked;
+                      await supabase.from('chat_rooms').update({ only_admins_can_message: newValue }).eq('id', roomId);
+                      setOnlyAdminsCanMessage(newValue);
+                    }}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-white">Only admins can send messages</span>
+                </label>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setShowSettings(false)} className="btn-primary rounded-xl flex-1">Close</button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
     </div>
   );
 }
