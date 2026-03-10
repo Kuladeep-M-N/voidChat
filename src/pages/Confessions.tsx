@@ -33,9 +33,13 @@ const timeAgo = (d: string) => {
   return `${Math.floor(diff / 86400)}d`;
 };
 
+import { User } from '@supabase/supabase-js';
+
 function CommentPanel({ confession, user, profile, onClose }: {
   confession: Confession;
-  user: any; profile: any;
+  user: User | null; 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  profile: any;
   onClose: () => void;
 }) {
   const [comments, setComments] = useState<Comment[]>([]);
@@ -79,6 +83,7 @@ function CommentPanel({ confession, user, profile, onClose }: {
         })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [confession.id]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [comments]);
