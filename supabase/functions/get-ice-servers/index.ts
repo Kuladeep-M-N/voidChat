@@ -17,8 +17,9 @@ Deno.serve(async (req: Request) => {
 
   const METERED_APP_NAME = Deno.env.get('METERED_APP_NAME');
   const METERED_API_KEY = Deno.env.get('METERED_API_KEY');
+  const ENABLE_TURN = Deno.env.get('ENABLE_TURN');
 
-  if (!METERED_APP_NAME || !METERED_API_KEY) {
+  if (ENABLE_TURN === 'false' || !METERED_APP_NAME || !METERED_API_KEY) {
     return new Response(JSON.stringify(STUN_FALLBACK), {
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     });
