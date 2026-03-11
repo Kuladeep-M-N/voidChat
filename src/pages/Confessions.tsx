@@ -69,7 +69,7 @@ function CommentPanel({ confession, user, profile, onClose }: {
     const ch = supabase.channel(`comments:${confession.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confession_comments', filter: `confession_id=eq.${confession.id}` },
         async (p) => {
-          const c = p.new;
+          const c = p.new as Omit<Comment, 'anonymous_username'>;
           let name = nameCache.get(c.user_id);
           if (!name) {
             const { data } = await supabase.from('users').select('anonymous_username').eq('id', c.user_id).single();
