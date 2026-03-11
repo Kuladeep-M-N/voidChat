@@ -49,18 +49,20 @@ export default function ChatRoom() {
   useEffect(() => {
     if (!roomId || !user) return;
 
-    supabase.from('chat_rooms').select('name, category, only_admins_can_message, is_archived').eq('id', roomId).single()
-      .then(({ data }) => { 
-        if (data) { 
-          setRoomName(data.name); 
-          setRoomCategory(data.category); 
-          setOnlyAdminsCanMessage(data.only_admins_can_message); 
-          setIsArchived(data.is_archived || false);
-        } 
-      });
+    const loadRoomData = async () => {
+      // 1. Fetch Room Data
+      const { data: roomData } = await supabase.from('chat_rooms')
+        .select('name, category, only_admins_can_message, is_archived, created_by')
+        .eq('id', roomId).single();
+        
+      if (roomData) { 
+        setRoomName(roomData.name); 
+        setRoomCategory(roomData.category); 
+        setOnlyAdminsCanMessage(roomData.only_admins_can_message); 
+        setIsArchived(roomData.is_archived || false);
+      } 
 
-    // Fetch user role and members
-    const fetchRoleAndMembers = async () => {
+      // 2. Fetch User Role
       let { data: memberData } = await supabase
         .from('room_members')
         .select('role')
@@ -74,12 +76,16 @@ export default function ChatRoom() {
         memberData = { role: 'member' };
       }
       
-      setUserRole(memberData.role);
+      // Safety Fallback: If you created the room, you are always the creator
+      const finalRole = (roomData && roomData.created_by === user.id) ? 'creator' : memberData.role;
+      setUserRole(finalRole);
 
+      // 3. Fetch All Members
       const { data: allMembers } = await supabase
         .from('room_members')
         .select('user_id, role, users!inner(anonymous_username)')
         .eq('room_id', roomId);
+        
       if (allMembers) {
         const rolesMap = new Map<string, string>();
         setMembers(allMembers.map(m => {
@@ -94,7 +100,7 @@ export default function ChatRoom() {
       }
     };
 
-    fetchRoleAndMembers();
+    loadRoomData();
 
     const fetchMessages = async () => {
       const { data, error } = await supabase
@@ -216,7 +222,7 @@ export default function ChatRoom() {
     }, 2000);
   }, [profile, user, isArchived]);
 
-  const sendMessage = useCallback(async () => {
+  const sendMessage = useCallback(() => {
     const content = text.trim();
     if (!content || !user || !roomId || !profile || sending.current || isArchived) return;
 
@@ -225,22 +231,36 @@ export default function ChatRoom() {
 
     sending.current = true;
 
-    const tempId = `OPT_${Date.now()}`;
+    const tempId = `OPT_${Date.now()}_${Math.random()}`;
     // Add optimistic immediately — it will be replaced by the DB event
     setMessages(prev => [...prev, {
       id: tempId, content, created_at: new Date().toISOString(),
       user_id: user.id, anonymous_username: profile.anonymous_username, optimistic: true
     }]);
+    
     setText('');
     if (typingTimer.current) clearTimeout(typingTimer.current);
     channelRef.current?.send({ type: 'broadcast', event: 'stop_typing', payload: { userId: user.id } });
 
-    const { error } = await supabase.from('messages').insert({ content, user_id: user.id, room_id: roomId });
-    if (error) {
-      setMessages(prev => prev.filter(m => m.id !== tempId));
-    }
-    sending.current = false;
-  }, [text, user, roomId, profile]);
+    // Fire and forget the DB insert so the UI doesn't lag
+    (async () => {
+      const { data: savedMsg, error } = await supabase.from('messages')
+        .insert({ content, user_id: user.id, room_id: roomId })
+        .select().single();
+        
+      if (error) {
+        console.error("Failed to send message:", error);
+        setMessages(prev => prev.filter(m => m.id !== tempId));
+      } else if (savedMsg) {
+        // Update the optimistic message with the real data instantly
+        setMessages(prev => prev.map(m => 
+          m.id === tempId ? { ...savedMsg, anonymous_username: profile.anonymous_username, optimistic: false } : m
+        ));
+      }
+      sending.current = false;
+    })();
+      
+  }, [text, user, roomId, profile, isArchived, onlyAdminsCanMessage, userRole]);
 
   const reactToMessage = useCallback((msgId: string, emoji: string) => {
     if (!user || isArchived) return;

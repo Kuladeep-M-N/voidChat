@@ -45,18 +45,35 @@ export default function Dashboard() {
         if (payload.eventType === 'INSERT') {
           setRooms(prev => [payload.new as Room, ...prev]);
         } else if (payload.eventType === 'UPDATE') {
-          setRooms(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } : r));
+          setRooms(prev => prev.map(r => r.id === payload.new.id ? { ...r, is_archived: payload.new.is_archived ?? r.is_archived, ...payload.new } : r));
+        } else if (payload.eventType === 'DELETE') {
+          setRooms(prev => prev.filter(r => r.id !== payload.old.id));
         }
       }).subscribe();
+      
     return () => { supabase.removeChannel(channel); };
   }, [user]);
 
   const createRoom = async () => {
     const name = newRoomName.trim();
     if (!name || !user) return;
+    
     setCreating(true);
-    await supabase.from('chat_rooms').insert({ name, created_by: user.id, category: 'general' });
-    setNewRoomName(''); setShowCreate(false); setCreating(false);
+    
+    // Create the room
+    const { data: room, error } = await supabase.from('chat_rooms')
+      .insert({ name, created_by: user.id, category: 'general' })
+      .select().single();
+    
+    // Immediately make the creator an admin/creator in the members table
+    if (room && !error) {
+       await supabase.from('room_members').insert({ room_id: room.id, user_id: user.id, role: 'creator' });
+       navigate(`/room/${room.id}`);
+    } else {
+       setNewRoomName('');
+       setShowCreate(false);
+       setCreating(false);
+    }
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>;
