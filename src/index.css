@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -16,7 +16,7 @@
   }
 
   body {
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: 'Sora', sans-serif;
     background: #070710;
     color: #e2e8f0;
     min-height: 100vh;
@@ -82,7 +82,7 @@
     @apply w-full px-4 py-3 rounded-xl text-white placeholder-slate-500 outline-none transition-all duration-200;
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.1);
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: 'Sora', sans-serif;
   }
   .input-field:focus {
     border-color: #7c3aed;
@@ -94,7 +94,7 @@
     @apply w-full py-3 px-6 rounded-xl font-semibold text-white transition-all duration-200 outline-none;
     background: linear-gradient(135deg, #7c3aed, #5b21b6);
     box-shadow: 0 0 20px rgba(124, 58, 237, 0.4);
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: 'Sora', sans-serif;
   }
   .btn-primary:hover:not(:disabled) {
     box-shadow: 0 0 30px rgba(124, 58, 237, 0.6), 0 0 60px rgba(124, 58, 237, 0.2);
@@ -110,7 +110,7 @@
 
   .btn-ghost {
     @apply px-4 py-2 rounded-lg text-slate-400 transition-all duration-200 font-medium;
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: 'Sora', sans-serif;
   }
   .btn-ghost:hover {
     color: white;

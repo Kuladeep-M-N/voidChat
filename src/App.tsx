@@ -30,12 +30,19 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   return !user ? <>{children}</> : <Navigate to="/dashboard" replace />;
 };
 
+const GlobalVoice = () => {
+  const { user, loading } = useAuth();
+  if (loading || !user) return null;
+  return <VoiceRooms />;
+};
+
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <AnimatedBackground />
         <div className="relative" style={{ zIndex: 1 }}>
+          <GlobalVoice />
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/join" element={<PublicRoute><Join /></PublicRoute>} />
@@ -44,7 +51,7 @@ function App() {
             <Route path="/confessions" element={<ProtectedRoute><Confessions /></ProtectedRoute>} />
             <Route path="/polls" element={<ProtectedRoute><Polls /></ProtectedRoute>} />
             <Route path="/qna" element={<ProtectedRoute><QnA /></ProtectedRoute>} />
-            <Route path="/voice" element={<ProtectedRoute><VoiceRooms /></ProtectedRoute>} />
+            <Route path="/voice" element={<ProtectedRoute><div className="min-h-screen bg-[#070710]" /></ProtectedRoute>} />
             <Route path="/shoutouts" element={<ProtectedRoute><Shoutouts /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

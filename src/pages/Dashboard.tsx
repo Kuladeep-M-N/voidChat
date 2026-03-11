@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 
-interface Room { id: string; name: string; category: string; created_at: string; }
+interface Room { id: string; name: string; category: string; created_at: string; is_archived?: boolean; }
 
 const roomThemes = {
   general: { bg: 'bg-gradient-to-br from-blue-600/20 to-cyan-600/20', icon: '💬', border: 'border-blue-500/30' },
@@ -37,12 +37,16 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from('chat_rooms').select('id, name, category, created_at').order('created_at', { ascending: false })
+    supabase.from('chat_rooms').select('id, name, category, created_at, is_archived').order('created_at', { ascending: false })
       .then(({ data }) => { if (data) setRooms(data); });
 
     const channel = supabase.channel('rooms-realtime')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_rooms' }, (payload) => {
-        setRooms(prev => [payload.new as Room, ...prev]);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_rooms' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setRooms(prev => [payload.new as Room, ...prev]);
+        } else if (payload.eventType === 'UPDATE') {
+          setRooms(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } : r));
+        }
       }).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [user]);
@@ -56,6 +60,9 @@ export default function Dashboard() {
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>;
+
+  const activeRoomsList = rooms.filter(r => !r.is_archived);
+  const pastRoomsList = rooms.filter(r => r.is_archived);
 
   return (
     <div className="min-h-screen relative overflow-hidden">
@@ -103,52 +110,94 @@ export default function Dashboard() {
         </motion.div>
 
         {/* Chat Rooms */}
-        <div>
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
-              💬 Chat Rooms <span className="text-slate-500 text-sm font-normal">({rooms.length})</span>
-            </h2>
-            <motion.button onClick={() => setShowCreate(true)}
-              className="btn-primary !w-auto px-5 py-2 rounded-xl text-sm"
-              whileHover={{ scale: 1.05 }}>
-              + New Room
-            </motion.button>
-          </div>
-
-          {rooms.length === 0 ? (
-            <motion.div className="text-center py-16 text-slate-500" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <div className="text-5xl mb-4">🕳️</div>
-              <p className="text-lg font-medium text-slate-400">No rooms yet</p>
-              <p className="text-sm mt-1">Create the first room to start chatting</p>
-            </motion.div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              <AnimatePresence>
-                {rooms.map((room, i) => {
-                  const theme = roomThemes[room.category as keyof typeof roomThemes] || roomThemes.general;
-                  return (
-                    <motion.div key={room.id} onClick={() => navigate(`/room/${room.id}`)}
-                      className={`glass-hover rounded-2xl p-5 cursor-pointer ${theme.bg} border ${theme.border}`}
-                      initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      transition={{ duration: 0.25, delay: i * 0.04 }}
-                      layout
-                      whileHover={{ scale: 1.02, y: -2 }}
-                      whileTap={{ scale: 0.98 }}>
-                      <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-lg mb-4">{theme.icon}</div>
-                      <h3 className="font-semibold text-white text-base mb-1 truncate">{room.name}</h3>
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs text-slate-500">
-                          {new Date(room.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                        </p>
-                        <span className="text-xs text-slate-400 capitalize">{room.category}</span>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
+        <div className="space-y-12">
+          {/* Active Rooms */}
+          <section>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
+                💬 Active Chat Rooms <span className="text-slate-500 text-sm font-normal">({activeRoomsList.length})</span>
+              </h2>
+              <motion.button onClick={() => setShowCreate(true)}
+                className="btn-primary !w-auto px-5 py-2 rounded-xl text-sm"
+                whileHover={{ scale: 1.05 }}>
+                + New Room
+              </motion.button>
             </div>
+
+            {activeRoomsList.length === 0 ? (
+              <motion.div className="text-center py-16 text-slate-500 bg-white/5 border border-white/5 rounded-3xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <div className="text-5xl mb-4">🕳️</div>
+                <p className="text-lg font-medium text-slate-400">No active rooms</p>
+                <p className="text-sm mt-1">Create the first room to start chatting</p>
+              </motion.div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <AnimatePresence>
+                  {activeRoomsList.map((room, i) => {
+                    const theme = roomThemes[room.category as keyof typeof roomThemes] || roomThemes.general;
+                    return (
+                      <motion.div key={room.id} onClick={() => navigate(`/room/${room.id}`)}
+                        className={`glass-hover rounded-2xl p-5 cursor-pointer ${theme.bg} border ${theme.border}`}
+                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{ duration: 0.25, delay: i * 0.04 }}
+                        layout
+                        whileHover={{ scale: 1.02, y: -2 }}
+                        whileTap={{ scale: 0.98 }}>
+                        <div className="absolute top-0 right-0 p-3">
+                           <div className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">LIVE</div>
+                        </div>
+                        <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-lg mb-4">{theme.icon}</div>
+                        <h3 className="font-semibold text-white text-base mb-1 truncate">{room.name}</h3>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-slate-500">
+                            {new Date(room.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          </p>
+                          <span className="text-xs text-slate-400 capitalize">{room.category}</span>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
+              </div>
+            )}
+          </section>
+
+          {/* History Section */}
+          {pastRoomsList.length > 0 && (
+            <section>
+              <h2 className="text-slate-500 text-sm font-semibold mb-4 flex items-center gap-2">
+                📚 History <span className="text-slate-600 text-xs font-normal">({pastRoomsList.length})</span>
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <AnimatePresence>
+                  {pastRoomsList.map((room, i) => {
+                    const theme = roomThemes[room.category as keyof typeof roomThemes] || roomThemes.general;
+                    return (
+                      <motion.div key={room.id} onClick={() => navigate(`/room/${room.id}`)}
+                        className={`rounded-2xl p-5 cursor-pointer border border-white/5 bg-white/[0.02] opacity-60 hover:opacity-100 transition-opacity`}
+                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                        animate={{ opacity: 0.6, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{ duration: 0.25, delay: i * 0.04 }}
+                        layout>
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-lg grayscale">{theme.icon}</div>
+                          <span className="text-[9px] text-white/30 font-bold border border-white/5 px-2 py-0.5 rounded-full">Archived</span>
+                        </div>
+                        <h3 className="font-semibold text-white/80 text-base mb-1 truncate">{room.name}</h3>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-slate-600">
+                            {new Date(room.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          </p>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
+              </div>
+            </section>
           )}
         </div>
       </main>

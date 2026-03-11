@@ -24,6 +24,7 @@ export default function ChatRoom() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [roomName, setRoomName] = useState('');
   const [roomCategory, setRoomCategory] = useState('');
+  const [isArchived, setIsArchived] = useState(false);
   const [onlyAdminsCanMessage, setOnlyAdminsCanMessage] = useState(false);
   const [userRole, setUserRole] = useState<string>('member');
   const [members, setMembers] = useState<RoomMember[]>([]);
@@ -48,12 +49,13 @@ export default function ChatRoom() {
   useEffect(() => {
     if (!roomId || !user) return;
 
-    supabase.from('chat_rooms').select('name, category, only_admins_can_message').eq('id', roomId).single()
+    supabase.from('chat_rooms').select('name, category, only_admins_can_message, is_archived').eq('id', roomId).single()
       .then(({ data }) => { 
         if (data) { 
           setRoomName(data.name); 
           setRoomCategory(data.category); 
           setOnlyAdminsCanMessage(data.only_admins_can_message); 
+          setIsArchived(data.is_archived || false);
         } 
       });
 
@@ -162,8 +164,11 @@ export default function ChatRoom() {
             return [...prev, { ...msg, anonymous_username: username! }];
           });
         }
-      )
-      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+      );
+
+    // Only subscribe to typing/reactions if the room isn't archived to save bandwidth
+    if (!isArchived) {
+      ch.on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (payload.userId === user.id) return;
         setTypingUsers(prev => prev.find(u => u.id === payload.userId) ? prev : [...prev, { id: payload.userId, username: payload.username }]);
         setTimeout(() => setTypingUsers(prev => prev.filter(u => u.id !== payload.userId)), 3000);
@@ -180,6 +185,14 @@ export default function ChatRoom() {
           return { ...prev, [payload.msgId]: r };
         });
       });
+    }
+
+    // Also listen for archiving events dynamically
+    ch.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_rooms', filter: `id=eq.${roomId}` }, (payload) => {
+      if (payload.new.is_archived) {
+         setIsArchived(true);
+      }
+    });
 
     ch.subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
@@ -195,17 +208,17 @@ export default function ChatRoom() {
   }, [messages]);
 
   const emitTyping = useCallback(() => {
-    if (!channelRef.current || !profile) return;
+    if (!channelRef.current || !profile || isArchived) return;
     channelRef.current.send({ type: 'broadcast', event: 'typing', payload: { userId: user!.id, username: profile.anonymous_username } });
     if (typingTimer.current) clearTimeout(typingTimer.current);
-    typingTimer.current = setTimeout(() => {
+    setTimeout(() => {
       channelRef.current?.send({ type: 'broadcast', event: 'stop_typing', payload: { userId: user!.id } });
     }, 2000);
-  }, [profile, user]);
+  }, [profile, user, isArchived]);
 
   const sendMessage = useCallback(async () => {
     const content = text.trim();
-    if (!content || !user || !roomId || !profile || sending.current) return;
+    if (!content || !user || !roomId || !profile || sending.current || isArchived) return;
 
     // Check permissions
     if (onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole)) return;
@@ -230,7 +243,7 @@ export default function ChatRoom() {
   }, [text, user, roomId, profile]);
 
   const reactToMessage = useCallback((msgId: string, emoji: string) => {
-    if (!user) return;
+    if (!user || isArchived) return;
     setPicker(null);
     setReactions(prev => {
       const r = { ...(prev[msgId] ?? {}) };
@@ -277,12 +290,13 @@ export default function ChatRoom() {
             {roomName ? roomName[0].toUpperCase() : '#'}
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="font-semibold text-white leading-tight">
+            <h1 className="font-semibold text-white leading-tight flex items-center gap-2">
               {roomName || <span className="text-slate-500">Loading...</span>}
+              {isArchived && <span className="text-[9px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest border border-red-500/20">Archived</span>}
             </h1>
-            <p className="text-xs text-emerald-400 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              {onlineCount} online
+            <p className={`text-xs flex items-center gap-1 ${isArchived ? 'text-slate-500' : 'text-emerald-400'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${isArchived ? 'bg-slate-500' : 'bg-emerald-400 animate-pulse'}`} />
+              {isArchived ? 'Room is read-only' : `${onlineCount} online`}
             </p>
           </div>
           <button onClick={() => setShowMembers(!showMembers)} className="btn-ghost rounded-xl p-2 text-slate-400 shrink-0">
@@ -357,7 +371,7 @@ export default function ChatRoom() {
 
                       {/* Reaction picker */}
                       <AnimatePresence>
-                        {picker === msg.id && (
+                        {!isArchived && picker === msg.id && (
                           <motion.div
                             className={`absolute bottom-full ${isMe ? 'right-0' : 'left-0'} mb-2 flex gap-1 glass border border-white/15 rounded-2xl px-3 py-2 z-30 shadow-xl`}
                             initial={{ opacity: 0, scale: 0.7, y: 8 }}
@@ -381,10 +395,11 @@ export default function ChatRoom() {
                       <div className={`flex gap-1 mt-1 flex-wrap ${isMe ? 'justify-end' : 'justify-start'}`}>
                         {Object.entries(msgReactions).map(([emoji, who]) => (
                           <button key={emoji} onClick={e => { e.stopPropagation(); reactToMessage(msg.id, emoji); }}
+                            disabled={isArchived}
                             className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border transition-all ${
                               who.includes(user!.id)
                                 ? 'border-violet-500/50 bg-violet-500/15 text-violet-300'
-                                : 'border-white/10 text-slate-400 hover:border-violet-500/30'}`}>
+                                : 'border-white/10 text-slate-400'} ${!isArchived ? 'hover:border-violet-500/30' : 'cursor-default'}`}>
                             {emoji} {who.length}
                           </button>
                         ))}
@@ -441,8 +456,15 @@ export default function ChatRoom() {
       </AnimatePresence>
 
       {/* Input */}
-      <div className="border-t border-white/5 glass shrink-0">
-        <div className="max-w-3xl mx-auto flex items-center gap-3 px-4 py-3">
+      <div className="border-t border-white/5 glass shrink-0 relative">
+        {isArchived && (
+          <div className="absolute inset-0 z-20 bg-[#07070f]/80 backdrop-blur-sm flex items-center justify-center">
+             <span className="text-red-400/80 font-bold uppercase tracking-widest text-xs border border-red-500/20 px-4 py-1.5 rounded-full bg-red-500/10">
+               Conversation Archived
+             </span>
+          </div>
+        )}
+        <div className="max-w-3xl mx-auto flex items-center gap-3 px-4 py-3 relative z-10">
           <input
             type="text"
             className="input-field flex-1 py-2.5 rounded-2xl"
@@ -525,6 +547,24 @@ export default function ChatRoom() {
                   <span className="text-white">Only admins can send messages</span>
                 </label>
               </div>
+
+              {userRole === 'creator' && !isArchived && (
+                <div className="pt-4 border-t border-white/10">
+                  <h3 className="text-red-400 font-bold mb-2 text-sm uppercase tracking-wider">Danger Zone</h3>
+                  <p className="text-xs text-slate-400 mb-3">Archiving this room will make it read-only forever. Messages will be preserved in history, but no one can send new ones.</p>
+                  <button 
+                    onClick={async () => {
+                      if(window.confirm('Are you absolutely sure you want to permanently archive this chat room?')) {
+                        await supabase.from('chat_rooms').update({ is_archived: true }).eq('id', roomId);
+                        setIsArchived(true);
+                        setShowSettings(false);
+                      }
+                    }}
+                    className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 py-2.5 rounded-xl text-sm font-bold transition">
+                    Archive / Delete Room
+                  </button>
+                </div>
+              )}
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowSettings(false)} className="btn-primary rounded-xl flex-1">Close</button>
@@ -534,40 +574,7 @@ export default function ChatRoom() {
       )}
     </AnimatePresence>
     </div>
-    {/* Settings Modal */}
-    <AnimatePresence>
-      {showSettings && (
-        <motion.div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
-          <motion.div className="glass border border-white/10 rounded-3xl p-8 w-full max-w-md"
-            initial={{ scale: 0.9, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }}
-            exit={{ scale: 0.9, y: 20, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
-            <h2 className="text-xl font-semibold text-white mb-6">Room Settings</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={onlyAdminsCanMessage}
-                    onChange={async (e) => {
-                      const newValue = e.target.checked;
-                      await supabase.from('chat_rooms').update({ only_admins_can_message: newValue }).eq('id', roomId);
-                      setOnlyAdminsCanMessage(newValue);
-                    }}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-white">Only admins can send messages</span>
-                </label>
-              </div>
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={() => setShowSettings(false)} className="btn-primary rounded-xl flex-1">Close</button>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+
     </div>
   );
 }

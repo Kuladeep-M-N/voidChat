@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -14,7 +14,7 @@ interface VoiceRoom {
   creator?: { anonymous_username: string };
 }
 
-type Role = 'host' | 'speaker' | 'audience';
+type Role = 'speaker' | 'audience';
 
 interface Participant {
   userId: string;
@@ -91,6 +91,8 @@ function useSpeakingDetector(stream: MediaStream | null): boolean {
 export default function VoiceRooms() {
   const { user, profile, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isVoiceRoute = location.pathname === '/voice';
 
   // Room list state
   const [rooms, setRooms] = useState<VoiceRoom[]>([]);
@@ -118,7 +120,7 @@ export default function VoiceRooms() {
 
   const isSpeaking = useSpeakingDetector(localStreamRef.current);
 
-  useEffect(() => { if (!loading && !user) navigate('/join'); }, [user, loading, navigate]);
+  // No auto-redirect here since this is globally mounted now
 
   // Load rooms
   useEffect(() => {
@@ -370,8 +372,12 @@ export default function VoiceRooms() {
       setErrorMsg('The host has ended this room.');
     });
 
-    ch.subscribe(async (status, err) => {
-      if (status === 'SUBSCRIBED') {
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    const attemptSubscribe = () => {
+      ch.subscribe(async (status, err) => {
+        if (status === 'SUBSCRIBED') {
         try {
           // Join as audience by default
           const presenceStatus = await ch.track({ 
@@ -394,13 +400,24 @@ export default function VoiceRooms() {
           setErrorMsg('Failed to join the room properly.');
           setJoining(false);
         }
+      } else if (status === 'TIMED_OUT' && retryCount < maxRetries) {
+        retryCount++;
+        console.warn(`Connection timed out, retrying attempt ${retryCount}...`);
+        // Add a slight backoff
+        setTimeout(() => {
+          supabase.removeChannel(ch); // clean the failed one
+          joinRoom(room); // recursively try again
+        }, 1500 * retryCount);
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || err) {
         console.error("Channel error:", status, err);
         leaveRoom();
-        setErrorMsg(`Failed to connect to room: ${status}`);
+        setErrorMsg(`Failed to connect to room: ${status}. Please try again.`);
         setJoining(false);
       }
     });
+    };
+
+    attemptSubscribe();
   }, [user, profile, createPeer, leaveRoom]);
 
   // Clean up
@@ -471,8 +488,49 @@ export default function VoiceRooms() {
 
 
   // ─────────────────────────── ACTIVE ROOM UI ───────────────────────────
-  if (activeRoom) {
-    const stageUsers = participants.filter(p => p.role === 'host' || p.role === 'speaker');
+  // ─────────────────────────── RENDER LOGIC ───────────────────────────
+  if (!user) return null;
+
+  if (!isVoiceRoute && activeRoom) {
+    // Minimized Widget
+    return (
+      <div className="fixed bottom-6 right-6 z-50">
+        <div className="bg-[#111128]/90 backdrop-blur-xl border border-white/10 p-4 rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] flex items-center gap-4 w-72">
+          {/* Audio Visualization / Status */}
+          <div className="w-10 h-10 rounded-full bg-violet-500/10 flex items-center justify-center relative overflow-hidden shrink-0 border border-violet-500/20">
+             {isSpeaking && !muted && (
+               <div className="absolute inset-0 bg-violet-500/30 animate-pulse" />
+             )}
+             <span className="text-xl relative z-10">🎙️</span>
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <h4 className="text-white font-bold text-sm truncate">{activeRoom.name}</h4>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-emerald-400 text-[9px] font-black uppercase tracking-widest break-normal">{participants.length} Active</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={toggleMute} className={`w-8 h-8 rounded-full flex items-center justify-center text-sm transition ${muted ? 'bg-red-500/20 text-red-500' : 'bg-white/10 text-white hover:bg-white/20'}`}>
+              {muted ? '🔇' : '🎙️'}
+            </button>
+            <button onClick={() => navigate('/voice')} className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition" title="Expand">
+              ↗
+            </button>
+            <button onClick={leaveRoom} className="w-8 h-8 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center transition" title="Leave">
+              ✕
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // If we're on the Voice Route
+  if (isVoiceRoute && activeRoom) {
+    const stageUsers = participants.filter(p => p.role === 'speaker');
     const audienceUsers = participants.filter(p => p.role === 'audience');
 
     // Always ensure at least 8 slots visually on stage
@@ -483,7 +541,10 @@ export default function VoiceRooms() {
         {/* Top Header */}
         <div className="glass shrink-0 px-6 py-4 flex items-center justify-between z-20 border-b border-white/5 shadow-2xl backdrop-blur-xl">
           <div className="flex items-center gap-4">
-            <button onClick={leaveRoom} className="w-10 h-10 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 text-white transition-all border border-white/5">
+            <button onClick={() => navigate('/dashboard')} title="Minimize" className="w-10 h-10 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 text-white transition-all border border-white/5">
+              ─
+            </button>
+            <button onClick={leaveRoom} title="Leave Group" className="w-10 h-10 flex items-center justify-center rounded-2xl bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-all border border-red-500/20">
               ✕
             </button>
             <div>
@@ -499,14 +560,14 @@ export default function VoiceRooms() {
                 <span className="text-violet-400 font-bold text-sm">{participants.length}</span>
                 <span className="text-white/30 text-[9px] font-black uppercase tracking-widest">Online</span>
              </div>
-            {user?.id === activeRoom.created_by && (
+             {user?.id === activeRoom.created_by && (
               <button 
                 onClick={() => { if(confirm('End this room for everyone?')) endRoom(); }} 
                 className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-red-500/20"
               >
                 End Session
               </button>
-            )}
+             )}
           </div>
         </div>
 
@@ -527,11 +588,6 @@ export default function VoiceRooms() {
                           p.speaking && !p.muted ? 'border-violet-500 bg-violet-500/10 shadow-[0_0_20px_rgba(139,92,246,0.5)] scale-110' : 'border-white/5 bg-white/5'
                         }`}>
                           {p.username.slice(0, 2).toUpperCase()}
-                          {p.role === 'host' && (
-                            <div className="absolute -top-2 -left-1 bg-amber-500 text-black text-[7px] font-black px-1.5 py-0.5 rounded shadow uppercase tracking-tighter">
-                              Host
-                            </div>
-                          )}
                         </div>
                         {p.muted && (
                           <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-[#14142b] border border-white/10 rounded-lg flex items-center justify-center text-[10px] shadow-lg">
@@ -609,6 +665,9 @@ export default function VoiceRooms() {
     );
   }
 
+  // Otherwise render the Voice Lobby (room list) if we are on the voice route
+  if (!isVoiceRoute) return null;
+
   const activeRoomsList = rooms.filter(r => !r.status || r.status === 'active');
   const pastRoomsList = rooms.filter(r => r.status === 'ended');
 
@@ -678,7 +737,7 @@ export default function VoiceRooms() {
                           {room.creator?.anonymous_username?.slice(0, 1) || 'A'}
                         </div>
                         <span className="text-[10px] text-white/40 font-bold uppercase tracking-tighter">
-                          Host: {room.creator?.anonymous_username || 'Anonymous'}
+                          Started by {room.creator?.anonymous_username || 'Anonymous'}
                         </span>
                       </div>
                     </motion.div>
@@ -728,7 +787,7 @@ export default function VoiceRooms() {
               initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
               <h2 className="text-xl font-semibold text-white mb-2">Create a Voice Room</h2>
-              <p className="text-sm text-slate-500 mb-6">You will be the Host. Up to 18 people can join.</p>
+              <p className="text-sm text-slate-500 mb-6">Create a new voice lounge topic. Up to 18 people can join.</p>
               <input type="text" className="input-field mb-4 bg-black/40 placeholder-white/40 focus:border-violet-500" placeholder="Room topic..."
                 value={newName} onChange={e => setNewName(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && createRoom()} autoFocus maxLength={40} />
