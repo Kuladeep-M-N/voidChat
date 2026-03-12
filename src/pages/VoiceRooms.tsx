@@ -117,6 +117,7 @@ export default function VoiceRooms() {
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const remoteAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const joiningRef = useRef<boolean>(false);
 
   const isSpeaking = useSpeakingDetector(localStreamRef.current);
 
@@ -248,6 +249,8 @@ export default function VoiceRooms() {
   }, []);
 
   const joinRoom = useCallback(async (room: VoiceRoom) => {
+    if (joiningRef.current) return;
+    joiningRef.current = true;
     setJoining(true); setErrorMsg(null);
     console.log('JoinRoom Debug - Room Object:', room);
     console.log('JoinRoom Debug - User ID:', user?.id);
@@ -269,15 +272,19 @@ export default function VoiceRooms() {
     }
 
     // Ensure no lingering channels from hot reloads or fast clicks
+    const cleanupTopic = `voice:${room.id}`;
+    supabase.getChannels().forEach(ch => {
+      if (ch.topic === cleanupTopic || ch.topic === `realtime:${cleanupTopic}`) {
+        supabase.removeChannel(ch);
+      }
+    });
+    
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
-    } else {
-      // Even if not in ref, clean up any global channel by the same name
-      const existingChannel = supabase.getChannels().find(c => c.topic === `realtime:voice:${room.id}`);
-      if (existingChannel) supabase.removeChannel(existingChannel);
+      channelRef.current = null;
     }
 
-    const ch = supabase.channel(`voice:${room.id}`, { config: { presence: { key: user!.id } } });
+    const ch = supabase.channel(cleanupTopic, { config: { presence: { key: user!.id } } });
     channelRef.current = ch;
 
     ch.on('presence', { event: 'sync' }, () => {
@@ -394,6 +401,7 @@ export default function VoiceRooms() {
           if (presenceStatus === 'ok') {
             setActiveRoom(room);
             setJoining(false);
+            joiningRef.current = false;
             setChatMessages([{ id: '1', userId: 'sys', username: 'System', text: `Connected to ${room.name}. Everyone can speak!`, isSystem: true }]);
           } else {
              throw new Error('Presence track failed');
@@ -403,6 +411,7 @@ export default function VoiceRooms() {
           leaveRoom();
           setErrorMsg('Failed to join the room properly.');
           setJoining(false);
+          joiningRef.current = false;
         }
       } else if (status === 'TIMED_OUT' && retryCount < maxRetries) {
         retryCount++;
@@ -410,6 +419,7 @@ export default function VoiceRooms() {
         // Add a slight backoff
         setTimeout(() => {
           supabase.removeChannel(ch); // clean the failed one
+          joiningRef.current = false; // Allow retry
           joinRoom(room); // recursively try again
         }, 1500 * retryCount);
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || err) {
@@ -417,6 +427,7 @@ export default function VoiceRooms() {
         leaveRoom();
         setErrorMsg(`Failed to connect to room: ${status}. Please try again.`);
         setJoining(false);
+        joiningRef.current = false;
       }
     });
     };
