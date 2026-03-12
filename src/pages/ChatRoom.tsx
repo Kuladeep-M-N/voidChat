@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { useNotifications } from '../hooks/useNotifications';
 
 interface Message {
   id: string; content: string; created_at: string;
@@ -19,6 +20,7 @@ const getInitials = (s: string) => s.slice(0, 2).toUpperCase();
 export default function ChatRoom() {
   const { id: roomId } = useParams<{ id: string }>();
   const { user, profile, loading } = useAuth();
+  const { markAsActive } = useNotifications();
   const navigate = useNavigate();
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -44,6 +46,13 @@ export default function ChatRoom() {
   const sending = useRef(false);
 
   useEffect(() => { if (!loading && !user) navigate('/join'); }, [user, loading, navigate]);
+
+  useEffect(() => {
+    if (user && roomId) {
+      markAsActive(roomId);
+      return () => markAsActive(null);
+    }
+  }, [user, roomId, markAsActive]);
 
   // ── Fetch room name + messages (runs when user is ready, NOT waiting for profile) ──
   useEffect(() => {

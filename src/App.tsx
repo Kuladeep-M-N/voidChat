@@ -36,12 +36,17 @@ const GlobalVoice = () => {
   return <VoiceRooms />;
 };
 
+import { Toaster } from 'sonner';
+import { NotificationProvider } from './hooks/useNotifications';
+
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <AnimatedBackground />
-        <div className="relative" style={{ zIndex: 1 }}>
+      <NotificationProvider>
+        <BrowserRouter>
+          <AnimatedBackground />
+          <Toaster position="top-right" richColors />
+          <div className="relative" style={{ zIndex: 1 }}>
           <GlobalVoice />
           <Routes>
             <Route path="/" element={<Landing />} />
@@ -51,14 +56,15 @@ function App() {
             <Route path="/confessions" element={<ProtectedRoute><Confessions /></ProtectedRoute>} />
             <Route path="/polls" element={<ProtectedRoute><Polls /></ProtectedRoute>} />
             <Route path="/qna" element={<ProtectedRoute><QnA /></ProtectedRoute>} />
-            <Route path="/voice" element={<ProtectedRoute><div className="min-h-screen bg-[#070710]" /></ProtectedRoute>} />
+            <Route path="/voice" element={<ProtectedRoute><div className="h-0 overflow-hidden" /></ProtectedRoute>} />
             <Route path="/shoutouts" element={<ProtectedRoute><Shoutouts /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
       </BrowserRouter>
-    </AuthProvider>
-  );
+    </NotificationProvider>
+  </AuthProvider>
+);
 }
 
 export default App;
