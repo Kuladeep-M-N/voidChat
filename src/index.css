@@ -200,4 +200,123 @@
     0%   { transform: translateX(0) translateY(0); opacity: 1; }
     100% { transform: translateX(300px) translateY(100px); opacity: 0; }
   }
+
+  .confession-space {
+    position: relative;
+    background:
+      radial-gradient(circle at top left, rgba(249, 115, 22, 0.14), transparent 28%),
+      radial-gradient(circle at 85% 10%, rgba(236, 72, 153, 0.1), transparent 24%),
+      linear-gradient(180deg, #0a0610 0%, #070710 45%, #05050b 100%);
+  }
+
+  .confession-noise {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.18;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: radial-gradient(circle at center, black 40%, transparent 90%);
+  }
+
+  .confession-hero,
+  .confession-composer,
+  .confession-card,
+  .confession-modal {
+    position: relative;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03)),
+      rgba(7, 7, 16, 0.78);
+    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(22px);
+  }
+
+  .confession-stat-card,
+  .confession-spotlight-card,
+  .confession-mini-panel {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 1.4rem;
+  }
+
+  .confession-stat-card {
+    padding: 1rem;
+  }
+
+  .confession-spotlight-card {
+    padding: 1.25rem;
+    min-height: 220px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02)),
+      rgba(0,0,0,0.18);
+  }
+
+  .confession-mini-panel {
+    padding: 1rem;
+  }
+
+  .confession-pill,
+  .confession-tag,
+  .confession-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .confession-pill {
+    padding: 0.7rem 0.9rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: #e2e8f0;
+    font-size: 0.8rem;
+  }
+
+  .confession-tag {
+    padding: 0.45rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: #cbd5e1;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .confession-action {
+    padding: 0.7rem 0.95rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    color: #e2e8f0;
+    font-size: 0.86rem;
+    transition: all 180ms ease;
+  }
+
+  .confession-action:hover {
+    transform: translateY(-1px);
+    border-color: rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .confession-action-active {
+    border-color: rgba(249, 115, 22, 0.45);
+    background: rgba(249, 115, 22, 0.15);
+    color: #fdba74;
+  }
+
+  @media (max-width: 768px) {
+    .confession-pill {
+      padding: 0.6rem 0.8rem;
+    }
+
+    .confession-stat-card,
+    .confession-spotlight-card,
+    .confession-mini-panel {
+      border-radius: 1.2rem;
+    }
+  }
 }

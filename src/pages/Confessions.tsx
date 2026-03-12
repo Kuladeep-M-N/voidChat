@@ -1,43 +1,148 @@
-import { useState, useEffect, useRef } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
+import { User } from '@supabase/supabase-js';
+import {
+  ArrowLeft,
+  Bookmark,
+  Compass,
+  Flame,
+  Lightbulb,
+  MessageCircle,
+  Search,
+  Send,
+  Sparkles,
+  Trash2,
+  TrendingUp,
+  X,
+} from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 
 interface Confession {
-  id: string; content: string; likes: number;
-  created_at: string; user_id: string; category: string;
-}
-interface Comment {
-  id: string; confession_id: string; content: string;
-  created_at: string; user_id: string; anonymous_username: string;
+  id: string;
+  content: string;
+  likes: number;
+  created_at: string;
+  user_id: string;
+  category: string;
 }
 
-const CATEGORIES = [
-  { key: 'all', label: 'All', emoji: '🌐' },
-  { key: 'crush', label: 'Crush', emoji: '💘' },
-  { key: 'academic', label: 'Academic', emoji: '📚' },
-  { key: 'funny', label: 'Funny', emoji: '😂' },
-  { key: 'random', label: 'Random', emoji: '🎲' },
+interface Comment {
+  id: string;
+  confession_id: string;
+  content: string;
+  created_at: string;
+  user_id: string;
+  anonymous_username: string;
+}
+
+interface CategoryMeta {
+  key: string;
+  label: string;
+  icon: string;
+  accent: string;
+  aura: string;
+  description: string;
+}
+
+const CATEGORIES: CategoryMeta[] = [
+  {
+    key: 'all',
+    label: 'All',
+    icon: 'O',
+    accent: '#f97316',
+    aura: 'from-orange-500/20 via-rose-500/10 to-transparent',
+    description: 'Everything the void is holding right now.',
+  },
+  {
+    key: 'crush',
+    label: 'Crush',
+    icon: 'H',
+    accent: '#fb7185',
+    aura: 'from-rose-500/20 via-pink-500/10 to-transparent',
+    description: 'Dangerous eye contact and unspoken chaos.',
+  },
+  {
+    key: 'academic',
+    label: 'Academic',
+    icon: 'A',
+    accent: '#38bdf8',
+    aura: 'from-sky-500/20 via-cyan-500/10 to-transparent',
+    description: 'Deadlines, grades, panic, redemption.',
+  },
+  {
+    key: 'funny',
+    label: 'Funny',
+    icon: 'F',
+    accent: '#facc15',
+    aura: 'from-yellow-400/20 via-amber-500/10 to-transparent',
+    description: 'Glorious nonsense worth screenshotting.',
+  },
+  {
+    key: 'random',
+    label: 'Random',
+    icon: 'R',
+    accent: '#a855f7',
+    aura: 'from-violet-500/20 via-fuchsia-500/10 to-transparent',
+    description: 'Pure noise, secret lore, and side quests.',
+  },
 ];
 
-const COLORS = ['#7c3aed','#0891b2','#059669','#d97706','#be185d','#4338ca'];
-const getColor = (s: string) => COLORS[s.charCodeAt(0) % COLORS.length];
-const getInitials = (s: string) => s.slice(0, 2).toUpperCase();
-
-const timeAgo = (d: string) => {
-  const diff = (Date.now() - new Date(d).getTime()) / 1000;
-  if (diff < 60) return 'just now';
-  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-  return `${Math.floor(diff / 86400)}d`;
+const LOCAL_STORAGE_KEYS = {
+  bookmarks: 'voidchat-confession-bookmarks',
+  dismissed: 'voidchat-confession-dismissed',
+  draft: 'voidchat-confession-draft',
 };
 
-import { User } from '@supabase/supabase-js';
+const COLORS = ['#f97316', '#ec4899', '#38bdf8', '#a855f7', '#22c55e', '#f59e0b'];
 
-function CommentPanel({ confession, user, profile, onClose }: {
+const readStoredIds = (key: string) => {
+  if (typeof window === 'undefined') return new Set<string>();
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) ?? '[]');
+    return new Set<string>(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set<string>();
+  }
+};
+
+const writeStoredIds = (key: string, value: Set<string>) => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(key, JSON.stringify(Array.from(value)));
+};
+
+const getDraft = () => {
+  if (typeof window === 'undefined') return '';
+  return window.localStorage.getItem(LOCAL_STORAGE_KEYS.draft) ?? '';
+};
+
+const getColor = (seed: string) => COLORS[seed.charCodeAt(0) % COLORS.length];
+const getInitials = (seed: string) => seed.slice(0, 2).toUpperCase();
+
+const timeAgo = (date: string) => {
+  const diff = (Date.now() - new Date(date).getTime()) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+};
+
+const getCategoryMeta = (key: string) => CATEGORIES.find((item) => item.key === key) ?? CATEGORIES[CATEGORIES.length - 1];
+
+const getHeatScore = (confession: Confession, commentCount: number) => {
+  const ageInHours = Math.max((Date.now() - new Date(confession.created_at).getTime()) / 36e5, 1);
+  return confession.likes * 3 + commentCount * 4 + 18 / ageInHours;
+};
+
+function CommentPanel({
+  confession,
+  user,
+  profile,
+  onClose,
+}: {
   confession: Confession;
-  user: User | null; 
+  user: User | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   profile: any;
   onClose: () => void;
@@ -47,6 +152,7 @@ function CommentPanel({ confession, user, profile, onClose }: {
   const [posting, setPosting] = useState(false);
   const [nameCache] = useState<Map<string, string>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
+  const meta = getCategoryMeta(confession.category);
 
   useEffect(() => {
     const load = async () => {
@@ -55,127 +161,202 @@ function CommentPanel({ confession, user, profile, onClose }: {
         .select('*')
         .eq('confession_id', confession.id)
         .order('created_at', { ascending: true });
+
       if (error || !data) return;
 
-      const ids = [...new Set(data.map(c => c.user_id))];
+      const ids = [...new Set(data.map((comment) => comment.user_id))];
       if (ids.length) {
-        const { data: users } = await supabase.from('users').select('id, anonymous_username').in('id', ids);
-        users?.forEach(u => nameCache.set(u.id, u.anonymous_username));
+        const { data: users } = await supabase
+          .from('users')
+          .select('id, anonymous_username')
+          .in('id', ids);
+        users?.forEach((entry) => nameCache.set(entry.id, entry.anonymous_username));
       }
-      setComments(data.map(c => ({ ...c, anonymous_username: nameCache.get(c.user_id) ?? '???' })));
+
+      setComments(
+        data.map((comment) => ({
+          ...comment,
+          anonymous_username: nameCache.get(comment.user_id) ?? '???',
+        })),
+      );
     };
+
     load();
 
-    const ch = supabase.channel(`comments:${confession.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confession_comments', filter: `confession_id=eq.${confession.id}` },
-        async (p) => {
-          const c = p.new as Omit<Comment, 'anonymous_username'>;
-          let name = nameCache.get(c.user_id);
-          if (!name) {
-            const { data } = await supabase.from('users').select('anonymous_username').eq('id', c.user_id).single();
-            name = data?.anonymous_username ?? '???';
-            nameCache.set(c.user_id, name);
+    const channel = supabase
+      .channel(`comments:${confession.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'confession_comments',
+          filter: `confession_id=eq.${confession.id}`,
+        },
+        async (payload) => {
+          const comment = payload.new as Omit<Comment, 'anonymous_username'>;
+          let username = nameCache.get(comment.user_id);
+          if (!username) {
+            const { data } = await supabase
+              .from('users')
+              .select('anonymous_username')
+              .eq('id', comment.user_id)
+              .single();
+            username = data?.anonymous_username ?? '???';
+            nameCache.set(comment.user_id, username);
           }
-          setComments(prev => {
-            if (prev.find(x => x.id === c.id)) return prev;
-            return [...prev, { ...c, anonymous_username: name! }];
-          });
-        })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confession.id]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [comments]);
+          setComments((current) => {
+            if (current.find((entry) => entry.id === comment.id)) return current;
+            return [...current, { ...comment, anonymous_username: username }];
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [confession.id, nameCache]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [comments]);
 
   const post = async () => {
     const content = text.trim();
     if (!content || !user || posting) return;
+
     setPosting(true);
-    // Optimistic
-    const temp: Comment = {
-      id: `OPT_${Date.now()}`, confession_id: confession.id, content,
-      created_at: new Date().toISOString(), user_id: user.id,
-      anonymous_username: profile?.anonymous_username ?? '???'
+    const optimistic: Comment = {
+      id: `OPT_${Date.now()}`,
+      confession_id: confession.id,
+      content,
+      created_at: new Date().toISOString(),
+      user_id: user.id,
+      anonymous_username: profile?.anonymous_username ?? '???',
     };
-    setComments(prev => [...prev, temp]);
+
+    setComments((current) => [...current, optimistic]);
     setText('');
+
     const { error } = await supabase.from('confession_comments').insert({
-      confession_id: confession.id, user_id: user.id, content
+      confession_id: confession.id,
+      user_id: user.id,
+      content,
     });
-    if (error) setComments(prev => prev.filter(c => c.id !== temp.id));
+
+    if (error) {
+      setComments((current) => current.filter((entry) => entry.id !== optimistic.id));
+    }
+
     setPosting(false);
   };
 
   return (
-    <motion.div className="fixed inset-0 z-50 flex items-end md:items-center justify-center"
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <motion.div className="relative w-full max-w-lg mx-4 mb-0 md:mb-0 flex flex-col glass border border-white/10 rounded-t-3xl md:rounded-3xl overflow-hidden"
-        style={{ maxHeight: '80vh' }}
-        initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 100, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
-        {/* Header */}
-        <div className="px-5 py-4 border-b border-white/8 flex items-center justify-between shrink-0">
-          <div>
-            <h3 className="font-semibold text-white text-sm">Comments</h3>
-            <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{confession.content}</p>
+    <motion.div
+      className="fixed inset-0 z-50 flex items-end justify-center md:items-center"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
+      <motion.div
+        className="confession-modal relative mx-4 flex max-h-[84vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[2rem] rounded-b-none border border-white/10 md:rounded-[2rem]"
+        initial={{ y: 80, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 80, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 260, damping: 28 }}
+      >
+        <div className={`absolute inset-x-0 top-0 h-40 bg-gradient-to-br ${meta.aura} opacity-90`} />
+        <div className="relative border-b border-white/10 px-5 py-5">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <span className="confession-tag" style={{ color: meta.accent, borderColor: `${meta.accent}40` }}>
+                {meta.label} thread
+              </span>
+              <h3 className="mt-3 text-lg font-semibold text-white">Anonymous replies</h3>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">{confession.content}</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
+              aria-label="Close comments"
+            >
+              <X size={18} />
+            </button>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 transition-all">✕</button>
+          <div className="flex items-center gap-3 text-xs text-slate-400">
+            <span>{timeAgo(confession.created_at)}</span>
+            <span>{confession.likes} likes</span>
+            <span>{comments.length} replies</span>
+          </div>
         </div>
 
-        {/* Comments list */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
           {comments.length === 0 ? (
-            <div className="text-center py-10 text-slate-500">
-              <div className="text-3xl mb-2">💬</div>
-              <p className="text-sm">No comments yet. Be the first!</p>
+            <div className="rounded-[1.5rem] border border-dashed border-white/10 bg-white/4 px-6 py-12 text-center">
+              <MessageCircle className="mx-auto mb-3 text-slate-500" size={28} />
+              <p className="text-sm text-slate-300">Nobody has replied yet.</p>
+              <p className="mt-1 text-xs text-slate-500">Start the thread and set the tone.</p>
             </div>
           ) : (
-            <>
-              {comments.map(c => {
-                const isMe = c.user_id === user?.id;
-                const color = getColor(c.anonymous_username);
-                return (
-                  <div key={c.id} className="flex gap-3 items-start">
-                    <div className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-[11px] font-bold text-white mt-0.5"
-                      style={{ background: color }}>
-                      {getInitials(c.anonymous_username)}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-semibold" style={{ color }}>
-                          {isMe ? `You (${c.anonymous_username})` : c.anonymous_username}
-                        </span>
-                        <span className="text-[10px] text-slate-600">{timeAgo(c.created_at)}</span>
-                      </div>
-                      <p className="text-sm text-slate-200 leading-relaxed">{c.content}</p>
-                    </div>
+            comments.map((comment) => {
+              const isMe = comment.user_id === user?.id;
+              const color = getColor(comment.anonymous_username);
+              return (
+                <div key={comment.id} className="flex gap-3">
+                  <div
+                    className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-xs font-bold text-white"
+                    style={{ backgroundColor: color }}
+                  >
+                    {getInitials(comment.anonymous_username)}
                   </div>
-                );
-              })}
-            </>
+                  <div className="flex-1 rounded-[1.4rem] border border-white/8 bg-white/4 px-4 py-3">
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="text-xs font-semibold" style={{ color }}>
+                        {isMe ? `You (${comment.anonymous_username})` : comment.anonymous_username}
+                      </span>
+                      <span className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                        {timeAgo(comment.created_at)}
+                      </span>
+                    </div>
+                    <p className="text-sm leading-6 text-slate-200">{comment.content}</p>
+                  </div>
+                </div>
+              );
+            })
           )}
           <div ref={bottomRef} />
         </div>
 
-        {/* Input */}
-        <div className="px-4 py-3 border-t border-white/8 flex gap-3 items-center shrink-0">
-          <div className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-[11px] font-bold text-white"
-            style={{ background: getColor(profile?.anonymous_username ?? 'me') }}>
-            {getInitials(profile?.anonymous_username ?? 'Me')}
+        <div className="border-t border-white/10 bg-black/20 px-4 py-4">
+          <div className="flex items-center gap-3 rounded-[1.5rem] border border-white/10 bg-white/5 p-2">
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-xs font-bold text-white"
+              style={{ backgroundColor: getColor(profile?.anonymous_username ?? 'me') }}
+            >
+              {getInitials(profile?.anonymous_username ?? 'me')}
+            </div>
+            <input
+              className="input-field flex-1 border-0 bg-transparent px-2 py-2 text-sm shadow-none focus:bg-transparent focus:shadow-none"
+              placeholder="Drop a reply..."
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => event.key === 'Enter' && post()}
+              maxLength={300}
+              autoFocus
+            />
+            <motion.button
+              onClick={post}
+              disabled={!text.trim() || posting}
+              className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-pink-500 text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+              whileTap={{ scale: 0.92 }}
+              aria-label="Send comment"
+            >
+              <Send size={16} />
+            </motion.button>
           </div>
-          <input className="input-field flex-1 py-2 text-sm" placeholder="Write a comment..."
-            value={text} onChange={e => setText(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && post()} maxLength={300} autoFocus />
-          <motion.button onClick={post} disabled={!text.trim() || posting}
-            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all"
-            style={{ background: text.trim() ? 'linear-gradient(135deg, #7c3aed, #5b21b6)' : 'rgba(255,255,255,0.05)' }}
-            whileTap={{ scale: 0.88 }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={text.trim() ? 'white' : '#64748b'} strokeWidth="2.5">
-              <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
-            </svg>
-          </motion.button>
         </div>
       </motion.div>
     </motion.div>
@@ -185,270 +366,670 @@ function CommentPanel({ confession, user, profile, onClose }: {
 export default function Confessions() {
   const { user, profile, loading } = useAuth();
   const navigate = useNavigate();
+
   const [confessions, setConfessions] = useState<Confession[]>([]);
-  const [text, setText] = useState('');
+  const [text, setText] = useState(getDraft);
   const [category, setCategory] = useState('random');
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState('');
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
-  const [sortBy, setSortBy] = useState<'new' | 'hot'>('new');
+  const [sortBy, setSortBy] = useState<'new' | 'hot' | 'discussed'>('hot');
   const [filterCat, setFilterCat] = useState('all');
   const [commentTarget, setCommentTarget] = useState<Confession | null>(null);
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(() => readStoredIds(LOCAL_STORAGE_KEYS.bookmarks));
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => readStoredIds(LOCAL_STORAGE_KEYS.dismissed));
+  const [onlyBookmarked, setOnlyBookmarked] = useState(false);
+  const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
 
-  useEffect(() => { if (!loading && !user) navigate('/join'); }, [user, loading, navigate]);
+  useEffect(() => {
+    if (!loading && !user) navigate('/join');
+  }, [loading, navigate, user]);
+
+  useEffect(() => {
+    window.localStorage.setItem(LOCAL_STORAGE_KEYS.draft, text);
+  }, [text]);
 
   useEffect(() => {
     if (!user) return;
 
-    supabase.from('confessions').select('*').order('created_at', { ascending: false })
+    supabase
+      .from('confessions')
+      .select('*')
+      .order('created_at', { ascending: false })
       .then(({ data, error }) => {
-        if (error) { console.error('Confession load error:', error); return; }
+        if (error) {
+          console.error('Confession load error:', error);
+          return;
+        }
         if (data) setConfessions(data as Confession[]);
       });
 
-    // Load comment counts
-    supabase.from('confession_comments').select('confession_id')
+    supabase
+      .from('confession_comments')
+      .select('confession_id')
       .then(({ data }) => {
         if (!data) return;
         const counts: Record<string, number> = {};
-        data.forEach(r => { counts[r.confession_id] = (counts[r.confession_id] || 0) + 1; });
+        data.forEach((row) => {
+          counts[row.confession_id] = (counts[row.confession_id] || 0) + 1;
+        });
         setCommentCounts(counts);
       });
 
-    // ── Realtime subscription (simplified) ──
-    const channelName = 'confessions-all';
-    const ch = supabase.channel(channelName)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confessions' }, (p) => {
-        const newConf = p.new as Confession;
-        setConfessions(prev => {
-          if (prev.some(c => c.id === newConf.id)) return prev;
-          return [newConf, ...prev];
+    const channel = supabase
+      .channel('confessions-all')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confessions' }, (payload) => {
+        const newConfession = payload.new as Confession;
+        setConfessions((current) => {
+          if (current.some((entry) => entry.id === newConfession.id)) return current;
+          return [newConfession, ...current];
         });
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'confessions' }, (p) => {
-        setConfessions(prev => prev.map(c => c.id === p.new.id ? p.new as Confession : c));
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'confessions' }, (payload) => {
+        setConfessions((current) =>
+          current.map((entry) => (entry.id === payload.new.id ? (payload.new as Confession) : entry)),
+        );
       })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'confessions' }, (p) => {
-        setConfessions(prev => prev.filter(c => c.id !== p.old.id));
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'confessions' }, (payload) => {
+        setConfessions((current) => current.filter((entry) => entry.id !== payload.old.id));
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confession_comments' }, (p) => {
-        setCommentCounts(prev => ({
-          ...prev,
-          [p.new.confession_id]: (prev[p.new.confession_id] || 0) + 1
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confession_comments' }, (payload) => {
+        setCommentCounts((current) => ({
+          ...current,
+          [payload.new.confession_id]: (current[payload.new.confession_id] || 0) + 1,
         }));
       })
       .subscribe();
 
-    // ── Fallback Polling (Every 10 seconds) ──
-    const pollInterval = setInterval(async () => {
-      // Refresh confessions
-      const { data: confData } = await supabase.from('confessions').select('*').order('created_at', { ascending: false }).limit(30);
-      if (confData) {
-        setConfessions(prev => {
-          const existingIds = new Set(prev.map(c => c.id));
-          const newEntries = (confData as Confession[]).filter(c => !existingIds.has(c.id));
-          if (newEntries.length === 0) return prev;
-          const merged = [...newEntries, ...prev].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-          // Keep unique only
-          const seen = new Set();
-          return merged.filter(c => seen.has(c.id) ? false : seen.add(c.id));
+    const interval = window.setInterval(async () => {
+      const { data: confessionData } = await supabase
+        .from('confessions')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(60);
+
+      if (confessionData) {
+        setConfessions((current) => {
+          const merged = [...(confessionData as Confession[]), ...current].sort(
+            (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+          );
+          const seen = new Set<string>();
+          return merged.filter((entry) => {
+            if (seen.has(entry.id)) return false;
+            seen.add(entry.id);
+            return true;
+          });
         });
       }
 
-      // Refresh comment counts
-      const confessionIds = confessions.map(c => c.id);
-      if (confessionIds.length > 0) {
-        const { data: commentData } = await supabase.from('confession_comments').select('confession_id');
-        if (commentData) {
-          const counts: Record<string, number> = {};
-          commentData.forEach(r => { counts[r.confession_id] = (counts[r.confession_id] || 0) + 1; });
-          setCommentCounts(counts);
-        }
+      const { data: commentData } = await supabase.from('confession_comments').select('confession_id');
+      if (commentData) {
+        const counts: Record<string, number> = {};
+        commentData.forEach((row) => {
+          counts[row.confession_id] = (counts[row.confession_id] || 0) + 1;
+        });
+        setCommentCounts(counts);
       }
     }, 10000);
 
-    return () => { 
-      supabase.removeChannel(ch); 
-      clearInterval(pollInterval);
+    return () => {
+      supabase.removeChannel(channel);
+      window.clearInterval(interval);
     };
   }, [user]);
 
   const post = async () => {
     const content = text.trim();
     if (!content || !user || posting) return;
-    setPosting(true); setPostError('');
 
-    const tempId = `OPT_${Date.now()}`;
-    const tempConfession: Confession = {
-      id: tempId,
+    setPosting(true);
+    setPostError('');
+
+    const optimisticId = `OPT_${Date.now()}`;
+    const optimistic: Confession = {
+      id: optimisticId,
       content,
       user_id: user.id,
       category,
       likes: 0,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
     };
 
-    // Optimistic update
-    setConfessions(prev => [tempConfession, ...prev]);
+    setConfessions((current) => [optimistic, ...current]);
     setText('');
 
-    const { data: savedData, error } = await supabase.from('confessions').insert({
-      content, user_id: user.id, category, likes: 0
-    }).select().single();
+    const { data: savedData, error } = await supabase
+      .from('confessions')
+      .insert({
+        content,
+        user_id: user.id,
+        category,
+        likes: 0,
+      })
+      .select()
+      .single();
 
     if (error) {
       console.error('Post error:', error);
       setPostError(`Failed: ${error.message}`);
-      // Revert optimistic
-      setConfessions(prev => prev.filter(c => c.id !== tempId));
+      setConfessions((current) => current.filter((entry) => entry.id !== optimisticId));
+      setText(content);
     } else if (savedData) {
-      // Replace optimistic with real data
-      setConfessions(prev => prev.map(c => c.id === tempId ? savedData as Confession : c));
+      setConfessions((current) =>
+        current.map((entry) => (entry.id === optimisticId ? (savedData as Confession) : entry)),
+      );
+      window.localStorage.removeItem(LOCAL_STORAGE_KEYS.draft);
     }
-    
+
     setPosting(false);
   };
 
-  const like = async (c: Confession) => {
-    if (likedIds.has(c.id)) return;
-    setLikedIds(prev => new Set(prev).add(c.id));
-    setConfessions(prev => prev.map(x => x.id === c.id ? { ...x, likes: x.likes + 1 } : x));
-    await supabase.from('confessions').update({ likes: c.likes + 1 }).eq('id', c.id);
+  const like = async (confession: Confession) => {
+    if (likedIds.has(confession.id)) return;
+
+    setLikedIds((current) => new Set(current).add(confession.id));
+    setConfessions((current) =>
+      current.map((entry) => (entry.id === confession.id ? { ...entry, likes: entry.likes + 1 } : entry)),
+    );
+
+    await supabase.from('confessions').update({ likes: confession.likes + 1 }).eq('id', confession.id);
   };
 
   const deleteOwn = async (id: string) => {
-    setConfessions(prev => prev.filter(c => c.id !== id));
+    setConfessions((current) => current.filter((entry) => entry.id !== id));
     await supabase.from('confessions').delete().eq('id', id);
   };
 
-  const displayed = confessions
-    .filter(c => filterCat === 'all' || c.category === filterCat)
-    .sort((a, b) => sortBy === 'hot' ? b.likes - a.likes : new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const toggleBookmark = (id: string) => {
+    setBookmarkedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      writeStoredIds(LOCAL_STORAGE_KEYS.bookmarks, next);
+      return next;
+    });
+  };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>;
+  const dismissConfession = (id: string) => {
+    setDismissedIds((current) => {
+      const next = new Set(current).add(id);
+      writeStoredIds(LOCAL_STORAGE_KEYS.dismissed, next);
+      return next;
+    });
+  };
+
+  const reviveDismissed = () => {
+    const next = new Set<string>();
+    setDismissedIds(next);
+    writeStoredIds(LOCAL_STORAGE_KEYS.dismissed, next);
+  };
+
+  const filteredConfessions = useMemo(() => {
+    const term = deferredSearch.trim().toLowerCase();
+
+    return confessions
+      .filter((entry) => filterCat === 'all' || entry.category === filterCat)
+      .filter((entry) => !onlyBookmarked || bookmarkedIds.has(entry.id))
+      .filter((entry) => !dismissedIds.has(entry.id))
+      .filter((entry) => !term || entry.content.toLowerCase().includes(term))
+      .sort((left, right) => {
+        if (sortBy === 'new') {
+          return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
+        }
+        if (sortBy === 'discussed') {
+          return (commentCounts[right.id] || 0) - (commentCounts[left.id] || 0);
+        }
+        return getHeatScore(right, commentCounts[right.id] || 0) - getHeatScore(left, commentCounts[left.id] || 0);
+      });
+  }, [bookmarkedIds, commentCounts, confessions, deferredSearch, dismissedIds, filterCat, onlyBookmarked, sortBy]);
+
+  const spotlight = filteredConfessions[0] ?? confessions[0] ?? null;
+  const latestDrop = confessions[0] ?? null;
+  const totalComments = Object.values(commentCounts).reduce((sum, count) => sum + count, 0);
+  const todayCount = confessions.filter((entry) => {
+    const created = new Date(entry.created_at);
+    const now = new Date();
+    return created.toDateString() === now.toDateString();
+  }).length;
+  const myPosts = confessions.filter((entry) => entry.user_id === user?.id).length;
+  const activeCategories = CATEGORIES.slice(1)
+    .map((meta) => ({
+      ...meta,
+      count: confessions.filter((entry) => entry.category === meta.key).length,
+    }))
+    .sort((left, right) => right.count - left.count);
+  const trendingCategory = activeCategories[0];
+  const composerMeta = getCategoryMeta(category);
+  const spotlightMeta = spotlight ? getCategoryMeta(spotlight.category) : composerMeta;
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      <div className="ambient-blob w-[500px] h-[500px] bg-orange-600/10 top-[-100px] left-[20%]" />
+    <div className="confession-space min-h-screen">
+      <div className="confession-noise" />
+      <div className="ambient-blob left-[-8rem] top-[5rem] h-[24rem] w-[24rem] bg-orange-600/10" />
+      <div className="ambient-blob bottom-[-8rem] right-[-3rem] h-[28rem] w-[28rem] bg-pink-600/10" />
 
-      <header className="relative z-10 border-b border-white/5 glass sticky top-0">
-        <div className="max-w-2xl mx-auto flex items-center gap-4 px-4 py-3.5">
-          <Link to="/dashboard"><button className="btn-ghost rounded-xl p-2 text-slate-400">← Back</button></Link>
-          <div>
-            <h1 className="font-semibold text-white">🔥 Confessions</h1>
-            <p className="text-xs text-slate-500">{confessions.length} total</p>
+      <header className="sticky top-0 z-20 border-b border-white/8 bg-[#09060d]/80 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <Link
+              to="/dashboard"
+              className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
+              aria-label="Back to dashboard"
+            >
+              <ArrowLeft size={18} />
+            </Link>
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.28em] text-orange-300/80">Confession space</p>
+              <h1 className="text-xl font-semibold text-white">Drop it and disappear</h1>
+            </div>
+          </div>
+
+          <div className="hidden items-center gap-3 md:flex">
+            <div className="confession-pill">
+              <Sparkles size={14} />
+              {todayCount} dropped today
+            </div>
+            <div className="confession-pill">
+              <MessageCircle size={14} />
+              {totalComments} total replies
+            </div>
+            <div className="confession-pill">
+              <Bookmark size={14} />
+              {bookmarkedIds.size} saved
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="relative z-10 max-w-2xl mx-auto px-4 py-6">
-        {/* Post Box */}
-        <motion.div className="glass border border-orange-500/20 rounded-2xl p-6 mb-6"
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <h2 className="text-sm font-semibold text-orange-300 mb-3">✍️ Post a Confession</h2>
-          <div className="flex gap-2 mb-3 flex-wrap">
-            {CATEGORIES.slice(1).map(cat => (
-              <button key={cat.key} onClick={() => setCategory(cat.key)}
-                className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
-                  category === cat.key ? 'border-orange-500/60 bg-orange-500/15 text-orange-300' : 'border-white/10 text-slate-500 hover:border-white/20'
-                }`}>
-                {cat.emoji} {cat.label}
-              </button>
-            ))}
-          </div>
-          <textarea className="input-field resize-none" placeholder="Confess something... no one knows who you are."
-            value={text} onChange={e => { setText(e.target.value); setPostError(''); }}
-            rows={3} maxLength={500} />
-          {postError && (
-            <p className="text-xs text-red-400 mt-2 flex items-center gap-1">⚠️ {postError}</p>
-          )}
-          <div className="flex items-center justify-between mt-3">
-            <span className="text-xs text-slate-500">{text.length}/500</span>
-            <button onClick={post} className="btn-primary !w-auto px-5 py-2 rounded-xl text-sm"
-              disabled={!text.trim() || posting}>
-              {posting ? 'Posting...' : 'Confess 🔥'}
-            </button>
-          </div>
-        </motion.div>
-
-        {/* Filter + Sort */}
-        <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
-          <div className="flex gap-1.5 overflow-x-auto">
-            {CATEGORIES.map(cat => (
-              <button key={cat.key} onClick={() => setFilterCat(cat.key)}
-                className={`text-xs px-3 py-1.5 rounded-full border whitespace-nowrap transition-all ${
-                  filterCat === cat.key ? 'border-orange-500/60 bg-orange-500/10 text-orange-300' : 'border-white/10 text-slate-500 hover:border-white/20'
-                }`}>
-                {cat.emoji} {cat.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-1 shrink-0">
-            {(['new', 'hot'] as const).map(s => (
-              <button key={s} onClick={() => setSortBy(s)}
-                className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
-                  sortBy === s ? 'border-orange-500/60 bg-orange-500/10 text-orange-300' : 'border-white/10 text-slate-500 hover:border-white/20'
-                }`}>
-                {s === 'hot' ? '🔥 Hot' : '✨ New'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Confession cards */}
-        <div className="space-y-4">
-          <AnimatePresence>
-            {displayed.map((c, i) => (
-              <motion.div key={c.id} className="glass border border-white/8 rounded-2xl p-5"
-                initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: i < 5 ? i * 0.04 : 0 }}>
-                {c.category && c.category !== 'random' && (
-                  <span className="text-xs text-orange-400/70 font-medium mb-2 block">
-                    {CATEGORIES.find(k => k.key === c.category)?.emoji} {CATEGORIES.find(k => k.key === c.category)?.label}
+      <main className="relative z-10 mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">
+          <motion.div
+            className="confession-hero overflow-hidden rounded-[2rem] border border-white/10"
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <div className={`absolute inset-0 bg-gradient-to-br ${spotlightMeta.aura}`} />
+            <div className="relative grid gap-6 p-6 lg:grid-cols-[1.15fr_0.85fr]">
+              <div>
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                  <span className="confession-tag" style={{ color: spotlightMeta.accent, borderColor: `${spotlightMeta.accent}55` }}>
+                    Spotlight confession
                   </span>
-                )}
-                <p className="text-slate-200 leading-relaxed mb-4 whitespace-pre-wrap">{c.content}</p>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-slate-600">{timeAgo(c.created_at)}</span>
-                    {/* Comment button */}
-                    <button onClick={() => setCommentTarget(c)}
-                      className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-violet-400 transition-colors px-2 py-1 rounded-lg hover:bg-violet-500/10">
-                      💬 {commentCounts[c.id] || 0}
-                    </button>
+                  {trendingCategory && (
+                    <span className="confession-tag">
+                      <TrendingUp size={12} />
+                      {trendingCategory.label} is trending
+                    </span>
+                  )}
+                </div>
+
+                <h2 className="max-w-2xl text-3xl font-semibold leading-tight text-white sm:text-4xl">
+                  Say it once. Let the room react.
+                </h2>
+                <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+                  A cleaner anonymous feed with better rhythm, faster browsing, and a stronger spotlight on what is
+                  actually interesting.
+                </p>
+
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <div className="confession-pill">
+                    <Sparkles size={14} />
+                    {confessions.length} posts live
                   </div>
-                  <div className="flex items-center gap-2">
-                    {c.user_id === user?.id && (
-                      <button onClick={() => deleteOwn(c.id)}
-                        className="text-xs text-slate-600 hover:text-red-400 transition-colors px-2 py-1 rounded-lg hover:bg-red-500/10">
-                        Delete
-                      </button>
-                    )}
-                    <button onClick={() => like(c)}
-                      className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-xl transition-all ${
-                        likedIds.has(c.id) ? 'bg-red-500/20 text-red-400' : 'text-slate-500 hover:bg-white/5 hover:text-red-400'
-                      }`}>
-                      🔥 {c.likes}
-                    </button>
+                  <div className="confession-pill">
+                    <Bookmark size={14} />
+                    {myPosts} by you
+                  </div>
+                  <div className="confession-pill">
+                    <TrendingUp size={14} />
+                    {trendingCategory?.label ?? 'Random'} active
                   </div>
                 </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-          {displayed.length === 0 && (
-            <div className="text-center py-16">
-              <div className="text-4xl mb-3">🔥</div>
-              <p className="font-medium text-slate-400">No confessions here yet</p>
-              <p className="text-sm text-slate-500 mt-1">Be the first to confess something</p>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                <div className="confession-spotlight-card">
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="confession-tag" style={{ color: spotlightMeta.accent, borderColor: `${spotlightMeta.accent}45` }}>
+                      {spotlightMeta.label}
+                    </span>
+                    <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                      {spotlight ? timeAgo(spotlight.created_at) : 'waiting'}
+                    </span>
+                  </div>
+                  <p className="line-clamp-6 text-sm leading-7 text-slate-100">
+                    {spotlight?.content ?? 'Your next confession can become the spotlight.'}
+                  </p>
+                  <div className="mt-5 flex items-center gap-3 text-xs text-slate-400">
+                    <span className="flex items-center gap-1">
+                      <Flame size={14} />
+                      {spotlight?.likes ?? 0}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <MessageCircle size={14} />
+                      {spotlight ? commentCounts[spotlight.id] || 0 : 0}
+                    </span>
+                    {spotlight && (
+                      <button
+                        onClick={() => setCommentTarget(spotlight)}
+                        className="rounded-full border border-white/10 px-3 py-1.5 text-slate-200 transition hover:bg-white/10"
+                      >
+                        Open thread
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                  <div className="confession-mini-panel">
+                    <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Freshest drop</p>
+                    <p className="mt-2 text-sm text-slate-200">{latestDrop ? latestDrop.content.slice(0, 88) : 'No confessions yet.'}</p>
+                  </div>
+                  <div className="confession-mini-panel">
+                    <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Collections</p>
+                    <p className="mt-2 text-sm text-slate-200">{bookmarkedIds.size} confession{bookmarkedIds.size === 1 ? '' : 's'} saved for later.</p>
+                  </div>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
+          </motion.div>
+
+          <motion.section
+            className="confession-composer rounded-[2rem] border border-white/10 p-5 sm:p-6"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.04 }}
+          >
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.28em] text-orange-300/80">Compose</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">Post something real</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+                  Pick a lane, write it clean, and send it.
+                </p>
+              </div>
+              <div className="rounded-[1.25rem] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+                <span className="block text-[11px] uppercase tracking-[0.22em] text-slate-500">Current mood</span>
+                <span className="mt-1 inline-flex items-center gap-2 font-medium text-white">
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: composerMeta.accent }} />
+                  {composerMeta.label}: {composerMeta.description}
+                </span>
+              </div>
+            </div>
+
+            <div className="mb-4 flex flex-wrap gap-2">
+              {CATEGORIES.slice(1).map((item) => (
+                <button
+                  key={item.key}
+                  onClick={() => setCategory(item.key)}
+                  className={`rounded-full border px-4 py-2 text-sm transition ${
+                    category === item.key ? 'text-white shadow-lg' : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-white'
+                  }`}
+                  style={
+                    category === item.key
+                      ? {
+                          borderColor: `${item.accent}55`,
+                          background: `linear-gradient(135deg, ${item.accent}33, rgba(255,255,255,0.04))`,
+                          boxShadow: `0 18px 40px ${item.accent}20`,
+                        }
+                      : undefined
+                  }
+                >
+                  <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/10 text-[11px]">
+                    {item.icon}
+                  </span>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="rounded-[1.75rem] border border-white/10 bg-black/20 p-3 shadow-2xl shadow-black/20">
+              <textarea
+                className="input-field min-h-[150px] resize-none border-0 bg-transparent px-3 py-3 text-base leading-7 shadow-none placeholder:text-slate-500 focus:bg-transparent focus:shadow-none"
+                placeholder="Type what you have been holding in..."
+                value={text}
+                onChange={(event) => {
+                  setText(event.target.value);
+                  setPostError('');
+                }}
+                rows={5}
+                maxLength={500}
+              />
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-white/8 px-3 pt-3">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-slate-500">
+                  <Lightbulb size={12} />
+                  Anonymous mode
+                </div>
+                <div className="flex items-center gap-3 text-xs text-slate-500">
+                  <span>{text.length}/500</span>
+                  <span>{text.trim().split(/\s+/).filter(Boolean).length} words</span>
+                </div>
+              </div>
+            </div>
+
+            {postError ? <p className="mt-3 text-sm text-red-400">{postError}</p> : null}
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-slate-500">Your draft stays here until you send it or clear it.</p>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => {
+                    setText('');
+                    window.localStorage.removeItem(LOCAL_STORAGE_KEYS.draft);
+                  }}
+                  className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/8 hover:text-white"
+                >
+                  Clear draft
+                </button>
+                <button
+                  onClick={post}
+                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-orange-500 via-pink-500 to-violet-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(249,115,22,0.35)] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!text.trim() || posting}
+                >
+                  <Sparkles size={16} />
+                  {posting ? 'Posting...' : 'Post confession'}
+                </button>
+              </div>
+            </div>
+          </motion.section>
+
+          <section className="rounded-[2rem] border border-white/10 bg-white/4 p-4 sm:p-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Browse</p>
+                <h3 className="mt-1 text-xl font-semibold text-white">Find the juicy stuff faster</h3>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setOnlyBookmarked((current) => !current)}
+                  className={`rounded-full border px-4 py-2 text-sm transition ${
+                    onlyBookmarked ? 'border-orange-400/50 bg-orange-500/15 text-orange-200' : 'border-white/10 text-slate-300 hover:bg-white/8 hover:text-white'
+                  }`}
+                >
+                  <Bookmark className="mr-2 inline" size={14} />
+                  Saved only
+                </button>
+                <button
+                  onClick={reviveDismissed}
+                  className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/8 hover:text-white"
+                >
+                  Restore hidden
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto_auto]">
+              <label className="flex items-center gap-3 rounded-[1.25rem] border border-white/10 bg-black/20 px-4 py-3">
+                <Search size={16} className="text-slate-500" />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search by keyword..."
+                  className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
+                />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {(['hot', 'new', 'discussed'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => setSortBy(mode)}
+                    className={`rounded-full border px-4 py-2 text-sm transition ${
+                      sortBy === mode ? 'border-orange-400/50 bg-orange-500/15 text-orange-200' : 'border-white/10 text-slate-300 hover:bg-white/8 hover:text-white'
+                    }`}
+                  >
+                    {mode === 'hot' ? 'Hot' : mode === 'new' ? 'New' : 'Discussed'}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORIES.map((item) => (
+                  <button
+                    key={item.key}
+                    onClick={() => setFilterCat(item.key)}
+                    className={`rounded-full border px-4 py-2 text-sm transition ${
+                      filterCat === item.key ? 'border-white/20 text-white' : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-white'
+                    }`}
+                    style={filterCat === item.key ? { backgroundColor: `${item.accent}22` } : undefined}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {activeCategories.map((item) => (
+                <div key={item.key} className="confession-mini-panel">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-white">{item.label}</span>
+                    <span className="rounded-full px-2 py-1 text-[11px]" style={{ backgroundColor: `${item.accent}20`, color: item.accent }}>
+                      {item.count}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-slate-400">{item.description}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Feed</p>
+                <h3 className="mt-1 text-2xl font-semibold text-white">{filteredConfessions.length} confessions on deck</h3>
+              </div>
+              <p className="text-sm text-slate-500">Hot ranking blends likes, replies, and freshness.</p>
+            </div>
+
+            <AnimatePresence mode="popLayout">
+              {filteredConfessions.map((confession, index) => {
+                const meta = getCategoryMeta(confession.category);
+                const isBookmarked = bookmarkedIds.has(confession.id);
+                const isLiked = likedIds.has(confession.id);
+                const comments = commentCounts[confession.id] || 0;
+
+                return (
+                  <motion.article
+                    key={confession.id}
+                    layout
+                    className="confession-card group overflow-hidden rounded-[2rem] border border-white/10"
+                    initial={{ opacity: 0, y: 18 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                    transition={{ delay: index < 5 ? index * 0.04 : 0 }}
+                  >
+                    <div className={`absolute inset-0 bg-gradient-to-br ${meta.aura} opacity-70`} />
+                    <div className="relative p-5 sm:p-6">
+                      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="confession-tag" style={{ color: meta.accent, borderColor: `${meta.accent}45` }}>
+                            {meta.label}
+                          </span>
+                          <span className="confession-tag">
+                            <Compass size={12} />
+                            Heat {Math.round(getHeatScore(confession, comments))}
+                          </span>
+                        </div>
+                        <span className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                          {timeAgo(confession.created_at)}
+                        </span>
+                      </div>
+
+                      <p className="text-[15px] leading-7 text-slate-100 sm:text-base">{confession.content}</p>
+
+                      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={() => like(confession)}
+                            className={`confession-action ${isLiked ? 'confession-action-active' : ''}`}
+                          >
+                            <Flame size={15} />
+                            {confession.likes}
+                          </button>
+                          <button
+                            onClick={() => setCommentTarget(confession)}
+                            className="confession-action"
+                          >
+                            <MessageCircle size={15} />
+                            {comments}
+                          </button>
+                          <button
+                            onClick={() => toggleBookmark(confession.id)}
+                            className={`confession-action ${isBookmarked ? 'confession-action-active' : ''}`}
+                          >
+                            <Bookmark size={15} />
+                            {isBookmarked ? 'Saved' : 'Save'}
+                          </button>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={() => dismissConfession(confession.id)}
+                            className="confession-action text-slate-400"
+                          >
+                            <X size={15} />
+                            Hide
+                          </button>
+                          {confession.user_id === user?.id ? (
+                            <button
+                              onClick={() => deleteOwn(confession.id)}
+                              className="confession-action text-red-300 hover:border-red-400/30 hover:bg-red-500/10"
+                            >
+                              <Trash2 size={15} />
+                              Delete
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  </motion.article>
+                );
+              })}
+            </AnimatePresence>
+
+            {filteredConfessions.length === 0 ? (
+              <div className="rounded-[2rem] border border-dashed border-white/10 bg-white/4 px-6 py-16 text-center">
+                <Sparkles className="mx-auto mb-3 text-slate-500" size={28} />
+                <p className="text-lg font-medium text-slate-200">Nothing matches this mix right now.</p>
+                <p className="mt-2 text-sm text-slate-500">
+                  Change the filters, restore hidden posts, or launch the next confession yourself.
+                </p>
+              </div>
+            ) : null}
+          </section>
       </main>
 
-      {/* Comment panel */}
       <AnimatePresence>
-        {commentTarget && (
+        {commentTarget ? (
           <CommentPanel
             key={commentTarget.id}
             confession={commentTarget}
@@ -456,7 +1037,7 @@ export default function Confessions() {
             profile={profile}
             onClose={() => setCommentTarget(null)}
           />
-        )}
+        ) : null}
       </AnimatePresence>
     </div>
   );
