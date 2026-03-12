@@ -268,6 +268,13 @@ export default function ChatRoom() {
           r[payload.emoji] = [...who, payload.userId];
           return { ...prev, [payload.msgId]: r };
         });
+      })
+      .on('broadcast', { event: 'chat_message' }, ({ payload }) => {
+        if (payload.user_id === user.id) return;
+        setMessages(prev => {
+          if (prev.find(m => m.id === payload.id)) return prev;
+          return [...prev, payload];
+        });
       });
     }
 
@@ -327,7 +334,15 @@ export default function ChatRoom() {
     
     setText('');
     if (typingTimer.current) clearTimeout(typingTimer.current);
-    channelRef.current?.send({ type: 'broadcast', event: 'stop_typing', payload: { userId: user.id } });
+    const stopTypingPayload = { userId: user.id };
+    channelRef.current?.send({ type: 'broadcast', event: 'stop_typing', payload: stopTypingPayload });
+
+    // Broadcast message instantly to others for sub-second delivery
+    const broadcastMsg = {
+      id: tempId, content, created_at: new Date().toISOString(),
+      user_id: user.id, anonymous_username: profile.anonymous_username, optimistic: true
+    };
+    channelRef.current?.send({ type: 'broadcast', event: 'chat_message', payload: broadcastMsg });
 
     // Fire and forget the DB insert so the UI doesn't lag
     (async () => {
@@ -594,23 +609,26 @@ export default function ChatRoom() {
           </motion.button>
         </div>
       </div>
+    </div>
 
-      {/* Members Sidebar */}
+      {/* Members Sidebar (Moved outside the flex-col of main chat area) */}
       <AnimatePresence>
         {showMembers && (
           <motion.div
-            className="w-64 border-l border-white/5 glass flex flex-col"
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'tween', duration: 0.2 }}>
-            <div className="p-4 border-b border-white/5">
+            className="w-64 border-l border-white/5 glass flex flex-col shrink-0"
+            initial={{ x: '100%', opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: '100%', opacity: 0 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}>
+            <div className="p-4 border-b border-white/5 flex items-center justify-between">
               <h3 className="font-semibold text-white">Members ({members.length})</h3>
+              <button onClick={() => setShowMembers(false)} className="md:hidden text-slate-400">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto">
               {members.map(member => (
                 <div key={member.user_id} className="flex items-center gap-3 p-3 hover:bg-white/5">
-                  <div className="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center text-xs font-bold text-white">
+                  <div className="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center text-xs font-bold text-white"
+                    style={{ background: getColor(member.anonymous_username) }}>
                     {member.anonymous_username.slice(0, 2).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -680,8 +698,6 @@ export default function ChatRoom() {
         </motion.div>
       )}
     </AnimatePresence>
-    </div>
-
     </div>
   );
 }
