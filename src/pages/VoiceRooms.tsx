@@ -255,9 +255,13 @@ export default function VoiceRooms() {
     // OPEN VOICE MODEL: Request mic immediately on join
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      // Mute by default: Disable tracks immediately
+      stream.getAudioTracks().forEach(track => {
+        track.enabled = false;
+      });
       localStreamRef.current = stream;
       setMyRole('speaker');
-      setMuted(false);
+      setMuted(true); // Default to muted
     } catch (err) {
       console.warn('Microphone access denied, joining as listener only.');
       setMyRole('audience');
