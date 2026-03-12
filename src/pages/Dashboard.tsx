@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { useNotifications } from '../hooks/useNotifications';
 
 interface Room { id: string; name: string; category: string; created_at: string; is_archived?: boolean; }
 
@@ -25,6 +26,7 @@ const features = [
 
 export default function Dashboard() {
   const { user, profile, loading, signOut } = useAuth();
+  const { unreadCounts, markAsActive } = useNotifications();
   const navigate = useNavigate();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [showCreate, setShowCreate] = useState(false);
@@ -33,7 +35,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!loading && !user) navigate('/join');
-  }, [user, loading, navigate]);
+    if (user) markAsActive(null); // Not in any specific room on dashboard
+  }, [user, loading, navigate, markAsActive]);
 
   useEffect(() => {
     if (!user) return;
@@ -154,7 +157,7 @@ export default function Dashboard() {
                     const theme = roomThemes[room.category as keyof typeof roomThemes] || roomThemes.general;
                     return (
                       <motion.div key={room.id} onClick={() => navigate(`/room/${room.id}`)}
-                        className={`glass-hover rounded-2xl p-5 cursor-pointer ${theme.bg} border ${theme.border}`}
+                        className={`glass-hover rounded-2xl p-5 cursor-pointer ${theme.bg} border ${theme.border} relative overflow-hidden`}
                         initial={{ opacity: 0, scale: 0.95, y: 10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.9 }}
@@ -162,7 +165,12 @@ export default function Dashboard() {
                         layout
                         whileHover={{ scale: 1.02, y: -2 }}
                         whileTap={{ scale: 0.98 }}>
-                        <div className="absolute top-0 right-0 p-3">
+                        <div className="absolute top-0 right-0 p-3 flex gap-2">
+                           {unreadCounts[room.id] > 0 && (
+                             <div className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse shadow-lg ring-2 ring-red-500/20">
+                               {unreadCounts[room.id]} NEW
+                             </div>
+                           )}
                            <div className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">LIVE</div>
                         </div>
                         <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-lg mb-4">{theme.icon}</div>
