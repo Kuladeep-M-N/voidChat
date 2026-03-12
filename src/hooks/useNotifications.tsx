@@ -9,12 +9,14 @@ interface UnreadCounts {
 
 interface NotificationContextType {
   unreadCounts: UnreadCounts;
+  onlineCount: number;
   clearUnread: (roomId: string) => void;
   markAsActive: (roomId: string | null) => void;
 }
 
 const NotificationContext = createContext<NotificationContextType>({
   unreadCounts: {},
+  onlineCount: 1,
   clearUnread: () => {},
   markAsActive: () => {},
 });
@@ -25,6 +27,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
     const saved = localStorage.getItem('unread_counts');
     return saved ? JSON.parse(saved) : {};
   });
+  const [onlineCount, setOnlineCount] = useState(1);
   const activeRoomIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -66,6 +69,37 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
     };
   }, [user]);
 
+  useEffect(() => {
+    if (!user) return;
+
+    const presenceChannel = supabase.channel('global-presence');
+    
+    presenceChannel
+      .on('presence', { event: 'sync' }, () => {
+        const state = presenceChannel.presenceState();
+        const uniqueUsers = new Set(Object.values(state).flat().map((p: any) => p.user_id));
+        setOnlineCount(uniqueUsers.size || 1);
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        console.log('join', key, newPresences);
+      })
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+        console.log('leave', key, leftPresences);
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await presenceChannel.track({
+            user_id: user.id,
+            online_at: new Date().toISOString(),
+          });
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(presenceChannel);
+    };
+  }, [user]);
+
   const clearUnread = (roomId: string) => {
     setUnreadCounts(prev => {
       const next = { ...prev };
@@ -80,7 +114,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
   };
 
   return (
-    <NotificationContext.Provider value={{ unreadCounts, clearUnread, markAsActive }}>
+    <NotificationContext.Provider value={{ unreadCounts, onlineCount, clearUnread, markAsActive }}>
       {children}
     </NotificationContext.Provider>
   );

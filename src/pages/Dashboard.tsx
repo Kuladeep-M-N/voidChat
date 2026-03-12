@@ -26,7 +26,7 @@ const features = [
 
 export default function Dashboard() {
   const { user, profile, loading, signOut } = useAuth();
-  const { unreadCounts, markAsActive } = useNotifications();
+  const { unreadCounts, markAsActive, onlineCount } = useNotifications();
   const navigate = useNavigate();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [showCreate, setShowCreate] = useState(false);
@@ -94,6 +94,10 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
           <motion.span className="text-xl font-bold text-gradient" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>VoidChat</motion.span>
           <div className="flex items-center gap-4">
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-white/5 rounded-full border border-white/10">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+              <span className="text-xs font-medium text-slate-300">{onlineCount} Online</span>
+            </div>
             <span className="text-slate-400 text-sm flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               {profile?.anonymous_username || 'Anonymous'}

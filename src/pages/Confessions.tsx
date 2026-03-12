@@ -593,7 +593,6 @@ export default function Confessions() {
     const now = new Date();
     return created.toDateString() === now.toDateString();
   }).length;
-  const myPosts = confessions.filter((entry) => entry.user_id === user?.id).length;
   const activeCategories = CATEGORIES.slice(1)
     .map((meta) => ({
       ...meta,
@@ -684,10 +683,6 @@ export default function Confessions() {
                   <div className="confession-pill">
                     <Sparkles size={14} />
                     {confessions.length} posts live
-                  </div>
-                  <div className="confession-pill">
-                    <Bookmark size={14} />
-                    {myPosts} by you
                   </div>
                   <div className="confession-pill">
                     <TrendingUp size={14} />
