@@ -199,7 +199,19 @@ export default function ChatRoom() {
           }
 
           setMessages(prev => {
-            if (prev.find(m => m.id === msg.id)) return prev;
+            if (prev.some(m => m.id === msg.id)) return prev;
+            
+            // Deduplicate: if we have an optimistic message with same content/user, replace it
+            const matchingIndex = prev.findIndex(m => 
+              m.optimistic && m.user_id === msg.user_id && m.content === msg.content
+            );
+            
+            if (matchingIndex !== -1) {
+              const updated = [...prev];
+              updated[matchingIndex] = { ...msg, anonymous_username: username! };
+              return updated;
+            }
+            
             return [...prev, { ...msg, anonymous_username: username! }];
           });
         }
@@ -226,23 +238,39 @@ export default function ChatRoom() {
 
       setMessages(prev => {
         const existingIds = new Set(prev.map(m => m.id));
-        const newMsgs = data
-          .filter(m => !existingIds.has(m.id))
-          .map(m => ({
-            ...m,
-            anonymous_username: nameCache.current.get(m.user_id) ?? '???'
-          }));
+        const finalMsgs = [...prev];
         
-        if (newMsgs.length === 0) return prev;
+        data.forEach(m => {
+          if (existingIds.has(m.id)) return;
+          
+          // Check for soft match with optimistic messages
+          const matchingIndex = finalMsgs.findIndex(pm => 
+            pm.optimistic && pm.user_id === m.user_id && pm.content === m.content
+          );
+          
+          if (matchingIndex !== -1) {
+            finalMsgs[matchingIndex] = {
+              ...m,
+              anonymous_username: nameCache.current.get(m.user_id) ?? '???'
+            };
+            existingIds.add(m.id);
+          } else {
+            finalMsgs.push({
+              ...m,
+              anonymous_username: nameCache.current.get(m.user_id) ?? '???'
+            });
+            existingIds.add(m.id);
+          }
+        });
         
         // Merge and sort
-        const merged = [...prev, ...newMsgs].sort(
+        const sorted = finalMsgs.sort(
           (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         );
         
         // Final dedupe for safety
         const seen = new Set();
-        return merged.filter(m => seen.has(m.id) ? false : seen.add(m.id));
+        return sorted.filter(m => seen.has(m.id) ? false : seen.add(m.id));
       });
     }, 10000);
 
@@ -272,7 +300,19 @@ export default function ChatRoom() {
       .on('broadcast', { event: 'chat_message' }, ({ payload }) => {
         if (payload.user_id === user.id) return;
         setMessages(prev => {
-          if (prev.find(m => m.id === payload.id)) return prev;
+          if (prev.some(m => m.id === payload.id)) return prev;
+          
+          // Even for broadcast, check if we somehow have a matching content already (unlikely but safe)
+          const matchingIndex = prev.findIndex(m => 
+            m.optimistic && m.user_id === payload.user_id && m.content === payload.content
+          );
+          
+          if (matchingIndex !== -1) {
+             const updated = [...prev];
+             updated[matchingIndex] = payload;
+             return updated;
+          }
+          
           return [...prev, payload];
         });
       });
