@@ -180,10 +180,13 @@ export default function ChatRoom() {
       })
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` },
+        { event: 'INSERT', schema: 'public', table: 'messages' },
         async (payload) => {
           const msg = payload.new as any;
           
+          // Manual filter by room_id (since room_id might not always trigger strict filter)
+          if (msg.room_id !== roomId) return;
+
           // Avoid duplicate for the sender (handled by optimistic update)
           if (msg.user_id === user.id) return;
 
@@ -201,6 +204,47 @@ export default function ChatRoom() {
           });
         }
       );
+
+    // ── Fallback Polling (Every 10 seconds) ──
+    const pollInterval = setInterval(async () => {
+      if (!roomId) return;
+      
+      const { data, error } = await supabase
+        .from('messages')
+        .select('id, content, created_at, user_id')
+        .eq('room_id', roomId)
+        .order('created_at', { ascending: true });
+
+      if (error || !data) return;
+
+      // Update cache for any new users
+      const unknownUserIds = [...new Set(data.map(m => m.user_id))].filter(id => !nameCache.current.has(id));
+      if (unknownUserIds.length) {
+        const { data: users } = await supabase.from('users').select('id, anonymous_username').in('id', unknownUserIds);
+        users?.forEach(u => nameCache.current.set(u.id, u.anonymous_username));
+      }
+
+      setMessages(prev => {
+        const existingIds = new Set(prev.map(m => m.id));
+        const newMsgs = data
+          .filter(m => !existingIds.has(m.id))
+          .map(m => ({
+            ...m,
+            anonymous_username: nameCache.current.get(m.user_id) ?? '???'
+          }));
+        
+        if (newMsgs.length === 0) return prev;
+        
+        // Merge and sort
+        const merged = [...prev, ...newMsgs].sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+        
+        // Final dedupe for safety
+        const seen = new Set();
+        return merged.filter(m => seen.has(m.id) ? false : seen.add(m.id));
+      });
+    }, 10000);
 
     // Only subscribe to typing/reactions if the room isn't archived
     if (!isArchived) {
@@ -247,7 +291,8 @@ export default function ChatRoom() {
 
     return () => { 
       supabase.removeChannel(ch); 
-      channelRef.current = null; 
+      channelRef.current = null;
+      clearInterval(pollInterval);
     };
   }, [roomId, user, profile, isArchived]);
 

@@ -232,18 +232,39 @@ export default function Confessions() {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'confessions' }, (p) => {
         setConfessions(prev => prev.filter(c => c.id !== p.old.id));
       })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confession_comments' }, (p) => {
+        setCommentCounts(prev => ({
+          ...prev,
+          [p.new.confession_id]: (prev[p.new.confession_id] || 0) + 1
+        }));
+      })
       .subscribe();
 
     // ── Fallback Polling (Every 10 seconds) ──
     const pollInterval = setInterval(async () => {
-      const { data } = await supabase.from('confessions').select('*').order('created_at', { ascending: false }).limit(30);
-      if (data) {
+      // Refresh confessions
+      const { data: confData } = await supabase.from('confessions').select('*').order('created_at', { ascending: false }).limit(30);
+      if (confData) {
         setConfessions(prev => {
           const existingIds = new Set(prev.map(c => c.id));
-          const newEntries = (data as Confession[]).filter(c => !existingIds.has(c.id));
+          const newEntries = (confData as Confession[]).filter(c => !existingIds.has(c.id));
           if (newEntries.length === 0) return prev;
-          return [...newEntries, ...prev].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+          const merged = [...newEntries, ...prev].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+          // Keep unique only
+          const seen = new Set();
+          return merged.filter(c => seen.has(c.id) ? false : seen.add(c.id));
         });
+      }
+
+      // Refresh comment counts
+      const confessionIds = confessions.map(c => c.id);
+      if (confessionIds.length > 0) {
+        const { data: commentData } = await supabase.from('confession_comments').select('confession_id');
+        if (commentData) {
+          const counts: Record<string, number> = {};
+          commentData.forEach(r => { counts[r.confession_id] = (counts[r.confession_id] || 0) + 1; });
+          setCommentCounts(counts);
+        }
       }
     }, 10000);
 
