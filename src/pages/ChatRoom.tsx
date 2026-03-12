@@ -63,21 +63,38 @@ export default function ChatRoom() {
       } 
 
       // 2. Fetch User Role
-      let { data: memberData } = await supabase
+      let { data: memberData, error: roleError } = await supabase
         .from('room_members')
         .select('role')
         .eq('room_id', roomId)
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
       
       if (!memberData) {
-        // Auto-join as member
-        await supabase.from('room_members').insert({ room_id: roomId, user_id: user.id, role: 'member' });
-        memberData = { role: 'member' };
+        // Auto-join ONLY if not already a member. 
+        // We use insert instead of upsert here to avoid demoting creators/admins.
+        const { error: joinError } = await supabase
+          .from('room_members')
+          .insert({ room_id: roomId, user_id: user.id, role: 'member' });
+        
+        if (joinError) {
+           console.error('Error joining room:', joinError);
+           // If it's a 409, it means they joined in a race — fetch again
+           if (joinError.code === '23505') {
+              const { data: retryData } = await supabase
+                .from('room_members')
+                .select('role')
+                .eq('room_id', roomId)
+                .eq('user_id', user.id)
+                .maybeSingle();
+              memberData = retryData;
+           }
+        } else {
+           memberData = { role: 'member' };
+        }
       }
       
-      // Safety Fallback: If you created the room, you are always the creator
-      const finalRole = (roomData && roomData.created_by === user.id) ? 'creator' : memberData.role;
+      const finalRole = (roomData && roomData.created_by === user.id) ? 'creator' : (memberData?.role || 'member');
       setUserRole(finalRole);
 
       // 3. Fetch All Members
@@ -129,55 +146,72 @@ export default function ChatRoom() {
 
   // ── Realtime subscription (separate from data fetch) ──
   useEffect(() => {
-    if (!roomId || !user || !profile) return;
+    if (!roomId || !user) return;
 
-    // Cache own name immediately
-    nameCache.current.set(user.id, profile.anonymous_username);
+    const channelName = `room:${roomId}`;
 
-    const ch = supabase.channel(`room:${roomId}`, { config: { presence: { key: user.id } } });
+    // Remove if already exists to ensure fresh connection on room change
+    const existingChannel = supabase.getChannels().find(c => c.topic === `realtime:${channelName}`);
+    if (existingChannel) {
+      supabase.removeChannel(existingChannel);
+    }
+
+    const ch = supabase.channel(channelName, { 
+      config: { 
+        presence: { key: user.id },
+        broadcast: { ack: true }
+      } 
+    });
+    
     channelRef.current = ch;
+
+    // Cache own name if available
+    if (profile?.anonymous_username) {
+      nameCache.current.set(user.id, profile.anonymous_username);
+    }
 
     ch
       .on('presence', { event: 'sync' }, () => {
-        setOnlineCount(Object.keys(ch.presenceState()).length || 1);
+        const state = ch.presenceState();
+        setOnlineCount(Object.keys(state).length || 1);
+      })
+      .on('presence', { event: 'join' }, ({ newPresences }) => {
+        console.log('Joined:', newPresences);
       })
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` },
         async (payload) => {
-          const msg = payload.new as Omit<Message, 'anonymous_username'>;
+          const msg = payload.new as any;
+          
+          // Avoid duplicate for the sender (handled by optimistic update)
+          if (msg.user_id === user.id) return;
 
           // Get username (from cache or fetch)
           let username = nameCache.current.get(msg.user_id);
           if (!username) {
-            const { data } = await supabase.from('users').select('anonymous_username').eq('id', msg.user_id).single();
+            const { data } = await supabase.from('users').select('anonymous_username').eq('id', msg.user_id).maybeSingle();
             username = data?.anonymous_username ?? '???';
             nameCache.current.set(msg.user_id, username);
           }
 
           setMessages(prev => {
-            // If it's our own message, replace the optimistic placeholder
-            if (msg.user_id === user.id) {
-              const optIdx = prev.findIndex(m => m.optimistic);
-              if (optIdx >= 0) {
-                const next = [...prev];
-                next[optIdx] = { ...msg, anonymous_username: username! };
-                return next;
-              }
-            }
-            // Avoid duplicate
             if (prev.find(m => m.id === msg.id)) return prev;
             return [...prev, { ...msg, anonymous_username: username! }];
           });
         }
       );
 
-    // Only subscribe to typing/reactions if the room isn't archived to save bandwidth
+    // Only subscribe to typing/reactions if the room isn't archived
     if (!isArchived) {
       ch.on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (payload.userId === user.id) return;
         setTypingUsers(prev => prev.find(u => u.id === payload.userId) ? prev : [...prev, { id: payload.userId, username: payload.username }]);
-        setTimeout(() => setTypingUsers(prev => prev.filter(u => u.id !== payload.userId)), 3000);
+        
+        // Auto-clear typing indicator
+        setTimeout(() => {
+          setTypingUsers(prev => prev.filter(u => u.id !== payload.userId));
+        }, 3500);
       })
       .on('broadcast', { event: 'stop_typing' }, ({ payload }) => {
         setTypingUsers(prev => prev.filter(u => u.id !== payload.userId));
@@ -201,13 +235,21 @@ export default function ChatRoom() {
     });
 
     ch.subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        await ch.track({ username: profile.anonymous_username });
+      console.log(`Subscription status for ${roomId}:`, status);
+      if (status === 'SUBSCRIBED' && profile) {
+        await ch.track({ 
+          username: profile.anonymous_username,
+          user_id: user.id,
+          online_at: new Date().toISOString()
+        });
       }
     });
 
-    return () => { supabase.removeChannel(ch); channelRef.current = null; };
-  }, [roomId, user, profile]);
+    return () => { 
+      supabase.removeChannel(ch); 
+      channelRef.current = null; 
+    };
+  }, [roomId, user, profile, isArchived]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
