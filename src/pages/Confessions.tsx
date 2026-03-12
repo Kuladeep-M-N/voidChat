@@ -216,9 +216,15 @@ export default function Confessions() {
         setCommentCounts(counts);
       });
 
-    const ch = supabase.channel('confessions-live')
+    // ── Realtime subscription (simplified) ──
+    const channelName = 'confessions-all';
+    const ch = supabase.channel(channelName)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confessions' }, (p) => {
-        setConfessions(prev => [p.new as Confession, ...prev]);
+        const newConf = p.new as Confession;
+        setConfessions(prev => {
+          if (prev.some(c => c.id === newConf.id)) return prev;
+          return [newConf, ...prev];
+        });
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'confessions' }, (p) => {
         setConfessions(prev => prev.map(c => c.id === p.new.id ? p.new as Confession : c));
@@ -226,15 +232,25 @@ export default function Confessions() {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'confessions' }, (p) => {
         setConfessions(prev => prev.filter(c => c.id !== p.old.id));
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confession_comments' }, (p) => {
-        setCommentCounts(prev => ({
-          ...prev,
-          [p.new.confession_id]: (prev[p.new.confession_id] || 0) + 1
-        }));
-      })
       .subscribe();
 
-    return () => { supabase.removeChannel(ch); };
+    // ── Fallback Polling (Every 10 seconds) ──
+    const pollInterval = setInterval(async () => {
+      const { data } = await supabase.from('confessions').select('*').order('created_at', { ascending: false }).limit(30);
+      if (data) {
+        setConfessions(prev => {
+          const existingIds = new Set(prev.map(c => c.id));
+          const newEntries = (data as Confession[]).filter(c => !existingIds.has(c.id));
+          if (newEntries.length === 0) return prev;
+          return [...newEntries, ...prev].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        });
+      }
+    }, 10000);
+
+    return () => { 
+      supabase.removeChannel(ch); 
+      clearInterval(pollInterval);
+    };
   }, [user]);
 
   const post = async () => {
@@ -242,17 +258,34 @@ export default function Confessions() {
     if (!content || !user || posting) return;
     setPosting(true); setPostError('');
 
-    const { error } = await supabase.from('confessions').insert({
+    const tempId = `OPT_${Date.now()}`;
+    const tempConfession: Confession = {
+      id: tempId,
+      content,
+      user_id: user.id,
+      category,
+      likes: 0,
+      created_at: new Date().toISOString()
+    };
+
+    // Optimistic update
+    setConfessions(prev => [tempConfession, ...prev]);
+    setText('');
+
+    const { data: savedData, error } = await supabase.from('confessions').insert({
       content, user_id: user.id, category, likes: 0
-    });
+    }).select().single();
 
     if (error) {
       console.error('Post error:', error);
       setPostError(`Failed: ${error.message}`);
-      setPosting(false);
-      return;
+      // Revert optimistic
+      setConfessions(prev => prev.filter(c => c.id !== tempId));
+    } else if (savedData) {
+      // Replace optimistic with real data
+      setConfessions(prev => prev.map(c => c.id === tempId ? savedData as Confession : c));
     }
-    setText('');
+    
     setPosting(false);
   };
 
