@@ -311,6 +311,7 @@ export default function Polls() {
   };
 
   const deletePoll = async (pollId: string) => {
+    if (!window.confirm('Are you sure you want to delete this poll? All votes will be lost.')) return;
     setActionError('');
 
     const previousPolls = polls;
