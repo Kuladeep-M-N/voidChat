@@ -475,7 +475,7 @@ export default function ChatRoom() {
           <button onClick={() => setShowMembers(!showMembers)} className="btn-ghost rounded-xl p-2 text-slate-400 shrink-0">
             👥
           </button>
-          {['creator', 'admin'].includes(userRole) && (
+          {(['creator', 'admin'].includes(userRole) || profile?.is_admin) && (
             <button onClick={() => setShowSettings(true)} className="btn-ghost rounded-xl p-2 text-slate-400 shrink-0">
               ⚙️
             </button>
@@ -728,35 +728,22 @@ export default function ChatRoom() {
                 <div className="pt-4 border-t border-white/10">
                   <h3 className="text-red-400 font-bold mb-2 text-sm uppercase tracking-wider">Moderation</h3>
                   <p className="text-xs text-slate-400 mb-3">
-                    {profile?.is_admin ? "As an administrator, you can permanently archive or delete this room." : "Archiving this room will make it read-only forever."}
+                    Deleting or archiving this room will move it to the history section and make it read-only for everyone.
                   </p>
-                  <div className="flex flex-col gap-2">
-                    <button 
-                      onClick={async () => {
-                        if(window.confirm('Archive this chat room? It will become read-only.')) {
-                          await supabase.from('chat_rooms').update({ is_archived: true }).eq('id', roomId);
-                          setIsArchived(true);
-                          setShowSettings(false);
+                  <button 
+                    onClick={async () => {
+                      if(window.confirm('Are you sure you want to Delete/Archive this chat room? It will be moved to history and become read-only.')) {
+                        const { error } = await supabase.from('chat_rooms').update({ is_archived: true }).eq('id', roomId);
+                        if (!error) {
+                          navigate('/dashboard');
+                        } else {
+                          alert('Failed to archive room.');
                         }
-                      }}
-                      className="w-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/20 py-2.5 rounded-xl text-sm font-bold transition">
-                      Archive Chat Room
-                    </button>
-                    <button 
-                      onClick={async () => {
-                        if(window.confirm('PERMANENTLY DELETE this room and all its messages? This cannot be undone.')) {
-                          const { error } = await supabase.from('chat_rooms').delete().eq('id', roomId);
-                          if (!error) {
-                            navigate('/dashboard');
-                          } else {
-                            alert('Failed to delete room.');
-                          }
-                        }
-                      }}
-                      className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 py-2.5 rounded-xl text-sm font-bold transition">
-                      Permanently Delete Room
-                    </button>
-                  </div>
+                      }
+                    }}
+                    className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 py-2.5 rounded-xl text-sm font-bold transition">
+                    Delete/Archive Room
+                  </button>
                 </div>
               )}
             </div>

@@ -4,11 +4,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 
-interface VoiceRoom { 
-  id: string; 
-  name: string; 
-  created_at: string; 
-  created_by: string; 
+interface VoiceRoom {
+  id: string;
+  name: string;
+  created_at: string;
+  created_by: string;
   status?: 'active' | 'ended';
   ended_at?: string;
   creator?: { anonymous_username: string };
@@ -126,7 +126,7 @@ export default function VoiceRooms() {
   // Load rooms
   useEffect(() => {
     if (!user) return;
-    
+
     const fetchRooms = async () => {
       // Join with users table to get the creator's anonymous name
       const { data } = await supabase
@@ -150,7 +150,7 @@ export default function VoiceRooms() {
   // Keep initial presence and updates in sync
   useEffect(() => {
     if (!user || !activeRoom || !channelRef.current) return;
-    
+
     // Auto-scroll chat
     if (chatScrollRef.current) {
       chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
@@ -159,7 +159,7 @@ export default function VoiceRooms() {
     setParticipants(prev => prev.map(p =>
       p.userId === user.id ? { ...p, speaking: isSpeaking, muted, role: myRole, handRaised } : p
     ));
-    
+
     // Broadcast for immediate UI updates on peers
     channelRef.current.send({
       type: 'broadcast', event: 'status',
@@ -167,11 +167,11 @@ export default function VoiceRooms() {
     });
 
     // Track for Presence state (for new joiners and syncs)
-    channelRef.current.track({ 
-      username: profile?.anonymous_username ?? 'Anonymous', 
-      muted, 
-      role: myRole, 
-      handRaised 
+    channelRef.current.track({
+      username: profile?.anonymous_username ?? 'Anonymous',
+      muted,
+      role: myRole,
+      handRaised
     });
 
   }, [isSpeaking, muted, myRole, handRaised, user, activeRoom, profile]);
@@ -254,7 +254,7 @@ export default function VoiceRooms() {
     setJoining(true); setErrorMsg(null);
     console.log('JoinRoom Debug - Room Object:', room);
     console.log('JoinRoom Debug - User ID:', user?.id);
-    
+
     // OPEN VOICE MODEL: Request mic immediately on join
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -278,7 +278,7 @@ export default function VoiceRooms() {
         supabase.removeChannel(ch);
       }
     });
-    
+
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
@@ -294,22 +294,22 @@ export default function VoiceRooms() {
         // For the current user, we prefer our local state to avoid race conditions during initial join
         const isMe = String(userId) === String(user?.id);
         return {
-          userId, 
-          username: info.username, 
+          userId,
+          username: info.username,
           speaking: false,
-          muted: isMe ? muted : info.muted, 
-          role: (isMe && myRole !== 'audience') ? myRole : (info.role || 'audience'), 
+          muted: isMe ? muted : info.muted,
+          role: (isMe && myRole !== 'audience') ? myRole : (info.role || 'audience'),
           handRaised: isMe ? handRaised : (info.handRaised ?? false)
         };
       });
-      
+
       // Strict limit check
       if (users.length > 18 && users.find(u => u.userId === user!.id)) {
         leaveRoom();
         setErrorMsg('Room is full (Maximum 18 participants).');
         return;
       }
-      
+
       setParticipants(users);
       users.forEach(p => {
         if (p.userId !== user!.id && !peersRef.current.has(p.userId)) {
@@ -350,7 +350,7 @@ export default function VoiceRooms() {
       if (payload.to !== user!.id) return;
       const pc = peersRef.current.get(payload.from);
       if (pc && pc.signalingState !== 'stable') {
-        try { await pc.setRemoteDescription(new RTCSessionDescription(payload.answer)); } 
+        try { await pc.setRemoteDescription(new RTCSessionDescription(payload.answer)); }
         catch (err) { console.error('Answer handling failed:', err); }
       }
     });
@@ -359,7 +359,7 @@ export default function VoiceRooms() {
       if (payload.to !== user!.id) return;
       const pc = peersRef.current.get(payload.from);
       if (pc) {
-        try { await pc.addIceCandidate(new RTCIceCandidate(payload.candidate)); } 
+        try { await pc.addIceCandidate(new RTCIceCandidate(payload.candidate)); }
         catch (err) { console.error('ICE failed:', err); }
       }
     });
@@ -389,47 +389,47 @@ export default function VoiceRooms() {
     const attemptSubscribe = () => {
       ch.subscribe(async (status, err) => {
         if (status === 'SUBSCRIBED') {
-        try {
-          // Join as audience by default
-          const presenceStatus = await ch.track({ 
-            username: profile?.anonymous_username ?? 'Anonymous', 
-            muted: true, 
-            role: 'audience', 
-            handRaised: false 
-          });
-          
-          if (presenceStatus === 'ok') {
-            setActiveRoom(room);
+          try {
+            // Join as audience by default
+            const presenceStatus = await ch.track({
+              username: profile?.anonymous_username ?? 'Anonymous',
+              muted: true,
+              role: 'audience',
+              handRaised: false
+            });
+
+            if (presenceStatus === 'ok') {
+              setActiveRoom(room);
+              setJoining(false);
+              joiningRef.current = false;
+              setChatMessages([{ id: '1', userId: 'sys', username: 'System', text: `Connected to ${room.name}. Everyone can speak!`, isSystem: true }]);
+            } else {
+              throw new Error('Presence track failed');
+            }
+          } catch (e) {
+            console.error("Failed to track presence", e);
+            leaveRoom();
+            setErrorMsg('Failed to join the room properly.');
             setJoining(false);
             joiningRef.current = false;
-            setChatMessages([{ id: '1', userId: 'sys', username: 'System', text: `Connected to ${room.name}. Everyone can speak!`, isSystem: true }]);
-          } else {
-             throw new Error('Presence track failed');
           }
-        } catch (e) {
-          console.error("Failed to track presence", e);
+        } else if (status === 'TIMED_OUT' && retryCount < maxRetries) {
+          retryCount++;
+          console.warn(`Connection timed out, retrying attempt ${retryCount}...`);
+          // Add a slight backoff
+          setTimeout(() => {
+            supabase.removeChannel(ch); // clean the failed one
+            joiningRef.current = false; // Allow retry
+            joinRoom(room); // recursively try again
+          }, 1500 * retryCount);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || err) {
+          console.error("Channel error:", status, err);
           leaveRoom();
-          setErrorMsg('Failed to join the room properly.');
+          setErrorMsg(`Failed to connect to room: ${status}. Please try again.`);
           setJoining(false);
           joiningRef.current = false;
         }
-      } else if (status === 'TIMED_OUT' && retryCount < maxRetries) {
-        retryCount++;
-        console.warn(`Connection timed out, retrying attempt ${retryCount}...`);
-        // Add a slight backoff
-        setTimeout(() => {
-          supabase.removeChannel(ch); // clean the failed one
-          joiningRef.current = false; // Allow retry
-          joinRoom(room); // recursively try again
-        }, 1500 * retryCount);
-      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || err) {
-        console.error("Channel error:", status, err);
-        leaveRoom();
-        setErrorMsg(`Failed to connect to room: ${status}. Please try again.`);
-        setJoining(false);
-        joiningRef.current = false;
-      }
-    });
+      });
     };
 
     attemptSubscribe();
@@ -451,17 +451,17 @@ export default function VoiceRooms() {
     if (!activeRoom || !channelRef.current) return;
     const roomId = activeRoom.id;
     console.log('Ending room:', roomId);
-    
+
     try {
       // 1. Tell everyone to leave first
       channelRef.current.send({ type: 'broadcast', event: 'room-closed', payload: {} });
-      
+
       // 2. Mark as ended instead of deleting
       const { error } = await supabase
         .from('voice_rooms')
         .update({ status: 'ended', ended_at: new Date().toISOString() })
         .eq('id', roomId);
-      
+
       if (error) {
         console.error('Failed to end room status (archiving failed):', error);
         // Fallback: if archiving fails (e.g. SQL not run or RLS missing), try deleting
@@ -513,10 +513,10 @@ export default function VoiceRooms() {
         <div className="bg-[#111128]/90 backdrop-blur-xl border border-white/10 p-4 rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] flex items-center gap-4 w-72">
           {/* Audio Visualization / Status */}
           <div className="w-10 h-10 rounded-full bg-violet-500/10 flex items-center justify-center relative overflow-hidden shrink-0 border border-violet-500/20">
-             {isSpeaking && !muted && (
-               <div className="absolute inset-0 bg-violet-500/30 animate-pulse" />
-             )}
-             <span className="text-xl relative z-10">🎙️</span>
+            {isSpeaking && !muted && (
+              <div className="absolute inset-0 bg-violet-500/30 animate-pulse" />
+            )}
+            <span className="text-xl relative z-10">🎙️</span>
           </div>
 
           <div className="flex-1 min-w-0">
@@ -574,18 +574,18 @@ export default function VoiceRooms() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-             <div className="bg-white/5 px-4 py-2 rounded-2xl border border-white/5 flex items-center gap-2">
-                <span className="text-violet-400 font-bold text-sm">{participants.length}</span>
-                <span className="text-white/30 text-[9px] font-black uppercase tracking-widest">Online</span>
-             </div>
-             {(user?.id === activeRoom.created_by || profile?.is_admin) && (
-              <button 
-                onClick={() => { if(confirm('End this room for everyone?')) endRoom(); }} 
+            <div className="bg-white/5 px-4 py-2 rounded-2xl border border-white/5 flex items-center gap-2">
+              <span className="text-violet-400 font-bold text-sm">{participants.length}</span>
+              <span className="text-white/30 text-[9px] font-black uppercase tracking-widest">Online</span>
+            </div>
+            {(user?.id === activeRoom.created_by || profile?.is_admin) && (
+              <button
+                onClick={() => { if (confirm('End this room for everyone?')) endRoom(); }}
                 className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-red-500/20"
               >
                 End Session
               </button>
-             )}
+            )}
           </div>
         </div>
 
@@ -598,13 +598,12 @@ export default function VoiceRooms() {
                 {participants.map((p) => {
                   const isMe = p.userId === user?.id;
                   return (
-                    <motion.div key={p.userId} 
+                    <motion.div key={p.userId}
                       className="flex flex-col items-center gap-2 relative"
                       initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}>
                       <div className="relative">
-                        <div className={`w-16 h-16 rounded-3xl flex items-center justify-center text-xl font-bold text-white border-2 transition-all duration-300 shadow-lg ${
-                          p.speaking && !p.muted ? 'border-violet-500 bg-violet-500/10 shadow-[0_0_20px_rgba(139,92,246,0.5)] scale-110' : 'border-white/5 bg-white/5'
-                        }`}>
+                        <div className={`w-16 h-16 rounded-3xl flex items-center justify-center text-xl font-bold text-white border-2 transition-all duration-300 shadow-lg ${p.speaking && !p.muted ? 'border-violet-500 bg-violet-500/10 shadow-[0_0_20px_rgba(139,92,246,0.5)] scale-110' : 'border-white/5 bg-white/5'
+                          }`}>
                           {p.username.slice(0, 2).toUpperCase()}
                         </div>
                         {p.muted && (
@@ -648,29 +647,29 @@ export default function VoiceRooms() {
         <div className="shrink-0 bg-[#1a1a35] border-t border-white/10 p-3 flex flex-col gap-3 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-20">
           {/* Quick controls row */}
           <div className="flex items-center justify-between px-2">
-             <div className="flex gap-3">
-               <button onClick={toggleMute} className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shadow-md transition ${muted ? 'bg-red-500/20 border border-red-500 text-red-500' : 'bg-white/10 hover:bg-white/20 text-white'}`}>
-                 {muted ? '🔇' : '🎙️'}
-               </button>
-             </div>
-             <div className="flex gap-2 text-2xl">
-               <button 
-                 onClick={leaveRoom}
-                 className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-4 h-10 rounded-full font-semibold text-xs border border-red-500/20 transition"
-               >
-                 Leave Room
-               </button>
-               <span className="w-10 h-10 flex items-center justify-center bg-white/5 rounded-full cursor-pointer hover:bg-white/10 text-lg">⚙️</span>
-             </div>
+            <div className="flex gap-3">
+              <button onClick={toggleMute} className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shadow-md transition ${muted ? 'bg-red-500/20 border border-red-500 text-red-500' : 'bg-white/10 hover:bg-white/20 text-white'}`}>
+                {muted ? '🔇' : '🎙️'}
+              </button>
+            </div>
+            <div className="flex gap-2 text-2xl">
+              <button
+                onClick={leaveRoom}
+                className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-4 h-10 rounded-full font-semibold text-xs border border-red-500/20 transition"
+              >
+                Leave Room
+              </button>
+              <span className="w-10 h-10 flex items-center justify-center bg-white/5 rounded-full cursor-pointer hover:bg-white/10 text-lg">⚙️</span>
+            </div>
           </div>
-          
+
           {/* Input row */}
           <div className="flex items-center gap-2 max-w-xl w-full mx-auto">
-            <input 
-              type="text" 
+            <input
+              type="text"
               className="flex-1 bg-black/40 border border-white/10 text-white rounded-full px-5 py-3 text-sm focus:outline-none focus:border-violet-500 placeholder-white/40 shadow-inner"
-              placeholder="Comment..." 
-              value={chatInput} 
+              placeholder="Comment..."
+              value={chatInput}
               onChange={e => setChatInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendChat()}
             />
@@ -738,13 +737,33 @@ export default function VoiceRooms() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {activeRoomsList.map((room, i) => (
-                    <motion.div key={room.id}
-                      className="glass-hover rounded-3xl p-6 cursor-pointer border border-white/5 hover:border-violet-500/30 group bg-white/5 relative overflow-hidden"
-                      initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: i * 0.05 }}
-                      onClick={() => joinRoom(room)}>
-                      <div className="absolute top-0 right-0 p-3">
-                         <div className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">LIVE</div>
+                    <motion.div
+                      key={room.id}
+                      onClick={() => joinRoom(room)}
+                      className="glass-hover rounded-3xl p-6 cursor-pointer bg-gradient-to-br from-violet-600/10 to-indigo-600/5 border border-white/5 relative overflow-hidden group"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.1 }}
+                      whileHover={{ scale: 1.02, y: -4 }}>
+                      <div className="absolute top-4 right-4 flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Live</span>
+                        </div>
+                        {profile?.is_admin && (
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (window.confirm('Permanently delete this voice room and all its history?')) {
+                                const { error } = await supabase.from('voice_rooms').delete().eq('id', room.id);
+                                if (error) alert('Failed to delete: ' + error.message);
+                              }
+                            }}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                          >
+                            🗑️
+                          </button>
+                        )}
                       </div>
                       <div className="relative w-12 h-12 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">
                         🎙️

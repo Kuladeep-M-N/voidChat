@@ -426,7 +426,23 @@ export default function Confessions() {
           console.error('Confession load error:', error);
           return;
         }
-        if (data) setConfessions(data as Confession[]);
+        if (data) {
+          const confessions = data as Confession[];
+          setConfessions(confessions);
+          
+          // Clean up orphaned bookmarks (IDs in localStorage that no longer exist in DB)
+          const validIds = new Set(confessions.map(c => c.id));
+          setBookmarkedIds((current) => {
+            const next = new Set<string>();
+            current.forEach(id => {
+              if (validIds.has(id)) next.add(id);
+            });
+            if (next.size !== current.size) {
+              writeStoredIds(LOCAL_STORAGE_KEYS.bookmarks, next);
+            }
+            return next;
+          });
+        }
       });
 
     supabase
@@ -456,7 +472,17 @@ export default function Confessions() {
         );
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'confessions' }, (payload) => {
-        setConfessions((current) => current.filter((entry) => entry.id !== payload.old.id));
+        const deletedId = payload.old.id;
+        setConfessions((current) => current.filter((entry) => entry.id !== deletedId));
+        
+        // Update bookmarks if the deleted confession was saved
+        setBookmarkedIds((current) => {
+          if (!current.has(deletedId)) return current;
+          const next = new Set(current);
+          next.delete(deletedId);
+          writeStoredIds(LOCAL_STORAGE_KEYS.bookmarks, next);
+          return next;
+        });
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confession_comments' }, (payload) => {
         setCommentCounts((current) => ({

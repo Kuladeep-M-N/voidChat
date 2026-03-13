@@ -55,30 +55,49 @@ export default function Dashboard() {
           setRooms(prev => prev.filter(r => r.id !== payload.old.id));
         }
       }).subscribe();
-      
+
     return () => { supabase.removeChannel(channel); };
   }, [user]);
 
   const createRoom = async () => {
     const name = newRoomName.trim();
     if (!name || !user) return;
-    
+
     setCreating(true);
-    
+
+    // Check if room name exists
+    const { data: existing } = await supabase.from('chat_rooms')
+      .select('id')
+      .eq('name', name)
+      .eq('is_archived', false)
+      .single();
+
+    if (existing) {
+      alert('A room with this name already exists and is active. Please choose a different name.');
+      setCreating(false);
+      return;
+    }
+
     // Create the room
     const { data: room, error } = await supabase.from('chat_rooms')
       .insert({ name, created_by: user.id, category: 'general' })
       .select().single();
-    
-    // Immediately make the creator an admin/creator in the members table
+
     if (room && !error) {
-       await supabase.from('room_members').insert({ room_id: room.id, user_id: user.id, role: 'creator' });
-       navigate(`/room/${room.id}`);
+      await supabase.from('room_members').insert({ room_id: room.id, user_id: user.id, role: 'creator' });
+      navigate(`/room/${room.id}`);
     } else {
-       setNewRoomName('');
-       setShowCreate(false);
-       setCreating(false);
+      console.error('Create room error:', error);
+      if (error?.code === '23505') {
+        alert('This room name is already taken (even in history). Please use a unique name.');
+      } else {
+        alert(error?.message || 'Failed to create room. Please ensure the latest SQL script has been run.');
+      }
     }
+
+    setNewRoomName('');
+    setShowCreate(false);
+    setCreating(false);
   };
 
   const deleteRoom = async (roomId: string, e: React.MouseEvent) => {
@@ -186,19 +205,19 @@ export default function Dashboard() {
                         whileHover={{ scale: 1.02, y: -2 }}
                         whileTap={{ scale: 0.98 }}>
                         <div className="absolute top-0 right-0 p-3 flex gap-2">
-                           {unreadCounts[room.id] > 0 && (
-                             <div className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse shadow-lg ring-2 ring-red-500/20">
-                               {unreadCounts[room.id]} NEW
-                             </div>
-                           )}
-                           <div className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">LIVE</div>
-                           {(profile?.is_admin || room.id) && ( // We will check actual permission in the button click, but show it for admin
-                             profile?.is_admin && (
-                               <button onClick={(e) => deleteRoom(room.id, e)} className="text-slate-400 hover:text-red-400 transition-colors">
-                                 <Trash2 size={14} />
-                               </button>
-                             )
-                           )}
+                          {unreadCounts[room.id] > 0 && (
+                            <div className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse shadow-lg ring-2 ring-red-500/20">
+                              {unreadCounts[room.id]} NEW
+                            </div>
+                          )}
+                          <div className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">LIVE</div>
+                          {(profile?.is_admin || room.id) && ( // We will check actual permission in the button click, but show it for admin
+                            profile?.is_admin && (
+                              <button onClick={(e) => deleteRoom(room.id, e)} className="text-slate-400 hover:text-red-400 transition-colors">
+                                <Trash2 size={14} />
+                              </button>
+                            )
+                          )}
                         </div>
                         <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-lg mb-4">{theme.icon}</div>
                         <h3 className="font-semibold text-white text-base mb-1 truncate">{room.name}</h3>

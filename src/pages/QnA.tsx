@@ -291,7 +291,7 @@ export default function QnA() {
   };
 
   const deleteQuestion = async (question: QnaQuestion) => {
-    if (!user || question.user_id !== user.id) return;
+    if (!user || (question.user_id !== user.id && !profile?.is_admin)) return;
     setQuestions((prev) => prev.filter((item) => item.id !== question.id));
     setAnswers((prev) => prev.filter((item) => item.question_id !== question.id));
     if (activeQuestionId === question.id) setActiveQuestionId(null);
@@ -299,7 +299,7 @@ export default function QnA() {
   };
 
   const deleteAnswer = async (answer: QnaAnswer) => {
-    if (!user || answer.user_id !== user.id) return;
+    if (!user || (answer.user_id !== user.id && !profile?.is_admin)) return;
     setAnswers((prev) => prev.filter((item) => item.id !== answer.id));
     await supabase.from('qna_answers').delete().eq('id', answer.id);
   };
