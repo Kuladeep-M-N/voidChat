@@ -587,6 +587,7 @@ export default function Confessions() {
   };
 
   const deleteOwn = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this confession? This action cannot be undone.')) return;
     setConfessions((current) => current.filter((entry) => entry.id !== id));
     await supabase.from('confessions').delete().eq('id', id);
   };
