@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-<<<<<<< HEAD
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -11,12 +10,9 @@ import {
   Radio,
   Send,
   Sparkles,
+  Trash2,
   Volume2,
 } from 'lucide-react';
-=======
-import { motion, AnimatePresence } from 'framer-motion';
-import { Trash2 } from 'lucide-react';
->>>>>>> 52ba46d2216ffa395973f52b428341fcfaf04126
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
@@ -38,11 +34,11 @@ const TABS: Array<{ key: TabKey; label: string }> = [
 ];
 
 const REACTIONS = [
-  { key: 'love', emoji: '❤️', tint: 'hover:border-pink-400/30 hover:bg-pink-500/10 hover:text-pink-200' },
-  { key: 'laugh', emoji: '😂', tint: 'hover:border-amber-400/30 hover:bg-amber-500/10 hover:text-amber-200' },
-  { key: 'fire', emoji: '🔥', tint: 'hover:border-orange-400/30 hover:bg-orange-500/10 hover:text-orange-200' },
-  { key: 'clap', emoji: '👏', tint: 'hover:border-cyan-400/30 hover:bg-cyan-500/10 hover:text-cyan-200' },
-  { key: 'pray', emoji: '🙏', tint: 'hover:border-indigo-400/30 hover:bg-indigo-500/10 hover:text-indigo-200' },
+  { key: 'love', emoji: '\u2764\uFE0F', tint: 'hover:border-pink-400/30 hover:bg-pink-500/10 hover:text-pink-200' },
+  { key: 'laugh', emoji: '\u{1F602}', tint: 'hover:border-amber-400/30 hover:bg-amber-500/10 hover:text-amber-200' },
+  { key: 'fire', emoji: '\u{1F525}', tint: 'hover:border-orange-400/30 hover:bg-orange-500/10 hover:text-orange-200' },
+  { key: 'clap', emoji: '\u{1F44F}', tint: 'hover:border-cyan-400/30 hover:bg-cyan-500/10 hover:text-cyan-200' },
+  { key: 'pray', emoji: '\u{1F64F}', tint: 'hover:border-indigo-400/30 hover:bg-indigo-500/10 hover:text-indigo-200' },
 ] as const;
 
 const FALLBACK_TRENDING = [
@@ -190,27 +186,18 @@ export default function Shoutouts() {
     setPosting(false);
   };
 
-<<<<<<< HEAD
-=======
   const deleteShoutout = async (shoutoutId: string) => {
+    if (!profile?.is_admin) return;
     if (!window.confirm('Delete this shoutout?')) return;
+
     const { error } = await supabase.from('shoutouts').delete().eq('id', shoutoutId);
     if (!error) {
-      setShoutouts(prev => prev.filter(s => s.id !== shoutoutId));
+      setShoutouts((current) => current.filter((item) => item.id !== shoutoutId));
     } else {
       console.error('Delete shoutout error:', error);
     }
   };
 
-  const timeAgo = (date: string) => {
-    const diff = (Date.now() - new Date(date).getTime()) / 1000;
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
-  };
-
->>>>>>> 52ba46d2216ffa395973f52b428341fcfaf04126
   const myName = profile?.anonymous_username;
   const forMeCount = shoutouts.filter((item) => item.to_alias === myName).length;
 
@@ -256,7 +243,6 @@ export default function Shoutouts() {
       <div className="ambient-blob left-[-10%] top-[8%] h-[420px] w-[420px] bg-violet-700/18" />
       <div className="ambient-blob bottom-[-10%] right-[-6%] h-[420px] w-[420px] bg-cyan-500/12" />
 
-<<<<<<< HEAD
       {STAR_FIELD.map((star) => (
         <span
           key={star.id}
@@ -293,6 +279,11 @@ export default function Shoutouts() {
           </div>
 
           <div className="flex items-center gap-3">
+            {profile?.is_admin ? (
+              <span className="hidden rounded-full border border-red-500/25 bg-red-500/10 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-red-300 md:inline-flex">
+                Admin
+              </span>
+            ) : null}
             <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-black/30 px-4 py-2 md:flex">
               <span className="h-2.5 w-2.5 rounded-full bg-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.9)]" />
               <span className="font-mono text-xs text-slate-300">{countLabel(onlineCount * 42)} Active Souls</span>
@@ -303,16 +294,6 @@ export default function Shoutouts() {
               </div>
             </div>
           </div>
-=======
-      <header className="relative z-10 border-b border-white/5 glass sticky top-0">
-        <div className="max-w-2xl mx-auto flex items-center gap-4 px-4 py-3.5">
-          <Link to="/dashboard"><button className="btn-ghost rounded-xl p-2 text-slate-400">← Back</button></Link>
-          <div><h1 className="font-semibold text-white">📣 Shoutouts</h1>
-            <p className="text-xs text-slate-500">Anonymous love & chaos</p></div>
-          {profile?.is_admin && (
-            <span className="ml-auto text-[10px] font-black bg-red-500/10 text-red-500 px-2 py-0.5 rounded-full border border-red-500/20">ADMIN</span>
-          )}
->>>>>>> 52ba46d2216ffa395973f52b428341fcfaf04126
         </div>
       </header>
 
@@ -437,7 +418,7 @@ export default function Shoutouts() {
                   <p className="mt-3 text-lg italic leading-8 text-slate-100">&quot;{card.body}&quot;</p>
                   <div className="mt-4 flex items-center gap-2 text-[11px] text-slate-500">
                     <span>{card.meta}</span>
-                    <span>•</span>
+                    <span>&bull;</span>
                     <span>{card.time}</span>
                   </div>
                 </div>
@@ -479,7 +460,10 @@ export default function Shoutouts() {
             {displayed.map((item, index) => {
               const isForMe = item.to_alias === myName;
               const shoutoutReactions = reactions[item.id] ?? {};
-              const iconTone = index % 2 === 0 ? 'text-cyan-300 border-cyan-400/25 bg-cyan-500/10' : 'text-violet-300 border-violet-400/25 bg-violet-500/10';
+              const iconTone =
+                index % 2 === 0
+                  ? 'text-cyan-300 border-cyan-400/25 bg-cyan-500/10'
+                  : 'text-violet-300 border-violet-400/25 bg-violet-500/10';
               const CardIcon = index % 2 === 0 ? Mic : MessageCircle;
 
               return (
@@ -518,15 +502,27 @@ export default function Shoutouts() {
                           </p>
                         </div>
                       </div>
-<<<<<<< HEAD
 
-                      <button
-                        type="button"
-                        className="flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition hover:bg-white/8 hover:text-white"
-                        aria-label="More actions"
-                      >
-                        <MoreHorizontal size={18} />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {profile?.is_admin ? (
+                          <button
+                            type="button"
+                            onClick={() => deleteShoutout(item.id)}
+                            className="flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition hover:bg-red-500/10 hover:text-red-300"
+                            aria-label="Delete shoutout"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        ) : null}
+
+                        <button
+                          type="button"
+                          className="flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition hover:bg-white/8 hover:text-white"
+                          aria-label="More actions"
+                        >
+                          <MoreHorizontal size={18} />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-white/8 pt-5">
@@ -534,22 +530,7 @@ export default function Shoutouts() {
                         {REACTIONS.map((reaction) => {
                           const users = shoutoutReactions[reaction.key] ?? [];
                           const reacted = !!user && users.includes(user.id);
-=======
-                      <p className="text-slate-200 text-sm leading-relaxed">{s.message}</p>
-                      <div className="flex items-center justify-between mt-2">
-                        <div className="text-xs text-slate-600">{timeAgo(s.created_at)}</div>
-                        {profile?.is_admin && (
-                          <button onClick={() => deleteShoutout(s.id)} className="text-slate-500 hover:text-red-400 transition-colors">
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </div>
-                      {/* Reactions */}
-                      <div className="flex items-center gap-2 mt-3 flex-wrap">
-                        {REACTIONS.map(emoji => {
-                          const who = msgReactions[emoji] ?? [];
-                          const hasReacted = who.includes(user!.id);
->>>>>>> 52ba46d2216ffa395973f52b428341fcfaf04126
+
                           return (
                             <button
                               key={reaction.key}

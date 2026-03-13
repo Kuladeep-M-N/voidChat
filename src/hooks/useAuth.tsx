@@ -6,6 +6,7 @@ interface UserProfile {
   id: string;
   anonymous_username: string;
   joined_at: string;
+  is_admin?: boolean;
 }
 
 interface AuthContextType {
