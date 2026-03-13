@@ -360,21 +360,39 @@ export default function QnA() {
         >
           <h2 className="text-sm uppercase tracking-[0.2em] text-amber-300/80 mb-4">Ask Anonymously</h2>
           <div className="space-y-3">
-            <input
-              className="input-field"
-              placeholder="Question title"
-              maxLength={120}
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-            />
-            <textarea
-              className="input-field resize-none"
-              placeholder="Add context so answers are useful."
-              rows={4}
-              maxLength={1000}
-              value={content}
-              onChange={(event) => setContent(event.target.value)}
-            />
+            <div className="relative">
+              <input
+                className="input-field pr-16"
+                placeholder="Question title"
+                maxLength={120}
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+              />
+              <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                title.trim().length >= 5 
+                  ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10' 
+                  : 'border-white/10 text-slate-500'
+              }`}>
+                {title.trim().length}/5 min
+              </span>
+            </div>
+            <div className="relative">
+              <textarea
+                className="input-field resize-none"
+                placeholder="Add context so answers are useful."
+                rows={4}
+                maxLength={1000}
+                value={content}
+                onChange={(event) => setContent(event.target.value)}
+              />
+              <span className={`absolute right-3 bottom-3 text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                content.trim().length >= 10 
+                  ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10' 
+                  : 'border-white/10 text-slate-500'
+              }`}>
+                {content.trim().length}/10 min
+              </span>
+            </div>
              {questionError && (
                 <p className="text-xs text-red-400 mt-2 font-medium">{questionError}</p>
               )}
@@ -624,14 +642,23 @@ export default function QnA() {
               </div>
 
               <div className="border-t border-white/10 p-4 shrink-0">
-                <textarea
-                  className="input-field resize-none"
-                  placeholder="Write an answer anonymously..."
-                  rows={3}
-                  maxLength={1200}
-                  value={answerText}
-                  onChange={(event) => setAnswerText(event.target.value)}
-                />
+                <div className="relative mb-3">
+                  <textarea
+                    className="input-field resize-none"
+                    placeholder="Write an answer anonymously..."
+                    rows={3}
+                    maxLength={1200}
+                    value={answerText}
+                    onChange={(event) => setAnswerText(event.target.value)}
+                  />
+                  <span className={`absolute right-3 bottom-3 text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                    answerText.trim().length >= 2 
+                      ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10' 
+                      : 'border-white/10 text-slate-500'
+                  }`}>
+                    {answerText.trim().length}/2 min
+                  </span>
+                </div>
                 <div className="flex flex-col gap-2 mt-3">
                   {answerError && (
                     <p className="text-xs text-red-400 font-medium">{answerError}</p>
