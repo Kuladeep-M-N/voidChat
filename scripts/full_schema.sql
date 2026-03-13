@@ -148,6 +148,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.polls;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.poll_votes;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.voice_rooms;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.shoutouts;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.chat_rooms;
 
 -- 11. QnA QUESTIONS table
 CREATE TABLE IF NOT EXISTS public.qna_questions (
