@@ -7,14 +7,14 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false
 -- 1.1 Add is_archived to chat_rooms
 ALTER TABLE public.chat_rooms ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT false;
 
+-- 1.2 Add status and ended_at to voice_rooms
+ALTER TABLE public.voice_rooms ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active' CHECK (status IN ('active', 'ended'));
+ALTER TABLE public.voice_rooms ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ;
+
 -- 2. Update Confessions policies for admin
 DROP POLICY IF EXISTS "confessions_admin_delete" ON public.confessions;
 CREATE POLICY "confessions_admin_delete" ON public.confessions 
 FOR DELETE USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = true));
-
--- Update existing delete policy to be clear (already exists as "confessions_delete" usually)
--- But we can just add an OR condition to the existing one if we want.
--- In Supabase, multiple policies are ORed. So adding a new DELETE policy for admins is cleaner.
 
 -- 3. Update Confession Comments policies for admin
 DROP POLICY IF EXISTS "cc_admin_delete" ON public.confession_comments;
@@ -57,3 +57,7 @@ FOR UPDATE USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND i
 DROP POLICY IF EXISTS "vrooms_admin_delete" ON public.voice_rooms;
 CREATE POLICY "vrooms_admin_delete" ON public.voice_rooms 
 FOR DELETE USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = true));
+
+DROP POLICY IF EXISTS "vrooms_admin_update" ON public.voice_rooms;
+CREATE POLICY "vrooms_admin_update" ON public.voice_rooms 
+FOR UPDATE USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = true));
