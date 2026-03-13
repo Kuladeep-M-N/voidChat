@@ -53,7 +53,7 @@ const QUESTION_PROMPTS = [
   'What tiny moment from today deserves a public little spotlight?',
 ];
 
-const LIVE_MEMBER_OFFSETS = [0, 1, -1, 2, 0, -1, 1];
+const LIVE_MEMBER_OFFSETS = [0, 0, 0, 0, 0]; // No longer needed for randomness
 
 const STARFIELD = Array.from({ length: 40 }, (_, index) => ({
   id: index,
@@ -128,6 +128,7 @@ export default function Shoutouts() {
   const [reactions, setReactions] = useState<Record<string, Record<string, string[]>>>({});
   const [pulseTick, setPulseTick] = useState(0);
   const [replyContext, setReplyContext] = useState<ReplyContext | null>(null);
+  const [presenceCount, setPresenceCount] = useState(1);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -177,6 +178,14 @@ export default function Shoutouts() {
           [incoming.id]: normalizeReactions(incoming.reactions),
         }));
       })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'shoutouts' }, (payload) => {
+        const updated = payload.new as Shoutout;
+        setShoutouts((previous) => previous.map(s => s.id === updated.id ? updated : s));
+        setReactions((previous) => ({
+          ...previous,
+          [updated.id]: normalizeReactions(updated.reactions),
+        }));
+      })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'shoutouts' }, (payload) => {
         const deletedId = String((payload.old as { id?: string }).id ?? '');
         setShoutouts((previous) => previous.filter((item) => item.id !== deletedId));
@@ -186,32 +195,18 @@ export default function Shoutouts() {
           return next;
         });
       })
-      .on('broadcast', { event: 'shoutout_reaction' }, ({ payload }) => {
-        setReactions((previous) => {
-          const shoutoutId = String(payload.shoutoutId);
-          const emoji = String(payload.emoji);
-          const userId = String(payload.userId);
-          const action = payload.action === 'remove' ? 'remove' : 'add';
-
-          const current = { ...(previous[shoutoutId] ?? {}) };
-          const who = new Set(current[emoji] ?? []);
-
-          if (action === 'remove') {
-            who.delete(userId);
-          } else {
-            who.add(userId);
-          }
-
-          if (who.size === 0) {
-            delete current[emoji];
-          } else {
-            current[emoji] = Array.from(who);
-          }
-
-          return { ...previous, [shoutoutId]: current };
-        });
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        setPresenceCount(Object.keys(state).length);
       })
-      .subscribe();
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({
+            user_id: user.id,
+            online_at: new Date().toISOString(),
+          });
+        }
+      });
 
     channelRef.current = channel;
 
@@ -248,22 +243,7 @@ export default function Shoutouts() {
   const sentCount = shoutouts.filter((item) => item.from_alias === myName).length;
   const recentBurst = shoutouts.filter((item) => Date.now() - new Date(item.created_at).getTime() < 1000 * 60 * 60).length;
 
-  const activeAliasSet = new Set<string>([myName]);
-  shoutouts.forEach((item) => {
-    if (item.from_alias) activeAliasSet.add(item.from_alias);
-    if (item.to_alias) activeAliasSet.add(item.to_alias);
-  });
-  usernameList.slice(0, Math.min(usernameList.length, 8)).forEach((name) => activeAliasSet.add(name));
-
-  const baseLiveMembers = usernameList.length
-    ? clamp(Math.max(activeAliasSet.size + 1, Math.ceil(usernameList.length * 0.35)), 4, Math.min(99, usernameList.length))
-    : Math.max(4, activeAliasSet.size + 1);
-
-  const liveMembers = clamp(
-    baseLiveMembers + LIVE_MEMBER_OFFSETS[pulseTick % LIVE_MEMBER_OFFSETS.length],
-    3,
-    Math.max(6, baseLiveMembers + 2),
-  );
+  const liveMembers = presenceCount;
 
   const topSender = topAlias(shoutouts.map((item) => item.from_alias));
   const topTarget = topAlias(shoutouts.map((item) => item.to_alias));
@@ -354,37 +334,36 @@ export default function Shoutouts() {
     setReplyContext(null);
   };
 
-  const toggleReaction = (shoutoutId: string, emoji: string) => {
+  const toggleReaction = async (shoutoutId: string, emoji: string) => {
     if (!user) return;
 
-    let nextAction: 'add' | 'remove' = 'add';
+    const shoutout = shoutouts.find(s => s.id === shoutoutId);
+    if (!shoutout) return;
 
-    setReactions((previous) => {
-      const current = { ...(previous[shoutoutId] ?? {}) };
-      const who = new Set(current[emoji] ?? []);
+    const currentReactions = normalizeReactions(reactions[shoutoutId] || {});
+    const who = new Set(currentReactions[emoji] ?? []);
+    
+    if (who.has(user.id)) {
+      who.delete(user.id);
+    } else {
+      who.add(user.id);
+    }
 
-      if (who.has(user.id)) {
-        who.delete(user.id);
-        nextAction = 'remove';
-      } else {
-        who.add(user.id);
-        nextAction = 'add';
-      }
+    if (who.size === 0) {
+      delete currentReactions[emoji];
+    } else {
+      currentReactions[emoji] = Array.from(who);
+    }
 
-      if (who.size === 0) {
-        delete current[emoji];
-      } else {
-        current[emoji] = Array.from(who);
-      }
+    // Save to database
+    const { error } = await supabase
+      .from('shoutouts')
+      .update({ reactions: currentReactions })
+      .eq('id', shoutoutId);
 
-      return { ...previous, [shoutoutId]: current };
-    });
-
-    channelRef.current?.send({
-      type: 'broadcast',
-      event: 'shoutout_reaction',
-      payload: { shoutoutId, emoji, userId: user.id, action: nextAction },
-    });
+    if (error) {
+      console.error('Reaction update error:', error);
+    }
   };
 
   const post = async () => {
