@@ -1,7 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trash2 } from 'lucide-react';
+import {
+  Plus,
+  Search,
+  MessageSquare,
+  Settings,
+  LogOut,
+  MoreVertical,
+  Trash2,
+  Shield,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  Archive,
+  User,
+  Star,
+  Zap,
+  Sparkles
+} from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
@@ -100,15 +117,28 @@ export default function Dashboard() {
     setCreating(false);
   };
 
-  const deleteRoom = async (roomId: string, e: React.MouseEvent) => {
+  const archiveRoom = async (roomId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm('Delete this room forever?')) return;
+    if (!window.confirm('Archive this room? it will be moved to history.')) return;
+    const { error } = await supabase.from('chat_rooms').update({ is_archived: true }).eq('id', roomId);
+    if (error) {
+      console.error('Archive room error:', error);
+      alert('Failed to archive room.');
+    } else {
+      setRooms(prev => prev.map(r => r.id === roomId ? { ...r, is_archived: true } : r));
+    }
+  };
+
+  const permanentlyDeleteRoom = async (roomId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!profile?.is_admin) return;
+    if (!window.confirm('PERMANENTLY delete this room and all its messages? This cannot be undone.')) return;
+    
     const { error } = await supabase.from('chat_rooms').delete().eq('id', roomId);
     if (error) {
       console.error('Delete room error:', error);
-      alert('Failed to delete room. You might not have permission.');
+      alert('Failed to delete room permanently.');
     } else {
-      // Immediate local update for better UX
       setRooms(prev => prev.filter(r => r.id !== roomId));
     }
   };
@@ -211,10 +241,10 @@ export default function Dashboard() {
                             </div>
                           )}
                           <div className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">LIVE</div>
-                          {(profile?.is_admin || room.id) && ( // We will check actual permission in the button click, but show it for admin
+                          {(profile?.is_admin || room.id) && (
                             profile?.is_admin && (
-                              <button onClick={(e) => deleteRoom(room.id, e)} className="text-slate-400 hover:text-red-400 transition-colors">
-                                <Trash2 size={14} />
+                              <button onClick={(e) => archiveRoom(room.id, e)} className="text-slate-400 hover:text-amber-400 transition-colors" title="Archive Room">
+                                <Archive size={14} />
                               </button>
                             )
                           )}
@@ -255,7 +285,18 @@ export default function Dashboard() {
                         layout>
                         <div className="flex items-center justify-between mb-4">
                           <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-lg grayscale">{theme.icon}</div>
-                          <span className="text-[9px] text-white/30 font-bold border border-white/5 px-2 py-0.5 rounded-full">Archived</span>
+                          <div className="flex items-center gap-2">
+                             {profile?.is_admin && (
+                              <button 
+                                onClick={(e) => permanentlyDeleteRoom(room.id, e)} 
+                                className="text-slate-500 hover:text-red-400 transition-colors p-1"
+                                title="Permanently Delete"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                            <span className="text-[9px] text-white/30 font-bold border border-white/5 px-2 py-0.5 rounded-full">Archived</span>
+                          </div>
                         </div>
                         <h3 className="font-semibold text-white/80 text-base mb-1 truncate">{room.name}</h3>
                         <div className="flex items-center justify-between">
