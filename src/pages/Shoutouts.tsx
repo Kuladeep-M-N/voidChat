@@ -1,19 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft,
+  AtSign,
   Megaphone,
   MessageCircle,
-  Mic,
   MoreHorizontal,
+  Reply,
   Send,
   Sparkles,
-  Flame,
-  Hand,
-  Heart,
-  Laugh,
   Trash2,
+  TrendingUp,
+  Users,
+  X,
+  Zap,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -27,45 +28,32 @@ interface Shoutout {
   reactions?: Record<string, string[]>;
 }
 
+interface ReplyContext {
+  shoutoutId: string;
+  target: string;
+  preview: string;
+}
+
+type Tab = 'all' | 'for_me' | 'from_me';
+type SortMode = 'recent' | 'hype';
+
 const REACTIONS = [
-  { emoji: '❤️', accent: 'text-rose-300', border: 'hover:border-rose-400/40 hover:bg-rose-500/10' },
-  { emoji: '😂', accent: 'text-amber-300', border: 'hover:border-amber-400/40 hover:bg-amber-500/10' },
-  { emoji: '🔥', accent: 'text-orange-300', border: 'hover:border-orange-400/40 hover:bg-orange-500/10' },
-  { emoji: '👏', accent: 'text-cyan-300', border: 'hover:border-cyan-400/40 hover:bg-cyan-500/10' },
-  { emoji: '🙏', accent: 'text-violet-300', border: 'hover:border-violet-400/40 hover:bg-violet-500/10' },
+  { emoji: '\u2764\ufe0f', accent: 'text-rose-300', border: 'hover:border-rose-400/40 hover:bg-rose-500/10' },
+  { emoji: '\ud83d\ude02', accent: 'text-amber-300', border: 'hover:border-amber-400/40 hover:bg-amber-500/10' },
+  { emoji: '\ud83d\udd25', accent: 'text-orange-300', border: 'hover:border-orange-400/40 hover:bg-orange-500/10' },
+  { emoji: '\ud83d\udc4f', accent: 'text-cyan-300', border: 'hover:border-cyan-400/40 hover:bg-cyan-500/10' },
+  { emoji: '\ud83d\ude4f', accent: 'text-violet-300', border: 'hover:border-violet-400/40 hover:bg-violet-500/10' },
 ] as const;
 
-const TABS = ['all', 'for_me'] as const;
+const QUESTION_PROMPTS = [
+  'Who in this space deserves a late-night appreciation post?',
+  'Which username has been living in your head rent free today?',
+  'What is the softest thing you wish you had already said out loud?',
+  'Who should open Shoutouts and instantly know this message is for them?',
+  'What tiny moment from today deserves a public little spotlight?',
+];
 
-const TRENDING_CARDS = [
-  {
-    target: '@everyone',
-    copy: '"The party in Room 404 is actually insane right now. Someone get in here!"',
-    meta: '1.2k engagement',
-    age: '2m ago',
-    accent: 'from-cyan-400/60 to-emerald-400/0',
-    border: 'border-cyan-400/70',
-    targetClass: 'text-cyan-300',
-  },
-  {
-    target: '@System',
-    copy: '"I finally found the hidden voice note in the whisper channel."',
-    meta: '842 hearts',
-    age: '5m ago',
-    accent: 'from-violet-400/60 to-fuchsia-400/0',
-    border: 'border-violet-400/70',
-    targetClass: 'text-violet-300',
-  },
-  {
-    target: '@Devs',
-    copy: '"The new audio filters are crisp. Love the robotic modulator."',
-    meta: '650 claps',
-    age: '12m ago',
-    accent: 'from-pink-500/60 to-rose-400/0',
-    border: 'border-pink-500/70',
-    targetClass: 'text-pink-300',
-  },
-] as const;
+const LIVE_MEMBER_OFFSETS = [0, 1, -1, 2, 0, -1, 1];
 
 const STARFIELD = Array.from({ length: 40 }, (_, index) => ({
   id: index,
@@ -76,16 +64,70 @@ const STARFIELD = Array.from({ length: 40 }, (_, index) => ({
   duration: 2.8 + (index % 5) * 0.5,
 }));
 
+function normalizeReactions(reactionMap?: Record<string, string[]>) {
+  return Object.fromEntries(
+    Object.entries(reactionMap ?? {}).map(([emoji, userIds]) => [emoji, Array.from(new Set(userIds ?? []))]),
+  ) as Record<string, string[]>;
+}
+
+function seedReactionState(items: Shoutout[]) {
+  return items.reduce<Record<string, Record<string, string[]>>>((accumulator, item) => {
+    accumulator[item.id] = normalizeReactions(item.reactions);
+    return accumulator;
+  }, {});
+}
+
+function timeAgo(date: string) {
+  const diff = (Date.now() - new Date(date).getTime()) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function countByAlias(items: string[]) {
+  const counts = new Map<string, number>();
+  items.forEach((item) => {
+    counts.set(item, (counts.get(item) ?? 0) + 1);
+  });
+  return counts;
+}
+
+function topAlias(items: string[]) {
+  const counts = countByAlias(items.filter(Boolean));
+  let winner = '';
+  let score = 0;
+
+  counts.forEach((value, key) => {
+    if (value > score) {
+      winner = key;
+      score = value;
+    }
+  });
+
+  return { winner, score };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
 export default function Shoutouts() {
   const { user, profile, loading } = useAuth();
   const navigate = useNavigate();
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const messageRef = useRef<HTMLTextAreaElement | null>(null);
+
   const [shoutouts, setShoutouts] = useState<Shoutout[]>([]);
   const [toAlias, setToAlias] = useState('');
   const [message, setMessage] = useState('');
   const [posting, setPosting] = useState(false);
   const [usernameList, setUsernameList] = useState<string[]>([]);
-  const [tab, setTab] = useState<typeof TABS[number]>('all');
+  const [tab, setTab] = useState<Tab>('all');
+  const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [reactions, setReactions] = useState<Record<string, Record<string, string[]>>>({});
+  const [pulseTick, setPulseTick] = useState(0);
+  const [replyContext, setReplyContext] = useState<ReplyContext | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -94,72 +136,279 @@ export default function Shoutouts() {
   }, [user, loading, navigate]);
 
   useEffect(() => {
+    const interval = window.setInterval(() => {
+      setPulseTick((current) => current + 1);
+    }, 5000);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
     if (!user) return;
 
-    supabase
-      .from('shoutouts')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        if (data) setShoutouts(data as Shoutout[]);
-      });
+    let active = true;
 
-    supabase
-      .from('users')
-      .select('anonymous_username')
-      .then(({ data }) => {
-        if (data) setUsernameList(data.map((entry) => entry.anonymous_username));
-      });
+    const loadData = async () => {
+      const [{ data: shoutoutData }, { data: userData }] = await Promise.all([
+        supabase.from('shoutouts').select('*').order('created_at', { ascending: false }),
+        supabase.from('users').select('anonymous_username'),
+      ]);
+
+      if (!active) return;
+
+      const normalizedShoutouts = (shoutoutData as Shoutout[] | null) ?? [];
+      setShoutouts(normalizedShoutouts);
+      setReactions(seedReactionState(normalizedShoutouts));
+
+      if (userData) {
+        setUsernameList(Array.from(new Set(userData.map((entry) => entry.anonymous_username).filter(Boolean))));
+      }
+    };
+
+    loadData();
 
     const channel = supabase
       .channel('shoutouts-live')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'shoutouts' }, (payload) => {
-        setShoutouts((prev) => [payload.new as Shoutout, ...prev]);
+        const incoming = payload.new as Shoutout;
+        setShoutouts((previous) => [incoming, ...previous.filter((item) => item.id !== incoming.id)]);
+        setReactions((previous) => ({
+          ...previous,
+          [incoming.id]: normalizeReactions(incoming.reactions),
+        }));
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'shoutouts' }, (payload) => {
+        const deletedId = String((payload.old as { id?: string }).id ?? '');
+        setShoutouts((previous) => previous.filter((item) => item.id !== deletedId));
+        setReactions((previous) => {
+          const next = { ...previous };
+          delete next[deletedId];
+          return next;
+        });
       })
       .on('broadcast', { event: 'shoutout_reaction' }, ({ payload }) => {
-        setReactions((prev) => {
-          const current = { ...(prev[payload.shoutoutId] ?? {}) };
-          const who = current[payload.emoji] ?? [];
-          if (who.includes(payload.userId)) return prev;
-          current[payload.emoji] = [...who, payload.userId];
-          return { ...prev, [payload.shoutoutId]: current };
+        setReactions((previous) => {
+          const shoutoutId = String(payload.shoutoutId);
+          const emoji = String(payload.emoji);
+          const userId = String(payload.userId);
+          const action = payload.action === 'remove' ? 'remove' : 'add';
+
+          const current = { ...(previous[shoutoutId] ?? {}) };
+          const who = new Set(current[emoji] ?? []);
+
+          if (action === 'remove') {
+            who.delete(userId);
+          } else {
+            who.add(userId);
+          }
+
+          if (who.size === 0) {
+            delete current[emoji];
+          } else {
+            current[emoji] = Array.from(who);
+          }
+
+          return { ...previous, [shoutoutId]: current };
         });
       })
       .subscribe();
 
+    channelRef.current = channel;
+
     return () => {
+      active = false;
+      channelRef.current = null;
       supabase.removeChannel(channel);
     };
   }, [user]);
 
-  const addReaction = (shoutoutId: string, emoji: string) => {
+  const myName = profile?.anonymous_username ?? 'Ghost_System';
+
+  const spotlightNames = useMemo(() => usernameList.filter((name) => name !== myName).slice(0, 6), [myName, usernameList]);
+
+  const visibleShoutouts = useMemo(() => {
+    const filtered = shoutouts.filter((item) => {
+      if (tab === 'for_me') return item.to_alias === myName;
+      if (tab === 'from_me') return item.from_alias === myName;
+      return true;
+    });
+
+    return [...filtered].sort((left, right) => {
+      if (sortMode === 'hype') {
+        const leftScore = Object.values(reactions[left.id] ?? {}).reduce((sum, userIds) => sum + userIds.length, 0);
+        const rightScore = Object.values(reactions[right.id] ?? {}).reduce((sum, userIds) => sum + userIds.length, 0);
+        if (leftScore !== rightScore) return rightScore - leftScore;
+      }
+
+      return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
+    });
+  }, [myName, reactions, shoutouts, sortMode, tab]);
+
+  const receivedCount = shoutouts.filter((item) => item.to_alias === myName).length;
+  const sentCount = shoutouts.filter((item) => item.from_alias === myName).length;
+  const recentBurst = shoutouts.filter((item) => Date.now() - new Date(item.created_at).getTime() < 1000 * 60 * 60).length;
+
+  const activeAliasSet = new Set<string>([myName]);
+  shoutouts.forEach((item) => {
+    if (item.from_alias) activeAliasSet.add(item.from_alias);
+    if (item.to_alias) activeAliasSet.add(item.to_alias);
+  });
+  usernameList.slice(0, Math.min(usernameList.length, 8)).forEach((name) => activeAliasSet.add(name));
+
+  const baseLiveMembers = usernameList.length
+    ? clamp(Math.max(activeAliasSet.size + 1, Math.ceil(usernameList.length * 0.35)), 4, Math.min(99, usernameList.length))
+    : Math.max(4, activeAliasSet.size + 1);
+
+  const liveMembers = clamp(
+    baseLiveMembers + LIVE_MEMBER_OFFSETS[pulseTick % LIVE_MEMBER_OFFSETS.length],
+    3,
+    Math.max(6, baseLiveMembers + 2),
+  );
+
+  const topSender = topAlias(shoutouts.map((item) => item.from_alias));
+  const topTarget = topAlias(shoutouts.map((item) => item.to_alias));
+  const totalReactionCount = Object.values(reactions).reduce(
+    (sum, shoutoutReactionMap) => sum + Object.values(shoutoutReactionMap).reduce((inner, ids) => inner + ids.length, 0),
+    0,
+  );
+  const otherPeopleCount = Math.max(shoutouts.length - receivedCount, 0);
+  const isMostlyForMe = receivedCount > 0 && receivedCount >= otherPeopleCount;
+
+  const rotatingInsightIndex = pulseTick % 3;
+  const insightTitle =
+    rotatingInsightIndex === 0
+      ? topTarget.winner
+        ? `@${topTarget.winner} is pulling the most attention`
+        : 'The room is waiting for the first real target'
+      : rotatingInsightIndex === 1
+        ? topSender.winner
+          ? `@${topSender.winner} is the loudest voice right now`
+          : 'No sender streak has formed yet'
+        : totalReactionCount > 0
+          ? 'Reactions are waking the room up'
+          : 'The feed is still in soft-launch mode';
+
+  const insightBody =
+    rotatingInsightIndex === 0
+      ? topTarget.winner
+        ? `${topTarget.score} shoutout${topTarget.score === 1 ? '' : 's'} are currently landing on that name.`
+        : 'Once a few posts land, this card will start tracking the hottest mention.'
+      : rotatingInsightIndex === 1
+        ? topSender.winner
+          ? `${topSender.score} post${topSender.score === 1 ? '' : 's'} came from that member in this session.`
+          : 'Fresh senders will bubble up here as soon as the feed starts moving.'
+        : totalReactionCount > 0
+          ? `${totalReactionCount} live reaction${totalReactionCount === 1 ? '' : 's'} have been tapped across the feed.`
+          : 'Ask for a clap, laugh, or heart and the hype meter will start climbing.';
+
+  const trendingCards = [
+    {
+      id: 'question',
+      label: 'Trending Question',
+      title: 'Question pulse',
+      body: QUESTION_PROMPTS[pulseTick % QUESTION_PROMPTS.length],
+      meta: 'Updates every few seconds',
+      border: 'border-cyan-400/55',
+      accent: 'from-cyan-400/30 via-sky-400/8 to-transparent',
+      titleClass: 'text-cyan-200',
+    },
+    {
+      id: 'signal',
+      label: 'Who Likes Me?',
+      title: isMostlyForMe ? 'This wave feels personal' : 'Most of the chaos is for other people',
+      body: isMostlyForMe
+        ? `${receivedCount} shoutout${receivedCount === 1 ? '' : 's'} are pointed at @${myName} right now.`
+        : `${otherPeopleCount} shoutout${otherPeopleCount === 1 ? '' : 's'} are circling the rest of the room while ${receivedCount} found you.`,
+      meta: isMostlyForMe ? 'You are in the spotlight' : 'Global room energy is stronger',
+      border: 'border-violet-400/55',
+      accent: 'from-violet-400/30 via-fuchsia-400/10 to-transparent',
+      titleClass: 'text-violet-200',
+    },
+    {
+      id: 'insight',
+      label: 'Space Output',
+      title: insightTitle,
+      body: insightBody,
+      meta: recentBurst > 0 ? `${recentBurst} post${recentBurst === 1 ? '' : 's'} in the last hour` : 'Waiting on the next spark',
+      border: 'border-pink-500/55',
+      accent: 'from-pink-500/28 via-rose-400/8 to-transparent',
+      titleClass: 'text-pink-200',
+    },
+  ] as const;
+
+  const startReply = (shoutout: Shoutout) => {
+    const preview = shoutout.message.length > 88 ? `${shoutout.message.slice(0, 88)}...` : shoutout.message;
+    setReplyContext({
+      shoutoutId: shoutout.id,
+      target: shoutout.from_alias,
+      preview,
+    });
+    setToAlias(shoutout.from_alias);
+    document.getElementById('composer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.setTimeout(() => {
+      messageRef.current?.focus();
+    }, 250);
+  };
+
+  const clearReply = () => {
+    setReplyContext(null);
+  };
+
+  const toggleReaction = (shoutoutId: string, emoji: string) => {
     if (!user) return;
 
-    setReactions((prev) => {
-      const current = { ...(prev[shoutoutId] ?? {}) };
-      const who = current[emoji] ?? [];
-      if (who.includes(user.id)) return prev;
-      current[emoji] = [...who, user.id];
-      return { ...prev, [shoutoutId]: current };
+    let nextAction: 'add' | 'remove' = 'add';
+
+    setReactions((previous) => {
+      const current = { ...(previous[shoutoutId] ?? {}) };
+      const who = new Set(current[emoji] ?? []);
+
+      if (who.has(user.id)) {
+        who.delete(user.id);
+        nextAction = 'remove';
+      } else {
+        who.add(user.id);
+        nextAction = 'add';
+      }
+
+      if (who.size === 0) {
+        delete current[emoji];
+      } else {
+        current[emoji] = Array.from(who);
+      }
+
+      return { ...previous, [shoutoutId]: current };
+    });
+
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'shoutout_reaction',
+      payload: { shoutoutId, emoji, userId: user.id, action: nextAction },
     });
   };
 
   const post = async () => {
-    const to = toAlias.trim();
-    const msg = message.trim();
+    const target = toAlias.trim().replace(/^@+/, '');
+    const content = message.trim();
 
-    if (!to || !msg || !user || posting) return;
+    if (!target || !content || !user || posting) return;
 
     setPosting(true);
-    setToAlias('');
-    setMessage('');
 
-    await supabase.from('shoutouts').insert({
-      to_alias: to,
-      message: msg,
+    const { error } = await supabase.from('shoutouts').insert({
+      to_alias: target,
+      message: content,
       from_alias: profile?.anonymous_username ?? 'Someone',
       user_id: user.id,
     });
+
+    if (!error) {
+      setToAlias('');
+      setMessage('');
+      setReplyContext(null);
+    } else {
+      console.error('Post shoutout error:', error);
+    }
 
     setPosting(false);
   };
@@ -170,23 +419,17 @@ export default function Shoutouts() {
     const { error } = await supabase.from('shoutouts').delete().eq('id', shoutoutId);
 
     if (!error) {
-      setShoutouts((prev) => prev.filter((item) => item.id !== shoutoutId));
+      setShoutouts((previous) => previous.filter((item) => item.id !== shoutoutId));
+      setReactions((previous) => {
+        const next = { ...previous };
+        delete next[shoutoutId];
+        return next;
+      });
     } else {
       console.error('Delete shoutout error:', error);
     }
   };
 
-  const timeAgo = (date: string) => {
-    const diff = (Date.now() - new Date(date).getTime()) / 1000;
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
-  };
-
-  const myName = profile?.anonymous_username;
-  const displayed = tab === 'for_me' ? shoutouts.filter((item) => item.to_alias === myName) : shoutouts;
-  const receivedCount = shoutouts.filter((item) => item.to_alias === myName).length;
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#06070d]">
@@ -197,7 +440,7 @@ export default function Shoutouts() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#04050a] text-slate-100">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(111,55,255,0.16),transparent_24%),radial-gradient(circle_at_78%_62%,rgba(0,245,212,0.12),transparent_26%),linear-gradient(180deg,#06060b_0%,#03040a_48%,#010308_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(111,55,255,0.17),transparent_24%),radial-gradient(circle_at_82%_70%,rgba(0,245,212,0.1),transparent_22%),linear-gradient(180deg,#06060b_0%,#03040a_48%,#010308_100%)]" />
       <div className="pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(circle_at_center,black_35%,transparent_90%)]" />
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         {STARFIELD.map((star) => (
@@ -214,7 +457,10 @@ export default function Shoutouts() {
       <header className="sticky top-0 z-30 border-b border-white/10 bg-black/30 backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
           <div className="flex items-center gap-4">
-            <Link to="/dashboard" className="rounded-full border border-white/10 p-2.5 text-white/60 transition hover:border-white/20 hover:bg-white/5 hover:text-white">
+            <Link
+              to="/dashboard"
+              className="rounded-full border border-white/10 p-2.5 text-white/60 transition hover:border-white/20 hover:bg-white/5 hover:text-white"
+            >
               <ArrowLeft className="h-5 w-5" />
             </Link>
             <div>
@@ -222,14 +468,79 @@ export default function Shoutouts() {
                 SHOUTOUTS
               </h1>
               <p className="font-mono text-[10px] uppercase tracking-[0.42em] text-white/45">
-                Anonymous Love &amp; Chaos
+                Visible names, live pulse, clean chaos
               </p>
             </div>
+          </div>
+
+          <div className="hidden items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 sm:flex">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-300" />
+            </span>
+            <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-emerald-200">
+              {liveMembers} members in space
+            </span>
           </div>
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto flex max-w-5xl flex-col gap-10 px-5 py-8 sm:px-8 lg:py-10">
+      <main className="relative z-10 mx-auto flex max-w-6xl flex-col gap-8 px-5 py-8 sm:px-8 lg:py-10">
+        <section className="grid gap-4 md:grid-cols-3">
+          {[
+            {
+              id: 'live',
+              icon: Users,
+              label: 'Live Now',
+              value: `${liveMembers}`,
+              note: 'Members currently vibing in this space',
+              accent: 'from-emerald-500/20 via-cyan-400/5 to-transparent',
+              iconClass: 'text-emerald-300',
+            },
+            {
+              id: 'for-you',
+              icon: AtSign,
+              label: 'For You',
+              value: `${receivedCount}`,
+              note: receivedCount > 0 ? 'Posts aimed at your username' : 'No one has tagged you yet',
+              accent: 'from-violet-500/20 via-fuchsia-400/5 to-transparent',
+              iconClass: 'text-violet-300',
+            },
+            {
+              id: 'rush',
+              icon: Zap,
+              label: 'Fresh Rush',
+              value: `${recentBurst}`,
+              note: recentBurst > 0 ? 'Posts dropped in the last hour' : 'Quiet hour, clean slate',
+              accent: 'from-pink-500/20 via-rose-400/5 to-transparent',
+              iconClass: 'text-pink-300',
+            },
+          ].map((card) => {
+            const Icon = card.icon;
+
+            return (
+              <motion.article
+                key={card.id}
+                className="relative overflow-hidden rounded-[1.6rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.02))] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.25)] backdrop-blur-xl"
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${card.accent}`} />
+                <div className="relative flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-white/38">{card.label}</p>
+                    <p className="mt-3 text-3xl font-extrabold text-white">{card.value}</p>
+                    <p className="mt-2 text-sm text-white/55">{card.note}</p>
+                  </div>
+                  <div className={`rounded-2xl border border-white/10 bg-white/5 p-3 ${card.iconClass}`}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                </div>
+              </motion.article>
+            );
+          })}
+        </section>
+
         <motion.section
           id="composer"
           className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(124,58,237,0.12),rgba(255,255,255,0.02)_34%,rgba(255,255,255,0.02)_68%,rgba(0,245,212,0.07))] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl sm:p-8"
@@ -240,19 +551,43 @@ export default function Shoutouts() {
           <div className="pointer-events-none absolute -bottom-20 right-20 h-32 w-32 rounded-full bg-cyan-500/10 blur-3xl" />
 
           <div className="relative">
-            <div className="mb-8 flex items-center gap-3">
-              <div className="rounded-xl bg-violet-500/20 p-3 text-violet-300">
-                <Megaphone className="h-6 w-6" />
+            <div className="mb-7 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-violet-500/20 p-3 text-violet-300">
+                  <Megaphone className="h-6 w-6" />
+                </div>
+                <div>
+                  <h2 className="text-3xl font-extrabold tracking-tight text-white">Cast a Shoutout</h2>
+                  <p className="mt-1 text-sm text-white/50">Posts now show who sent them, so love notes feel a little more real.</p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-3xl font-extrabold tracking-tight text-white">Cast a Shoutout</h2>
+
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/60">
+                <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-white/35">Posting As</p>
+                <p className="mt-1 text-base font-semibold text-cyan-300">@{myName}</p>
               </div>
             </div>
+
+            {replyContext && (
+              <div className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-50">
+                <div>
+                  <p className="font-semibold text-cyan-200">Replying to @{replyContext.target}</p>
+                  <p className="mt-1 text-cyan-50/80">"{replyContext.preview}"</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearReply}
+                  className="rounded-full border border-cyan-300/20 p-2 text-cyan-100/70 transition hover:bg-cyan-300/10 hover:text-cyan-50"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
 
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="ml-1 block font-mono text-[10px] uppercase tracking-[0.32em] text-white/40">
-                  Target Dimension (Username)
+                  Send To (Username)
                 </label>
                 <input
                   list="usernames"
@@ -267,6 +602,20 @@ export default function Shoutouts() {
                     <option key={name} value={name} />
                   ))}
                 </datalist>
+                {spotlightNames.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {spotlightNames.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => setToAlias(name)}
+                        className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-white/65 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-cyan-200"
+                      >
+                        @{name}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -274,8 +623,9 @@ export default function Shoutouts() {
                   The Message
                 </label>
                 <textarea
-                  className="min-h-[140px] w-full resize-none rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-base text-white outline-none transition focus:border-violet-400/50 focus:bg-violet-500/[0.07] focus:ring-2 focus:ring-violet-500/20"
-                  placeholder="Whisper into the void..."
+                  ref={messageRef}
+                  className="min-h-[148px] w-full resize-none rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-base text-white outline-none transition focus:border-violet-400/50 focus:bg-violet-500/[0.07] focus:ring-2 focus:ring-violet-500/20"
+                  placeholder={replyContext ? `Say it back to @${replyContext.target}...` : 'Say something sweet, chaotic, or impossible to ignore...'}
                   rows={5}
                   value={message}
                   onChange={(event) => setMessage(event.target.value)}
@@ -289,9 +639,9 @@ export default function Shoutouts() {
 
               <div className="flex flex-col gap-4 border-t border-white/8 pt-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-white/45">
-                  Manifesting as:
-                  <span className="ml-2 rounded-md bg-cyan-400/15 px-2 py-1 font-mono text-xs text-cyan-300">
-                    {profile?.anonymous_username ?? 'Ghost_System'}
+                  Visibility:
+                  <span className="ml-2 rounded-md bg-emerald-400/15 px-2 py-1 font-mono text-xs text-emerald-300">
+                    username shown on post
                   </span>
                 </div>
 
@@ -314,25 +664,32 @@ export default function Shoutouts() {
             <h3 className="text-sm font-extrabold uppercase tracking-[0.28em] text-pink-400">Trending Now</h3>
           </div>
 
-          <div className="flex gap-4 overflow-x-auto pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {TRENDING_CARDS.map((card) => (
+          <div className="grid gap-4 lg:grid-cols-3">
+            {trendingCards.map((card) => (
               <motion.article
-                key={card.target}
-                className={`group relative min-w-[280px] overflow-hidden rounded-[1.6rem] border ${card.border} bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015))] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.22)]`}
+                key={card.id}
+                className={`group relative overflow-hidden rounded-[1.6rem] border ${card.border} bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015))] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.22)]`}
                 whileHover={{ y: -4 }}
               >
-                <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${card.accent} opacity-20 transition group-hover:opacity-30`} />
-                <div className="relative space-y-3">
-                  <p className="text-sm text-white/55">
-                    to <span className={`font-bold ${card.targetClass}`}>{card.target}</span>
-                  </p>
-                  <p className="text-xl font-medium italic leading-8 text-white/90">{card.copy}</p>
-                  <div className="flex items-center gap-2 text-xs text-white/40">
-                    <span>{card.meta}</span>
-                    <span>•</span>
-                    <span>{card.age}</span>
-                  </div>
-                </div>
+                <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${card.accent} opacity-40 transition group-hover:opacity-60`} />
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={`${card.id}-${pulseTick}-${card.body}`}
+                    className="relative space-y-3"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.28 }}
+                  >
+                    <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-white/42">{card.label}</p>
+                    <h4 className={`text-lg font-bold ${card.titleClass}`}>{card.title}</h4>
+                    <p className="text-[1.02rem] leading-7 text-white/88">{card.body}</p>
+                    <div className="flex items-center gap-2 text-xs text-white/42">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      <span>{card.meta}</span>
+                    </div>
+                  </motion.div>
+                </AnimatePresence>
               </motion.article>
             ))}
           </div>
@@ -340,56 +697,67 @@ export default function Shoutouts() {
 
         <section className="flex flex-wrap items-center gap-3">
           {[
-            { id: 'all', label: `Global`, extra: shoutouts.length },
-            { id: 'for_me', label: 'My Room', extra: receivedCount },
-            { id: 'ghost', label: 'Whispers', extra: null },
+            { id: 'all' as const, label: 'Global', extra: shoutouts.length },
+            { id: 'for_me' as const, label: 'For You', extra: receivedCount },
+            { id: 'from_me' as const, label: 'From Me', extra: sentCount },
           ].map((item) => {
             const active = item.id === tab;
-            const isDisabled = item.id === 'ghost';
 
             return (
               <button
                 key={item.id}
                 type="button"
-                disabled={isDisabled}
-                onClick={() => {
-                  if (item.id === 'all' || item.id === 'for_me') {
-                    setTab(item.id);
-                  }
-                }}
+                onClick={() => setTab(item.id)}
                 className={[
                   'inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-semibold transition',
                   active
                     ? 'border-violet-400/70 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-[0_0_24px_rgba(168,85,247,0.4)]'
                     : 'border-white/10 bg-white/[0.03] text-white/65 hover:border-white/20 hover:bg-white/[0.05] hover:text-white',
-                  isDisabled ? 'cursor-default opacity-90' : '',
                 ].join(' ')}
               >
                 <span>{item.label}</span>
-                {typeof item.extra === 'number' && (
-                  <span className={`rounded-full px-2 py-0.5 text-xs ${active ? 'bg-white/15 text-white' : 'bg-white/8 text-white/60'}`}>
-                    {item.extra}
-                  </span>
-                )}
+                <span className={`rounded-full px-2 py-0.5 text-xs ${active ? 'bg-white/15 text-white' : 'bg-white/8 text-white/60'}`}>
+                  {item.extra}
+                </span>
               </button>
             );
           })}
 
-          <div className="ml-auto flex items-center gap-2 text-white/35">
-            <Sparkles className="h-4 w-4" />
-            <span className="font-mono text-xs uppercase tracking-[0.28em]">Sort: Recent</span>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {[
+              { id: 'recent' as const, label: 'Recent', icon: Sparkles },
+              { id: 'hype' as const, label: 'Most Reacted', icon: TrendingUp },
+            ].map((option) => {
+              const Icon = option.icon;
+              const active = option.id === sortMode;
+
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setSortMode(option.id)}
+                  className={[
+                    'inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] transition',
+                    active
+                      ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-200'
+                      : 'border-white/10 bg-white/[0.03] text-white/45 hover:border-white/20 hover:text-white/75',
+                  ].join(' ')}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {option.label}
+                </button>
+              );
+            })}
           </div>
         </section>
 
         <section className="space-y-6">
           <AnimatePresence>
-            {displayed.map((shoutout, index) => {
+            {visibleShoutouts.map((shoutout, index) => {
               const isForMe = shoutout.to_alias === myName;
-              const localReactions = reactions[shoutout.id] ?? {};
-              const storedReactions = shoutout.reactions ?? {};
-              const channelLabel = index % 2 === 0 ? 'Voice Node 04' : 'Text Relay';
-              const replyLabel = 'Reply';
-              const AccentIcon = index % 2 === 0 ? Mic : MessageCircle;
+              const isMine = shoutout.from_alias === myName;
+              const shoutoutReactions = reactions[shoutout.id] ?? {};
+              const reactionCount = Object.values(shoutoutReactions).reduce((sum, ids) => sum + ids.length, 0);
 
               return (
                 <motion.article
@@ -400,7 +768,13 @@ export default function Shoutouts() {
                   exit={{ opacity: 0, y: -12 }}
                   transition={{ delay: index * 0.04 }}
                 >
-                  <div className={`pointer-events-none absolute inset-0 opacity-0 transition group-hover:opacity-100 ${isForMe ? 'bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.12),transparent_28%)]' : 'bg-[radial-gradient(circle_at_top_right,rgba(168,85,247,0.12),transparent_28%)]'}`} />
+                  <div
+                    className={`pointer-events-none absolute inset-0 opacity-0 transition group-hover:opacity-100 ${
+                      isForMe
+                        ? 'bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.12),transparent_28%)]'
+                        : 'bg-[radial-gradient(circle_at_top_right,rgba(168,85,247,0.12),transparent_28%)]'
+                    }`}
+                  />
 
                   <div className="relative">
                     <div className="flex items-start justify-between gap-4">
@@ -408,32 +782,43 @@ export default function Shoutouts() {
                         <div
                           className={[
                             'flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border',
-                            index % 2 === 0
+                            isForMe
                               ? 'border-cyan-400/35 bg-gradient-to-br from-cyan-500/15 to-blue-500/10 text-cyan-300'
                               : 'border-violet-400/35 bg-gradient-to-br from-violet-500/15 to-pink-500/10 text-violet-300',
                           ].join(' ')}
                         >
-                          <AccentIcon className="h-6 w-6" />
+                          <MessageCircle className="h-6 w-6" />
                         </div>
 
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-white/35">To</span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-white/48">
+                              From @{shoutout.from_alias}
+                            </span>
+                            <span className="text-sm text-white/25">to</span>
                             <span className="text-2xl font-extrabold tracking-tight text-white">@{shoutout.to_alias}</span>
                             {isForMe && (
                               <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-200">
                                 For You
                               </span>
                             )}
+                            {isMine && (
+                              <span className="rounded-full border border-violet-400/30 bg-violet-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-violet-200">
+                                You Posted This
+                              </span>
+                            )}
                           </div>
 
-                          <p className="mt-3 max-w-3xl text-[1.15rem] leading-9 text-white/90 sm:text-[1.35rem]">
+                          <p className="mt-4 max-w-3xl text-[1.1rem] leading-8 text-white/92 sm:text-[1.28rem]">
                             {shoutout.message}
                           </p>
 
-                          <p className="mt-4 font-mono text-[11px] uppercase tracking-[0.24em] text-white/28">
-                            Received {timeAgo(shoutout.created_at)} via {channelLabel}
-                          </p>
+                          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-white/35">
+                            <span className="font-mono uppercase tracking-[0.24em]">{timeAgo(shoutout.created_at)}</span>
+                            <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                              {reactionCount} reactions
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -452,18 +837,18 @@ export default function Shoutouts() {
                       </div>
                     </div>
 
-                    <div className="mt-6 flex flex-col gap-4 border-t border-white/8 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mt-6 flex flex-col gap-4 border-t border-white/8 pt-5 lg:flex-row lg:items-center lg:justify-between">
                       <div className="flex flex-wrap items-center gap-2">
                         {REACTIONS.map((reaction) => {
-                          const localCount = localReactions[reaction.emoji]?.length ?? 0;
-                          const storedCount = storedReactions[reaction.emoji]?.length ?? 0;
-                          const totalCount = Math.max(localCount, storedCount);
-                          const hasReacted = Boolean(user && (localReactions[reaction.emoji] ?? []).includes(user.id));
+                          const who = shoutoutReactions[reaction.emoji] ?? [];
+                          const count = who.length;
+                          const hasReacted = Boolean(user && who.includes(user.id));
 
                           return (
                             <button
                               key={reaction.emoji}
-                              onClick={() => addReaction(shoutout.id, reaction.emoji)}
+                              type="button"
+                              onClick={() => toggleReaction(shoutout.id, reaction.emoji)}
                               className={[
                                 'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition',
                                 hasReacted
@@ -473,16 +858,20 @@ export default function Shoutouts() {
                             >
                               <span className="text-base">{reaction.emoji}</span>
                               <span className={`inline-flex items-center gap-1 font-mono text-xs ${hasReacted ? 'text-white' : reaction.accent}`}>
-                                {totalCount}
+                                {count}
                               </span>
                             </button>
                           );
                         })}
                       </div>
 
-                      <button className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm font-bold text-white/70 transition hover:border-cyan-400/35 hover:bg-cyan-400/10 hover:text-cyan-200">
-                        <AccentIcon className="h-4 w-4" />
-                        {replyLabel.toUpperCase()}
+                      <button
+                        type="button"
+                        onClick={() => startReply(shoutout)}
+                        className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm font-bold text-white/70 transition hover:border-cyan-400/35 hover:bg-cyan-400/10 hover:text-cyan-200"
+                      >
+                        <Reply className="h-4 w-4" />
+                        REPLY
                       </button>
                     </div>
                   </div>
@@ -491,24 +880,22 @@ export default function Shoutouts() {
             })}
           </AnimatePresence>
 
-          {displayed.length === 0 && (
+          {visibleShoutouts.length === 0 && (
             <div className="rounded-[2rem] border border-dashed border-white/10 bg-white/[0.02] px-6 py-20 text-center">
               <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-violet-400/30 bg-violet-500/10 text-violet-300">
                 <Megaphone className="h-7 w-7" />
               </div>
               <p className="text-xl font-semibold text-white">
-                {tab === 'for_me' ? 'No shoutouts for you yet' : 'No shoutouts drifting through the grid yet'}
+                {tab === 'for_me'
+                  ? 'No shoutouts have landed on your username yet'
+                  : tab === 'from_me'
+                    ? 'You have not posted into this space yet'
+                    : 'No shoutouts are drifting through the grid yet'}
               </p>
               <p className="mt-2 text-sm text-white/45">Once messages start dropping, this feed will light up automatically.</p>
             </div>
           )}
         </section>
-
-        <div className="flex justify-center pb-10 pt-2">
-          <button className="rounded-full border border-white/10 px-10 py-3 font-mono text-sm uppercase tracking-[0.28em] text-white/45 transition hover:border-cyan-400/35 hover:bg-cyan-400/5 hover:text-cyan-200">
-            Decrypt More Memories
-          </button>
-        </div>
       </main>
 
       <button
