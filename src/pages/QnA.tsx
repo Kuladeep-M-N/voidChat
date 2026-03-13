@@ -74,6 +74,8 @@ export default function QnA() {
 
   const [answerText, setAnswerText] = useState('');
   const [answerSubmitting, setAnswerSubmitting] = useState(false);
+  const [questionError, setQuestionError] = useState('');
+  const [answerError, setAnswerError] = useState('');
 
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<typeof SORT_OPTIONS[number]>('new');
@@ -203,6 +205,7 @@ export default function QnA() {
     if (!cleanTitle || !cleanContent) return;
 
     setQuestionSubmitting(true);
+    setQuestionError('');
     const { error } = await supabase.from('qna_questions').insert({
       title: cleanTitle,
       content: cleanContent,
@@ -213,6 +216,9 @@ export default function QnA() {
 
     if (error) {
       console.error('Question submit error:', error);
+      setQuestionError(error.message.includes('check constraint') 
+        ? 'Title must be 5+ chars, Content must be 10+ chars.' 
+        : 'Failed to post: ' + error.message);
       return;
     }
 
@@ -227,6 +233,7 @@ export default function QnA() {
     if (!clean) return;
 
     setAnswerSubmitting(true);
+    setAnswerError('');
     const { error } = await supabase.from('qna_answers').insert({
       question_id: activeQuestion.id,
       content: clean,
@@ -236,6 +243,9 @@ export default function QnA() {
 
     if (error) {
       console.error('Answer submit error:', error);
+      setAnswerError(error.message.includes('check constraint') 
+        ? 'Answer is too short (min 2 chars).' 
+        : 'Failed to post answer.');
       return;
     }
 
@@ -365,30 +375,33 @@ export default function QnA() {
               value={content}
               onChange={(event) => setContent(event.target.value)}
             />
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex gap-2 flex-wrap">
-                {TAGS.map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => setTag(item)}
-                    className={`text-xs px-3 py-1.5 rounded-full border capitalize transition-all ${
-                      tag === item
-                        ? 'border-amber-500/60 bg-amber-500/15 text-amber-300'
-                        : 'border-white/10 text-slate-500 hover:border-white/20'
-                    }`}
-                  >
-                    {item}
-                  </button>
-                ))}
+             {questionError && (
+                <p className="text-xs text-red-400 mt-2 font-medium">{questionError}</p>
+              )}
+              <div className="flex items-center justify-between gap-3 flex-wrap mt-2">
+                <div className="flex gap-2 flex-wrap">
+                  {TAGS.map((item) => (
+                    <button
+                      key={item}
+                      onClick={() => setTag(item)}
+                      className={`text-xs px-3 py-1.5 rounded-full border capitalize transition-all ${
+                        tag === item
+                          ? 'border-amber-500/60 bg-amber-500/15 text-amber-300'
+                          : 'border-white/10 text-slate-500 hover:border-white/20'
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={submitQuestion}
+                  disabled={title.trim().length < 5 || content.trim().length < 10 || questionSubmitting}
+                  className="btn-primary !w-auto px-5 py-2 rounded-xl text-sm disabled:opacity-50 disabled:grayscale transition-all"
+                >
+                  {questionSubmitting ? 'Posting...' : 'Post Question'}
+                </button>
               </div>
-              <button
-                onClick={submitQuestion}
-                disabled={!title.trim() || !content.trim() || questionSubmitting}
-                className="btn-primary !w-auto px-5 py-2 rounded-xl text-sm"
-              >
-                {questionSubmitting ? 'Posting...' : 'Post Question'}
-              </button>
-            </div>
           </div>
         </motion.div>
 
@@ -619,15 +632,20 @@ export default function QnA() {
                   value={answerText}
                   onChange={(event) => setAnswerText(event.target.value)}
                 />
-                <div className="flex justify-between items-center mt-3 gap-3">
-                  <span className="text-xs text-slate-500">Your name remains hidden in this Q&A space.</span>
-                  <button
-                    onClick={submitAnswer}
-                    disabled={!answerText.trim() || answerSubmitting}
-                    className="btn-primary !w-auto px-5 py-2 rounded-xl text-sm"
-                  >
-                    {answerSubmitting ? 'Posting...' : 'Post Answer'}
-                  </button>
+                <div className="flex flex-col gap-2 mt-3">
+                  {answerError && (
+                    <p className="text-xs text-red-400 font-medium">{answerError}</p>
+                  )}
+                  <div className="flex justify-between items-center gap-3">
+                    <span className="text-xs text-slate-500">Your name remains hidden in this Q&A space.</span>
+                    <button
+                      onClick={submitAnswer}
+                      disabled={answerText.trim().length < 2 || answerSubmitting}
+                      className="btn-primary !w-auto px-5 py-2 rounded-xl text-sm disabled:opacity-50 disabled:grayscale transition-all"
+                    >
+                      {answerSubmitting ? 'Posting...' : 'Post Answer'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>
