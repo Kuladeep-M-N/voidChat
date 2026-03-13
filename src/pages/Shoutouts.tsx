@@ -26,6 +26,7 @@ interface Shoutout {
   from_alias: string;
   created_at: string;
   reactions?: Record<string, string[]>;
+  parent_id?: string;
 }
 
 interface ReplyContext {
@@ -193,6 +194,27 @@ export default function Shoutouts() {
           const next = { ...previous };
           delete next[deletedId];
           return next;
+        });
+      })
+      .on('broadcast', { event: 'shoutout_reaction' }, ({ payload }) => {
+        setReactions((previous) => {
+          const { shoutoutId, emoji, userId, action } = payload;
+          const current = { ...(previous[shoutoutId] ?? {}) };
+          const who = new Set(current[emoji] ?? []);
+
+          if (action === 'remove') {
+            who.delete(userId);
+          } else {
+            who.add(userId);
+          }
+
+          if (who.size === 0) {
+            delete current[emoji];
+          } else {
+            current[emoji] = Array.from(who);
+          }
+
+          return { ...previous, [shoutoutId]: current };
         });
       })
       .on('presence', { event: 'sync' }, () => {
@@ -372,13 +394,16 @@ export default function Shoutouts() {
     const shoutout = shoutouts.find(s => s.id === shoutoutId);
     if (!shoutout) return;
 
-    const currentReactions = normalizeReactions(reactions[shoutoutId] || {});
+    const currentReactions = { ...(reactions[shoutoutId] || {}) };
     const who = new Set(currentReactions[emoji] ?? []);
+    let action: 'add' | 'remove' = 'add';
     
     if (who.has(user.id)) {
       who.delete(user.id);
+      action = 'remove';
     } else {
       who.add(user.id);
+      action = 'add';
     }
 
     if (who.size === 0) {
@@ -387,7 +412,17 @@ export default function Shoutouts() {
       currentReactions[emoji] = Array.from(who);
     }
 
-    // Save to database
+    // 1. Optimistic UI Update
+    setReactions(prev => ({ ...prev, [shoutoutId]: currentReactions }));
+
+    // 2. Broadcast to other online users
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'shoutout_reaction',
+      payload: { shoutoutId, emoji, userId: user.id, action }
+    });
+
+    // 3. Save to database for persistence
     const { error } = await supabase
       .from('shoutouts')
       .update({ reactions: currentReactions })
@@ -395,6 +430,8 @@ export default function Shoutouts() {
 
     if (error) {
       console.error('Reaction update error:', error);
+      // Optional: Revert optimistic update on error? 
+      // Usually better to just let it sync on the next real change.
     }
   };
 
@@ -411,6 +448,7 @@ export default function Shoutouts() {
       message: content,
       from_alias: profile?.anonymous_username ?? 'Someone',
       user_id: user.id,
+      parent_id: replyContext?.shoutoutId || null,
     });
 
     if (!error) {
@@ -770,15 +808,25 @@ export default function Shoutouts() {
               const shoutoutReactions = reactions[shoutout.id] ?? {};
               const reactionCount = Object.values(shoutoutReactions).reduce((sum, ids) => sum + ids.length, 0);
 
+              const isReply = Boolean(shoutout.parent_id);
+              const parentShoutout = isReply ? shoutouts.find(s => s.id === shoutout.parent_id) : null;
+
               return (
                 <motion.article
                   key={shoutout.id}
-                  className="group relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(90deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015)_42%,rgba(4,120,87,0.14))] p-6 shadow-[0_20px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl"
+                  className={`group relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(90deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015)_42%,rgba(4,120,87,0.14))] p-6 shadow-[0_20px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl ${isReply ? 'ml-4 sm:ml-8 lg:ml-12 border-l-cyan-400/40' : ''}`}
                   initial={{ opacity: 0, y: 18 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -12 }}
                   transition={{ delay: index * 0.04 }}
                 >
+                  {isReply && (
+                    <div className="mb-4 flex items-center gap-2 rounded-2xl bg-white/5 p-3 text-[11px] text-white/40">
+                      <Reply className="h-3 w-3" />
+                      <span className="font-medium">In response to @{parentShoutout?.from_alias || 'someone'}:</span>
+                      <span className="truncate italic">"{parentShoutout?.message || '...'}"</span>
+                    </div>
+                  )}
                   <div
                     className={`pointer-events-none absolute inset-0 opacity-0 transition group-hover:opacity-100 ${
                       isForMe
