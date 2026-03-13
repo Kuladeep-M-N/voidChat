@@ -70,7 +70,7 @@ const timeAgo = (date: string) => {
 };
 
 export default function Polls() {
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   const navigate = useNavigate();
 
   const [polls, setPolls] = useState<Poll[]>([]);
@@ -355,7 +355,10 @@ export default function Polls() {
               <button className="btn-ghost rounded-xl p-2 text-slate-400">Back</button>
             </Link>
             <div>
-              <h1 className="font-semibold text-white">Live Poll Arena</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="font-semibold text-white">Live Poll Arena</h1>
+                {profile?.is_admin && <span className="text-[10px] font-black bg-red-500/10 text-red-500 px-2 py-0.5 rounded-full border border-red-500/20">ADMIN</span>}
+              </div>
               <p className="text-xs text-slate-500">{polls.length} active rooms for anonymous voting</p>
             </div>
           </div>
@@ -453,7 +456,7 @@ export default function Polls() {
               const total = bucket?.total ?? 0;
               const voted = myVotes.has(poll.id);
               const myOptionIndex = myVotes.get(poll.id);
-              const isOwn = poll.created_by === user?.id;
+              const isOwn = poll.created_by === user?.id || profile?.is_admin;
               const tagInfo = TAGS.find((item) => item.key === poll.tag);
               const winningVotes = Math.max(...(bucket?.counts ?? [0]));
               const leadingIndex = (bucket?.counts ?? []).findIndex((count) => count === winningVotes);

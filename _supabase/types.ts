@@ -377,6 +377,7 @@ export type Database = {
           id: string
           invite_code_used: string
           real_name: string
+          is_admin: boolean
         }
         Insert: {
           anonymous_username: string
@@ -384,6 +385,7 @@ export type Database = {
           id: string
           invite_code_used: string
           real_name: string
+          is_admin?: boolean
         }
         Update: {
           anonymous_username?: string
@@ -391,6 +393,7 @@ export type Database = {
           id?: string
           invite_code_used?: string
           real_name?: string
+          is_admin?: boolean
         }
         Relationships: []
       }

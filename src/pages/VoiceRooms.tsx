@@ -563,7 +563,10 @@ export default function VoiceRooms() {
               ✕
             </button>
             <div>
-              <h1 className="text-white font-bold text-lg leading-tight">{activeRoom.name}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-white font-bold text-lg leading-tight">{activeRoom.name}</h1>
+                {profile?.is_admin && <span className="text-[10px] font-black bg-red-500/10 text-red-500 px-2 py-0.5 rounded-full border border-red-500/20">ADMIN</span>}
+              </div>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="text-emerald-400 text-[9px] font-black uppercase tracking-widest">Live Open Lounge</span>
@@ -575,7 +578,7 @@ export default function VoiceRooms() {
                 <span className="text-violet-400 font-bold text-sm">{participants.length}</span>
                 <span className="text-white/30 text-[9px] font-black uppercase tracking-widest">Online</span>
              </div>
-             {user?.id === activeRoom.created_by && (
+             {(user?.id === activeRoom.created_by || profile?.is_admin) && (
               <button 
                 onClick={() => { if(confirm('End this room for everyone?')) endRoom(); }} 
                 className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-red-500/20"

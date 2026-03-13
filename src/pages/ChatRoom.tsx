@@ -28,6 +28,7 @@ export default function ChatRoom() {
   const [roomCategory, setRoomCategory] = useState('');
   const [isArchived, setIsArchived] = useState(false);
   const [onlyAdminsCanMessage, setOnlyAdminsCanMessage] = useState(false);
+  const [roomCreatorId, setRoomCreatorId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>('member');
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [userRoles, setUserRoles] = useState<Map<string, string>>(new Map());
@@ -69,6 +70,7 @@ export default function ChatRoom() {
         setRoomCategory(roomData.category); 
         setOnlyAdminsCanMessage(roomData.only_admins_can_message); 
         setIsArchived(roomData.is_archived || false);
+        setRoomCreatorId(roomData.created_by);
       } 
 
       // 2. Fetch User Role
@@ -722,21 +724,39 @@ export default function ChatRoom() {
                 </label>
               </div>
 
-              {userRole === 'creator' && !isArchived && (
+              {(userRole === 'creator' || profile?.is_admin) && !isArchived && (
                 <div className="pt-4 border-t border-white/10">
-                  <h3 className="text-red-400 font-bold mb-2 text-sm uppercase tracking-wider">Danger Zone</h3>
-                  <p className="text-xs text-slate-400 mb-3">Archiving this room will make it read-only forever. Messages will be preserved in history, but no one can send new ones.</p>
-                  <button 
-                    onClick={async () => {
-                      if(window.confirm('Are you absolutely sure you want to permanently archive this chat room?')) {
-                        await supabase.from('chat_rooms').update({ is_archived: true }).eq('id', roomId);
-                        setIsArchived(true);
-                        setShowSettings(false);
-                      }
-                    }}
-                    className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 py-2.5 rounded-xl text-sm font-bold transition">
-                    Archive / Delete Room
-                  </button>
+                  <h3 className="text-red-400 font-bold mb-2 text-sm uppercase tracking-wider">Moderation</h3>
+                  <p className="text-xs text-slate-400 mb-3">
+                    {profile?.is_admin ? "As an administrator, you can permanently archive or delete this room." : "Archiving this room will make it read-only forever."}
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <button 
+                      onClick={async () => {
+                        if(window.confirm('Archive this chat room? It will become read-only.')) {
+                          await supabase.from('chat_rooms').update({ is_archived: true }).eq('id', roomId);
+                          setIsArchived(true);
+                          setShowSettings(false);
+                        }
+                      }}
+                      className="w-full bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/20 py-2.5 rounded-xl text-sm font-bold transition">
+                      Archive Chat Room
+                    </button>
+                    <button 
+                      onClick={async () => {
+                        if(window.confirm('PERMANENTLY DELETE this room and all its messages? This cannot be undone.')) {
+                          const { error } = await supabase.from('chat_rooms').delete().eq('id', roomId);
+                          if (!error) {
+                            navigate('/dashboard');
+                          } else {
+                            alert('Failed to delete room.');
+                          }
+                        }
+                      }}
+                      className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 py-2.5 rounded-xl text-sm font-bold transition">
+                      Permanently Delete Room
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

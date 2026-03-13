@@ -60,7 +60,7 @@ const timeAgo = (date: string) => {
 };
 
 export default function QnA() {
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   const navigate = useNavigate();
 
   const [questions, setQuestions] = useState<QnaQuestion[]>([]);
@@ -324,7 +324,10 @@ export default function QnA() {
               <button className="btn-ghost rounded-xl p-2 text-slate-400">Back</button>
             </Link>
             <div>
-              <h1 className="font-semibold text-white">Anonymous Q&A</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="font-semibold text-white">Anonymous Q&A</h1>
+                {profile?.is_admin && <span className="text-[10px] font-black bg-red-500/10 text-red-500 px-2 py-0.5 rounded-full border border-red-500/20">ADMIN</span>}
+              </div>
               <p className="text-xs text-slate-500">No names shown in this space</p>
             </div>
           </div>
@@ -468,7 +471,7 @@ export default function QnA() {
                       asked by {alias} | {timeAgo(question.created_at)}
                     </div>
                     <div className="flex items-center gap-2">
-                      {question.user_id === user?.id && (
+                      {(question.user_id === user?.id || profile?.is_admin) && (
                         <button
                           onClick={() => deleteQuestion(question)}
                           className="text-xs px-2.5 py-1 rounded-lg border border-red-500/30 text-red-300 hover:bg-red-500/10"
@@ -579,7 +582,7 @@ export default function QnA() {
                               {answer.is_accepted ? 'Unaccept' : 'Accept'}
                             </button>
                           )}
-                          {mine && (
+                          {(mine || profile?.is_admin) && (
                             <button
                               onClick={() => deleteAnswer(answer)}
                               className="text-xs px-2.5 py-1 rounded-lg border border-red-500/35 text-red-200 hover:bg-red-500/15"

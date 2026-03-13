@@ -686,6 +686,7 @@ export default function Confessions() {
                   <span className="confession-tag" style={{ color: spotlightMeta.accent, borderColor: `${spotlightMeta.accent}55` }}>
                     Spotlight confession
                   </span>
+                  {profile?.is_admin && <span className="text-[10px] font-black bg-red-500/10 text-red-500 px-2 py-0.5 rounded-full border border-red-500/20">ADMIN</span>}
                   {trendingCategory && (
                     <span className="confession-tag">
                       <TrendingUp size={12} />
@@ -1017,7 +1018,7 @@ export default function Confessions() {
                             <X size={15} />
                             Hide
                           </button>
-                          {confession.user_id === user?.id ? (
+                          {(confession.user_id === user?.id || profile?.is_admin) ? (
                             <button
                               onClick={() => deleteOwn(confession.id)}
                               className="confession-action text-red-300 hover:border-red-400/30 hover:bg-red-500/10"

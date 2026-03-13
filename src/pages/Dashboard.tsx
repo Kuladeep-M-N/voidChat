@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
@@ -45,11 +46,12 @@ export default function Dashboard() {
 
     const channel = supabase.channel('rooms-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_rooms' }, (payload) => {
-        if (payload.eventType === 'INSERT') {
+        const eventType = payload.eventType;
+        if (eventType === 'INSERT') {
           setRooms(prev => [payload.new as Room, ...prev]);
-        } else if (payload.eventType === 'UPDATE') {
-          setRooms(prev => prev.map(r => r.id === payload.new.id ? { ...r, is_archived: payload.new.is_archived ?? r.is_archived, ...payload.new } : r));
-        } else if (payload.eventType === 'DELETE') {
+        } else if (eventType === 'UPDATE') {
+          setRooms(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } : r));
+        } else if (eventType === 'DELETE') {
           setRooms(prev => prev.filter(r => r.id !== payload.old.id));
         }
       }).subscribe();
@@ -79,6 +81,19 @@ export default function Dashboard() {
     }
   };
 
+  const deleteRoom = async (roomId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('Delete this room forever?')) return;
+    const { error } = await supabase.from('chat_rooms').delete().eq('id', roomId);
+    if (error) {
+      console.error('Delete room error:', error);
+      alert('Failed to delete room. You might not have permission.');
+    } else {
+      // Immediate local update for better UX
+      setRooms(prev => prev.filter(r => r.id !== roomId));
+    }
+  };
+
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   const activeRoomsList = rooms.filter(r => !r.is_archived);
@@ -101,6 +116,7 @@ export default function Dashboard() {
             <span className="text-slate-400 text-sm flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               {profile?.anonymous_username || 'Anonymous'}
+              {profile?.is_admin && <span className="text-[10px] font-black bg-red-500/10 text-red-500 px-2 py-0.5 rounded-full border border-red-500/20 ml-1">ADMIN</span>}
             </span>
             <button onClick={signOut} className="text-slate-500 hover:text-slate-300 text-sm transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5">Leave</button>
           </div>
@@ -176,6 +192,13 @@ export default function Dashboard() {
                              </div>
                            )}
                            <div className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">LIVE</div>
+                           {(profile?.is_admin || room.id) && ( // We will check actual permission in the button click, but show it for admin
+                             profile?.is_admin && (
+                               <button onClick={(e) => deleteRoom(room.id, e)} className="text-slate-400 hover:text-red-400 transition-colors">
+                                 <Trash2 size={14} />
+                               </button>
+                             )
+                           )}
                         </div>
                         <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-lg mb-4">{theme.icon}</div>
                         <h3 className="font-semibold text-white text-base mb-1 truncate">{room.name}</h3>

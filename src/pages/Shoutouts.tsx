@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 
@@ -72,6 +73,16 @@ export default function Shoutouts() {
     setPosting(false);
   };
 
+  const deleteShoutout = async (shoutoutId: string) => {
+    if (!window.confirm('Delete this shoutout?')) return;
+    const { error } = await supabase.from('shoutouts').delete().eq('id', shoutoutId);
+    if (!error) {
+      setShoutouts(prev => prev.filter(s => s.id !== shoutoutId));
+    } else {
+      console.error('Delete shoutout error:', error);
+    }
+  };
+
   const timeAgo = (date: string) => {
     const diff = (Date.now() - new Date(date).getTime()) / 1000;
     if (diff < 60) return 'just now';
@@ -94,6 +105,9 @@ export default function Shoutouts() {
           <Link to="/dashboard"><button className="btn-ghost rounded-xl p-2 text-slate-400">← Back</button></Link>
           <div><h1 className="font-semibold text-white">📣 Shoutouts</h1>
             <p className="text-xs text-slate-500">Anonymous love & chaos</p></div>
+          {profile?.is_admin && (
+            <span className="ml-auto text-[10px] font-black bg-red-500/10 text-red-500 px-2 py-0.5 rounded-full border border-red-500/20">ADMIN</span>
+          )}
         </div>
       </header>
 
@@ -162,7 +176,14 @@ export default function Shoutouts() {
                         To <span className={`font-semibold ${isForMe ? 'text-pink-300' : 'text-slate-300'}`}>@{s.to_alias}</span>
                       </div>
                       <p className="text-slate-200 text-sm leading-relaxed">{s.message}</p>
-                      <div className="text-xs text-slate-600 mt-2">{timeAgo(s.created_at)}</div>
+                      <div className="flex items-center justify-between mt-2">
+                        <div className="text-xs text-slate-600">{timeAgo(s.created_at)}</div>
+                        {profile?.is_admin && (
+                          <button onClick={() => deleteShoutout(s.id)} className="text-slate-500 hover:text-red-400 transition-colors">
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
                       {/* Reactions */}
                       <div className="flex items-center gap-2 mt-3 flex-wrap">
                         {REACTIONS.map(emoji => {
