@@ -4,6 +4,9 @@
 -- 1. Add is_admin column to users
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
 
+-- 1.1 Add is_archived to chat_rooms
+ALTER TABLE public.chat_rooms ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT false;
+
 -- 2. Update Confessions policies for admin
 DROP POLICY IF EXISTS "confessions_admin_delete" ON public.confessions;
 CREATE POLICY "confessions_admin_delete" ON public.confessions 
@@ -45,6 +48,10 @@ FOR DELETE USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND i
 DROP POLICY IF EXISTS "rooms_admin_delete" ON public.chat_rooms;
 CREATE POLICY "rooms_admin_delete" ON public.chat_rooms 
 FOR DELETE USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = true));
+
+DROP POLICY IF EXISTS "rooms_admin_update" ON public.chat_rooms;
+CREATE POLICY "rooms_admin_update" ON public.chat_rooms 
+FOR UPDATE USING (EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = true));
 
 -- 8. Update Voice Rooms policies for admin
 DROP POLICY IF EXISTS "vrooms_admin_delete" ON public.voice_rooms;

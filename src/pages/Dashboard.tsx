@@ -70,15 +70,17 @@ export default function Dashboard() {
       .insert({ name, created_by: user.id, category: 'general' })
       .select().single();
     
-    // Immediately make the creator an admin/creator in the members table
     if (room && !error) {
        await supabase.from('room_members').insert({ room_id: room.id, user_id: user.id, role: 'creator' });
        navigate(`/room/${room.id}`);
     } else {
-       setNewRoomName('');
-       setShowCreate(false);
-       setCreating(false);
+       console.error('Create room error:', error);
+       alert(error?.message || 'Failed to create room. Please ensure the latest SQL script has been run.');
     }
+    
+    setNewRoomName('');
+    setShowCreate(false);
+    setCreating(false);
   };
 
   const deleteRoom = async (roomId: string, e: React.MouseEvent) => {
