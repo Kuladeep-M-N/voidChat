@@ -243,8 +243,8 @@ export default function Dashboard() {
                           <div className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">LIVE</div>
                           {(profile?.is_admin || room.id) && (
                             profile?.is_admin && (
-                              <button onClick={(e) => archiveRoom(room.id, e)} className="text-slate-400 hover:text-amber-400 transition-colors" title="Archive Room">
-                                <Archive size={14} />
+                              <button onClick={(e) => permanentlyDeleteRoom(room.id, e)} className="text-slate-400 hover:text-red-400 transition-colors" title="Delete Room Permanently">
+                                <Trash2 size={14} />
                               </button>
                             )
                           )}

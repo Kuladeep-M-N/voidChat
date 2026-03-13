@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Trash2, Archive } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 
@@ -756,12 +757,17 @@ export default function VoiceRooms() {
                               e.stopPropagation();
                               if (window.confirm('Permanently delete this voice room and all its history?')) {
                                 const { error } = await supabase.from('voice_rooms').delete().eq('id', room.id);
-                                if (error) alert('Failed to delete: ' + error.message);
+                                if (error) {
+                                  alert('Failed to delete: ' + error.message);
+                                } else {
+                                  setRooms(prev => prev.filter(r => r.id !== room.id));
+                                }
                               }
                             }}
                             className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                            title="Delete Permanently"
                           >
-                            🗑️
+                            <Trash2 size={14} />
                           </button>
                         )}
                       </div>
@@ -795,7 +801,28 @@ export default function VoiceRooms() {
                       className="rounded-3xl p-5 border border-white/5 bg-white/[0.02] opacity-60">
                       <div className="flex items-center justify-between mb-4">
                         <span className="text-2xl grayscale">🎙️</span>
-                        <span className="text-[9px] text-white/30 font-bold border border-white/5 px-2 py-0.5 rounded-full">Archive</span>
+                        <div className="flex items-center gap-2">
+                           {profile?.is_admin && (
+                            <button 
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (window.confirm('Permanently delete this archived voice room?')) {
+                                  const { error } = await supabase.from('voice_rooms').delete().eq('id', room.id);
+                                  if (error) {
+                                    alert('Failed to delete: ' + error.message);
+                                  } else {
+                                    setRooms(prev => prev.filter(r => r.id !== room.id));
+                                  }
+                                }
+                              }} 
+                              className="text-white/20 hover:text-red-400 transition-colors p-1"
+                              title="Delete Permanently"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                          <span className="text-[9px] text-white/30 font-bold border border-white/5 px-2 py-0.5 rounded-full">Archive</span>
+                        </div>
                       </div>
                       <h3 className="font-semibold text-white/80 text-base mb-1 truncate">{room.name}</h3>
                       <div className="space-y-1">
