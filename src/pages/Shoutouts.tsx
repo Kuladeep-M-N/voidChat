@@ -128,7 +128,7 @@ export default function Shoutouts() {
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [reactions, setReactions] = useState<Record<string, Record<string, string[]>>>({});
   const [pulseTick, setPulseTick] = useState(0);
-  const [replyContext, setReplyContext] = useState<ReplyContext | null>(null);
+  const [activeReplyId, setActiveReplyId] = useState<string | null>(null);
   const [presenceCount, setPresenceCount] = useState(1);
 
   useEffect(() => {
@@ -371,21 +371,13 @@ export default function Shoutouts() {
   }, [trendingShoutouts, pulseTick, isMostlyForMe, receivedCount, myName, otherPeopleCount, insightTitle, insightBody, recentBurst]);
 
   const startReply = (shoutout: Shoutout) => {
-    const preview = shoutout.message.length > 88 ? `${shoutout.message.slice(0, 88)}...` : shoutout.message;
-    setReplyContext({
-      shoutoutId: shoutout.id,
-      target: shoutout.from_alias,
-      preview,
-    });
+    setActiveReplyId(shoutout.id);
+    setMessage(''); // Clear parent message box if it was being used
     setToAlias(shoutout.from_alias);
-    document.getElementById('composer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    window.setTimeout(() => {
-      messageRef.current?.focus();
-    }, 250);
   };
 
   const clearReply = () => {
-    setReplyContext(null);
+    setActiveReplyId(null);
   };
 
   const toggleReaction = async (shoutoutId: string, emoji: string) => {
@@ -435,27 +427,32 @@ export default function Shoutouts() {
     }
   };
 
-  const post = async () => {
-    const target = toAlias.trim().replace(/^@+/, '');
-    const content = message.trim();
+  const post = async (parentId?: string, inlineContent?: string) => {
+    const target = parentId ? '' : toAlias.trim().replace(/^@+/, '');
+    const content = inlineContent ? inlineContent.trim() : message.trim();
 
-    if (!target || !content || !user || posting) return;
+    if ((!parentId && !target) || !content || !user || posting) return;
 
     setPosting(true);
+    const parent = parentId ? shoutouts.find(s => s.id === parentId) : null;
 
-    const { error } = await supabase.from('shoutouts').insert({
-      to_alias: target,
+    const { data: newShoutout, error } = await supabase.from('shoutouts').insert({
+      to_alias: parent ? parent.from_alias : target,
       message: content,
       from_alias: profile?.anonymous_username ?? 'Someone',
       user_id: user.id,
-      parent_id: replyContext?.shoutoutId || null,
-    });
+      parent_id: parentId || null,
+      reactions: {},
+    }).select().single();
 
-    if (!error) {
-      setToAlias('');
-      setMessage('');
-      setReplyContext(null);
-    } else {
+    if (!error && newShoutout) {
+      if (!parentId) {
+        setMessage('');
+        setToAlias('');
+      } else {
+        setActiveReplyId(null);
+      }
+    } else if (error) {
       console.error('Post shoutout error:', error);
     }
 
@@ -617,21 +614,7 @@ export default function Shoutouts() {
               </div>
             </div>
 
-            {replyContext && (
-              <div className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-50">
-                <div>
-                  <p className="font-semibold text-cyan-200">Replying to @{replyContext.target}</p>
-                  <p className="mt-1 text-cyan-50/80">"{replyContext.preview}"</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={clearReply}
-                  className="rounded-full border border-cyan-300/20 p-2 text-cyan-100/70 transition hover:bg-cyan-300/10 hover:text-cyan-50"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            )}
+            {/* Removed global reply context UI - replies are now inline */}
 
             <div className="space-y-4">
               <div className="space-y-2">
@@ -674,7 +657,7 @@ export default function Shoutouts() {
                 <textarea
                   ref={messageRef}
                   className="min-h-[148px] w-full resize-none rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-base text-white outline-none transition focus:border-violet-400/50 focus:bg-violet-500/[0.07] focus:ring-2 focus:ring-violet-500/20"
-                  placeholder={replyContext ? `Say it back to @${replyContext.target}...` : 'Say something sweet, chaotic, or impossible to ignore...'}
+                  placeholder="Say something sweet, chaotic, or impossible to ignore..."
                   rows={5}
                   value={message}
                   onChange={(event) => setMessage(event.target.value)}
@@ -695,7 +678,7 @@ export default function Shoutouts() {
                 </div>
 
                 <button
-                  onClick={post}
+                  onClick={() => post()}
                   disabled={!toAlias.trim() || !message.trim() || posting}
                   className="group inline-flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-8 py-4 text-sm font-extrabold tracking-wide text-white shadow-[0_0_25px_rgba(168,85,247,0.45)] transition hover:scale-[1.01] hover:shadow-[0_0_35px_rgba(34,211,238,0.25)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:min-w-[196px]"
                 >
@@ -800,143 +783,156 @@ export default function Shoutouts() {
           </div>
         </section>
 
-        <section className="space-y-6">
-          <AnimatePresence>
-            {visibleShoutouts.map((shoutout, index) => {
-              const isForMe = shoutout.to_alias === myName;
-              const isMine = shoutout.from_alias === myName;
-              const shoutoutReactions = reactions[shoutout.id] ?? {};
-              const reactionCount = Object.values(shoutoutReactions).reduce((sum, ids) => sum + ids.length, 0);
+        <section className="space-y-12">
+          <AnimatePresence mode="popLayout">
+            {visibleShoutouts
+              .filter(s => !s.parent_id) // Only top-level in core loop
+              .map((shoutout, index) => {
+                const isForMe = shoutout.to_alias === myName;
+                const isMine = shoutout.from_alias === myName;
+                const shoutoutReactions = reactions[shoutout.id] ?? {};
+                const reactionCount = Object.values(shoutoutReactions).reduce((sum, ids) => sum + ids.length, 0);
+                const children = shoutouts.filter(s => s.parent_id === shoutout.id);
 
-              const isReply = Boolean(shoutout.parent_id);
-              const parentShoutout = isReply ? shoutouts.find(s => s.id === shoutout.parent_id) : null;
-
-              return (
-                <motion.article
-                  key={shoutout.id}
-                  className={`group relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(90deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015)_42%,rgba(4,120,87,0.14))] p-6 shadow-[0_20px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl ${isReply ? 'ml-4 sm:ml-8 lg:ml-12 border-l-cyan-400/40' : ''}`}
-                  initial={{ opacity: 0, y: 18 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -12 }}
-                  transition={{ delay: index * 0.04 }}
-                >
-                  {isReply && (
-                    <div className="mb-4 flex items-center gap-2 rounded-2xl bg-white/5 p-3 text-[11px] text-white/40">
-                      <Reply className="h-3 w-3" />
-                      <span className="font-medium">In response to @{parentShoutout?.from_alias || 'someone'}:</span>
-                      <span className="truncate italic">"{parentShoutout?.message || '...'}"</span>
-                    </div>
-                  )}
-                  <div
-                    className={`pointer-events-none absolute inset-0 opacity-0 transition group-hover:opacity-100 ${
-                      isForMe
-                        ? 'bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.12),transparent_28%)]'
-                        : 'bg-[radial-gradient(circle_at_top_right,rgba(168,85,247,0.12),transparent_28%)]'
-                    }`}
-                  />
-
-                  <div className="relative">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex gap-4">
-                        <div
-                          className={[
-                            'flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border',
-                            isForMe
-                              ? 'border-cyan-400/35 bg-gradient-to-br from-cyan-500/15 to-blue-500/10 text-cyan-300'
-                              : 'border-violet-400/35 bg-gradient-to-br from-violet-500/15 to-pink-500/10 text-violet-300',
-                          ].join(' ')}
-                        >
-                          <MessageCircle className="h-6 w-6" />
+                return (
+                  <div key={shoutout.id} className="space-y-4">
+                    <motion.article
+                      className={`group relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(90deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015)_42%,rgba(4,120,87,0.14))] p-6 shadow-[0_20px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl ${isMine ? 'border-violet-500/20' : ''}`}
+                      initial={{ opacity: 0, y: 18 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -12 }}
+                      transition={{ delay: index * 0.04 }}
+                    >
+                      <div className="relative">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex gap-4">
+                            <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border ${isForMe ? 'border-cyan-400/35 bg-gradient-to-br from-cyan-500/15 to-blue-500/10 text-cyan-300' : 'border-violet-400/35 bg-gradient-to-br from-violet-500/15 to-pink-500/10 text-violet-300'}`}>
+                              <MessageCircle className="h-6 w-6" />
+                            </div>
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-white/48">From @{shoutout.from_alias}</span>
+                                <span className="text-sm text-white/25">to</span>
+                                <span className="text-2xl font-extrabold tracking-tight text-white">@{shoutout.to_alias}</span>
+                                {isForMe && <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-200">For You</span>}
+                                {isMine && <span className="rounded-full border border-violet-400/30 bg-violet-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-violet-200">You Posted</span>}
+                              </div>
+                              <p className="mt-4 max-w-3xl text-[1.1rem] leading-8 text-white/92 sm:text-[1.28rem]">{shoutout.message}</p>
+                              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-white/35">
+                                <span className="font-mono uppercase tracking-[0.24em]">{timeAgo(shoutout.created_at)}</span>
+                                <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">{reactionCount} reactions</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {profile?.is_admin && (
+                              <button onClick={() => deleteShoutout(shoutout.id)} className="rounded-full border border-white/10 p-2 text-white/35 transition hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300"><Trash2 className="h-4 w-4" /></button>
+                            )}
+                            <button className="rounded-full p-2 text-white/20 transition hover:bg-white/5 hover:text-white/60"><MoreHorizontal className="h-5 w-5" /></button>
+                          </div>
                         </div>
 
-                        <div>
+                        <div className="mt-6 flex flex-col gap-4 border-t border-white/8 pt-5 lg:flex-row lg:items-center lg:justify-between">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-white/48">
-                              From @{shoutout.from_alias}
-                            </span>
-                            <span className="text-sm text-white/25">to</span>
-                            <span className="text-2xl font-extrabold tracking-tight text-white">@{shoutout.to_alias}</span>
-                            {isForMe && (
-                              <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-200">
-                                For You
-                              </span>
-                            )}
-                            {isMine && (
-                              <span className="rounded-full border border-violet-400/30 bg-violet-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-violet-200">
-                                You Posted This
-                              </span>
-                            )}
+                            {REACTIONS.map((reaction) => {
+                              const who = shoutoutReactions[reaction.emoji] ?? [];
+                              const count = who.length;
+                              const hasReacted = Boolean(user && who.includes(user.id));
+                              return (
+                                <button key={reaction.emoji} type="button" onClick={() => toggleReaction(shoutout.id, reaction.emoji)} className={['inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition', hasReacted ? 'border-violet-400/40 bg-violet-500/12 text-white' : `border-transparent bg-transparent text-white/65 ${reaction.border}`].join(' ')}>
+                                  <span className="text-base">{reaction.emoji}</span>
+                                  <span className={`inline-flex items-center gap-1 font-mono text-xs ${hasReacted ? 'text-white' : reaction.accent}`}>{count}</span>
+                                </button>
+                              );
+                            })}
                           </div>
 
-                          <p className="mt-4 max-w-3xl text-[1.1rem] leading-8 text-white/92 sm:text-[1.28rem]">
-                            {shoutout.message}
-                          </p>
-
-                          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-white/35">
-                            <span className="font-mono uppercase tracking-[0.24em]">{timeAgo(shoutout.created_at)}</span>
-                            <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                              {reactionCount} reactions
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {profile?.is_admin && (
                           <button
-                            onClick={() => deleteShoutout(shoutout.id)}
-                            className="rounded-full border border-white/10 p-2 text-white/35 transition hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300"
+                            type="button"
+                            onClick={() => startReply(shoutout)}
+                            className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm font-bold text-white/70 transition hover:border-cyan-400/35 hover:bg-cyan-400/10 hover:text-cyan-200"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Reply className="h-4 w-4" />
+                            REPLY
                           </button>
+                        </div>
+
+                        {activeReplyId === shoutout.id && (
+                          <motion.div 
+                            initial={{ opacity: 0, height: 0 }} 
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="mt-6 space-y-3 rounded-2xl bg-white/[0.03] p-4"
+                          >
+                            <textarea
+                              autoFocus
+                              placeholder={`Reply to @${shoutout.from_alias}...`}
+                              className="w-full bg-transparent text-sm text-white placeholder-white/20 outline-none"
+                              rows={2}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  post(shoutout.id, e.currentTarget.value);
+                                }
+                              }}
+                            />
+                            <div className="flex justify-end gap-3">
+                              <button onClick={() => setActiveReplyId(null)} className="text-xs font-bold text-white/30 hover:text-white/60">CANCEL</button>
+                              <button onClick={() => {
+                                const ta = document.querySelector('textarea') as HTMLTextAreaElement;
+                                post(shoutout.id, ta.value);
+                              }} className="text-xs font-bold text-cyan-400 hover:text-cyan-300">SEND REPLY</button>
+                            </div>
+                          </motion.div>
                         )}
-                        <button className="rounded-full p-2 text-white/20 transition hover:bg-white/5 hover:text-white/60">
-                          <MoreHorizontal className="h-5 w-5" />
-                        </button>
                       </div>
-                    </div>
+                    </motion.article>
 
-                    <div className="mt-6 flex flex-col gap-4 border-t border-white/8 pt-5 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {REACTIONS.map((reaction) => {
-                          const who = shoutoutReactions[reaction.emoji] ?? [];
-                          const count = who.length;
-                          const hasReacted = Boolean(user && who.includes(user.id));
-
+                    {/* Children / Comments */}
+                    {children.length > 0 && (
+                      <div className="ml-8 space-y-4 border-l-2 border-white/5 pl-8 sm:ml-12 lg:ml-16">
+                        {children.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map(child => {
+                          const childReactions = reactions[child.id] ?? {};
+                          const childReactionCount = Object.values(childReactions).reduce((sum, ids) => sum + ids.length, 0);
+                          
                           return (
-                            <button
-                              key={reaction.emoji}
-                              type="button"
-                              onClick={() => toggleReaction(shoutout.id, reaction.emoji)}
-                              className={[
-                                'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition',
-                                hasReacted
-                                  ? 'border-violet-400/40 bg-violet-500/12 text-white'
-                                  : `border-transparent bg-transparent text-white/65 ${reaction.border}`,
-                              ].join(' ')}
+                            <motion.div 
+                              key={child.id}
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              className="relative rounded-2xl border border-white/5 bg-white/[0.02] p-4"
                             >
-                              <span className="text-base">{reaction.emoji}</span>
-                              <span className={`inline-flex items-center gap-1 font-mono text-xs ${hasReacted ? 'text-white' : reaction.accent}`}>
-                                {count}
-                              </span>
-                            </button>
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-white/30">From @{child.from_alias}</span>
+                                <span className="text-[10px] text-white/20 font-mono tracking-tighter">{timeAgo(child.created_at)}</span>
+                              </div>
+                              <p className="text-sm text-white/85 leading-relaxed">{child.message}</p>
+                              
+                              <div className="mt-3 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  {REACTIONS.slice(0, 3).map(r => {
+                                    const who = childReactions[r.emoji] ?? [];
+                                    const count = who.length;
+                                    const hasReacted = Boolean(user && who.includes(user.id));
+                                    return (
+                                      <button key={r.emoji} onClick={() => toggleReaction(child.id, r.emoji)} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] transition ${hasReacted ? 'bg-violet-500/10 text-violet-300 border border-violet-500/20' : 'text-white/40 hover:text-white/70'}`}>
+                                        <span>{r.emoji}</span>
+                                        <span className="font-mono">{count}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                {profile?.is_admin && (
+                                  <button onClick={() => deleteShoutout(child.id)} className="text-white/20 hover:text-red-400/60 transition"><Trash2 className="h-3 w-3" /></button>
+                                )}
+                              </div>
+                            </motion.div>
                           );
                         })}
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={() => startReply(shoutout)}
-                        className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm font-bold text-white/70 transition hover:border-cyan-400/35 hover:bg-cyan-400/10 hover:text-cyan-200"
-                      >
-                        <Reply className="h-4 w-4" />
-                        REPLY
-                      </button>
-                    </div>
+                    )}
                   </div>
-                </motion.article>
-              );
-            })}
+                );
+              })}
           </AnimatePresence>
 
           {visibleShoutouts.length === 0 && (
