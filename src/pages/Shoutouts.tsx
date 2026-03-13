@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+<<<<<<< HEAD
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -12,6 +13,10 @@ import {
   Sparkles,
   Volume2,
 } from 'lucide-react';
+=======
+import { motion, AnimatePresence } from 'framer-motion';
+import { Trash2 } from 'lucide-react';
+>>>>>>> 52ba46d2216ffa395973f52b428341fcfaf04126
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
@@ -185,6 +190,27 @@ export default function Shoutouts() {
     setPosting(false);
   };
 
+<<<<<<< HEAD
+=======
+  const deleteShoutout = async (shoutoutId: string) => {
+    if (!window.confirm('Delete this shoutout?')) return;
+    const { error } = await supabase.from('shoutouts').delete().eq('id', shoutoutId);
+    if (!error) {
+      setShoutouts(prev => prev.filter(s => s.id !== shoutoutId));
+    } else {
+      console.error('Delete shoutout error:', error);
+    }
+  };
+
+  const timeAgo = (date: string) => {
+    const diff = (Date.now() - new Date(date).getTime()) / 1000;
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  };
+
+>>>>>>> 52ba46d2216ffa395973f52b428341fcfaf04126
   const myName = profile?.anonymous_username;
   const forMeCount = shoutouts.filter((item) => item.to_alias === myName).length;
 
@@ -230,6 +256,7 @@ export default function Shoutouts() {
       <div className="ambient-blob left-[-10%] top-[8%] h-[420px] w-[420px] bg-violet-700/18" />
       <div className="ambient-blob bottom-[-10%] right-[-6%] h-[420px] w-[420px] bg-cyan-500/12" />
 
+<<<<<<< HEAD
       {STAR_FIELD.map((star) => (
         <span
           key={star.id}
@@ -276,6 +303,16 @@ export default function Shoutouts() {
               </div>
             </div>
           </div>
+=======
+      <header className="relative z-10 border-b border-white/5 glass sticky top-0">
+        <div className="max-w-2xl mx-auto flex items-center gap-4 px-4 py-3.5">
+          <Link to="/dashboard"><button className="btn-ghost rounded-xl p-2 text-slate-400">← Back</button></Link>
+          <div><h1 className="font-semibold text-white">📣 Shoutouts</h1>
+            <p className="text-xs text-slate-500">Anonymous love & chaos</p></div>
+          {profile?.is_admin && (
+            <span className="ml-auto text-[10px] font-black bg-red-500/10 text-red-500 px-2 py-0.5 rounded-full border border-red-500/20">ADMIN</span>
+          )}
+>>>>>>> 52ba46d2216ffa395973f52b428341fcfaf04126
         </div>
       </header>
 
@@ -481,6 +518,7 @@ export default function Shoutouts() {
                           </p>
                         </div>
                       </div>
+<<<<<<< HEAD
 
                       <button
                         type="button"
@@ -496,6 +534,22 @@ export default function Shoutouts() {
                         {REACTIONS.map((reaction) => {
                           const users = shoutoutReactions[reaction.key] ?? [];
                           const reacted = !!user && users.includes(user.id);
+=======
+                      <p className="text-slate-200 text-sm leading-relaxed">{s.message}</p>
+                      <div className="flex items-center justify-between mt-2">
+                        <div className="text-xs text-slate-600">{timeAgo(s.created_at)}</div>
+                        {profile?.is_admin && (
+                          <button onClick={() => deleteShoutout(s.id)} className="text-slate-500 hover:text-red-400 transition-colors">
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                      {/* Reactions */}
+                      <div className="flex items-center gap-2 mt-3 flex-wrap">
+                        {REACTIONS.map(emoji => {
+                          const who = msgReactions[emoji] ?? [];
+                          const hasReacted = who.includes(user!.id);
+>>>>>>> 52ba46d2216ffa395973f52b428341fcfaf04126
                           return (
                             <button
                               key={reaction.key}
