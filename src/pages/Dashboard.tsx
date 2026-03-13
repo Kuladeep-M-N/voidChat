@@ -65,6 +65,19 @@ export default function Dashboard() {
     
     setCreating(true);
     
+    // Check if room name exists
+    const { data: existing } = await supabase.from('chat_rooms')
+      .select('id')
+      .eq('name', name)
+      .eq('is_archived', false)
+      .single();
+
+    if (existing) {
+      alert('A room with this name already exists and is active. Please choose a different name.');
+      setCreating(false);
+      return;
+    }
+
     // Create the room
     const { data: room, error } = await supabase.from('chat_rooms')
       .insert({ name, created_by: user.id, category: 'general' })
@@ -75,7 +88,11 @@ export default function Dashboard() {
        navigate(`/room/${room.id}`);
     } else {
        console.error('Create room error:', error);
-       alert(error?.message || 'Failed to create room. Please ensure the latest SQL script has been run.');
+       if (error?.code === '23505') {
+         alert('This room name is already taken (even in history). Please use a unique name.');
+       } else {
+         alert(error?.message || 'Failed to create room. Please ensure the latest SQL script has been run.');
+       }
     }
     
     setNewRoomName('');
