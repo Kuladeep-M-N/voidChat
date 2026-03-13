@@ -208,6 +208,19 @@ function CommentPanel({
 
           setComments((current) => {
             if (current.find((entry) => entry.id === comment.id)) return current;
+            // Check for matching optimistic comment (same user, same content, recent)
+            const matchingIndex = current.findIndex(entry => 
+              entry.id.startsWith('OPT_') && 
+              entry.user_id === comment.user_id && 
+              entry.content === comment.content
+            );
+            
+            if (matchingIndex !== -1) {
+              const next = [...current];
+              next[matchingIndex] = { ...comment, anonymous_username: username };
+              return next;
+            }
+            
             return [...current, { ...comment, anonymous_username: username }];
           });
         },
@@ -240,14 +253,24 @@ function CommentPanel({
     setComments((current) => [...current, optimistic]);
     setText('');
 
-    const { error } = await supabase.from('confession_comments').insert({
-      confession_id: confession.id,
-      user_id: user.id,
-      content,
-    });
+    const { data: savedData, error } = await supabase
+      .from('confession_comments')
+      .insert({
+        confession_id: confession.id,
+        user_id: user.id,
+        content,
+      })
+      .select()
+      .single();
 
     if (error) {
       setComments((current) => current.filter((entry) => entry.id !== optimistic.id));
+    } else if (savedData) {
+      setComments((current) =>
+        current.map((entry) =>
+          entry.id === optimistic.id ? { ...savedData, anonymous_username: optimistic.anonymous_username } : entry
+        )
+      );
     }
 
     setPosting(false);

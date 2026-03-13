@@ -3,12 +3,12 @@
  * This uses the Supabase Management API to apply SQL migrations.
  */
 
-const PROJECT_ID = 'pkuacdmxvuocfdtasryg';
+const PROJECT_ID = 'igmlyvkqkglzuzyzvbba';
 // Uses the anon key - but we'll call the pg endpoint directly via the Management API
 // Actually, let's use the Supabase REST API with service role to execute SQL
 
 // INSTRUCTIONS:
-// 1. Go to: https://supabase.com/dashboard/project/pkuacdmxvuocfdtasryg/settings/api
+// 1. Go to: https://supabase.com/dashboard/project/igmlyvkqkglzuzyzvbba/settings/api
 // 2. Copy your SERVICE ROLE key (secret, keep it safe)
 // 3. Paste it below replacing YOUR_SERVICE_ROLE_KEY
 // 4. Run: node c:\wisper\scripts\create_tables.mjs
@@ -17,7 +17,7 @@ const SERVICE_ROLE_KEY = 'YOUR_SERVICE_ROLE_KEY'; // Replace this
 
 if (SERVICE_ROLE_KEY === 'YOUR_SERVICE_ROLE_KEY') {
   console.error('❌ Please set your SERVICE_ROLE_KEY in this file first.');
-  console.log('Get it from: https://supabase.com/dashboard/project/pkuacdmxvuocfdtasryg/settings/api');
+  console.log('Get it from: https://supabase.com/dashboard/project/igmlyvkqkglzuzyzvbba/settings/api');
   process.exit(1);
 }
 

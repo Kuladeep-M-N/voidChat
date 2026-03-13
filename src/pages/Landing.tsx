@@ -43,13 +43,17 @@ export default function Landing() {
           VoidChat
         </motion.span>
         <motion.div
+          className="flex gap-4"
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5 }}
         >
           <Link to="/join">
+            <button className="text-slate-400 hover:text-white px-4 py-2 transition text-sm">Login</button>
+          </Link>
+          <Link to="/join">
             <button className="btn-primary !w-auto px-6 py-2.5 text-sm">
-              Enter the Void →
+              Sign Up →
             </button>
           </Link>
         </motion.div>
@@ -95,11 +99,15 @@ export default function Landing() {
           className="flex flex-col sm:flex-row items-center gap-4"
         >
           <Link to="/join">
-            <button className="btn-primary !w-auto px-10 py-4 text-base rounded-2xl">
-              Join VoidChat
+            <button className="btn-primary !w-auto px-10 py-4 text-sm rounded-2xl">
+              Sign Up Now
             </button>
           </Link>
-          <p className="text-slate-500 text-sm">You'll need an invite code</p>
+          <Link to="/join">
+            <button className="glass-hover border border-white/10 !w-auto px-10 py-4 text-sm rounded-2xl text-white">
+              Login to Account
+            </button>
+          </Link>
         </motion.div>
       </section>
 

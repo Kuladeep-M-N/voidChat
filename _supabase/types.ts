@@ -46,22 +46,31 @@ export type Database = {
       }
       confessions: {
         Row: {
-          confession_text: string
+          category: string
+          content: string
           created_at: string
           id: string
+          likes: number
           room_id: string | null
+          user_id: string
         }
         Insert: {
-          confession_text: string
+          category?: string
+          content: string
           created_at?: string
           id?: string
+          likes?: number
           room_id?: string | null
+          user_id: string
         }
         Update: {
-          confession_text?: string
+          category?: string
+          content?: string
           created_at?: string
           id?: string
+          likes?: number
           room_id?: string | null
+          user_id?: string
         }
         Relationships: [
           {
@@ -69,6 +78,52 @@ export type Database = {
             columns: ["room_id"]
             isOneToOne: false
             referencedRelation: "chat_rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "confessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      confession_comments: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          confession_id: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          confession_id: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          confession_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "confession_comments_confession_id_fkey"
+            columns: ["confession_id"]
+            isOneToOne: false
+            referencedRelation: "confessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "confession_comments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence, useAnimationFrame } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 // Floating particle
@@ -88,73 +89,126 @@ function AnimatedTitle({ text }: { text: string }) {
 
 export default function Join() {
   const navigate = useNavigate();
-  const [username, setUsername] = useState('');
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [realUsername, setRealUsername] = useState('');
+  const [anonymousUsername, setAnonymousUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
+  const [showInviteCode, setShowInviteCode] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<'form' | 'success'>('form');
 
-  const handleJoin = async (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    const name = username.trim();
+    setError('');
+    
+    if (mode === 'signup') {
+      await handleSignup();
+    } else {
+      await handleLogin();
+    }
+  };
+
+  const handleSignup = async () => {
+    const real = realUsername.trim();
+    const anon = anonymousUsername.trim();
+    const pw = password.trim();
     const code = inviteCode.trim().toUpperCase();
     const validCode = (import.meta.env.VITE_INVITE_CODE || 'VOIDCHAT').toUpperCase();
 
-    if (code !== validCode) { setError('Invalid invite code. Try VOIDCHAT'); return; }
-    if (name.length < 2) { setError('Username must be at least 2 characters'); return; }
-    if (!/^[a-zA-Z0-9_]+$/.test(name)) { setError('Username: letters, numbers, underscores only'); return; }
+    if (code !== validCode) { setError('Invalid invite code'); return; }
+    if (real.length < 3) { setError('Username must be at least 3 characters'); return; }
+    if (anon.length < 2) { setError('Anonymous name must be at least 2 characters'); return; }
+    if (pw.length < 6) { setError('Password must be at least 6 characters'); return; }
 
-    setLoading(true); setError('');
+    setLoading(true);
 
     try {
-      // Check if session already exists for this username (stored in localStorage)
-      const savedSession = localStorage.getItem(`vc_session_${name.toLowerCase()}`);
-      if (savedSession) {
-        const { access_token, refresh_token } = JSON.parse(savedSession);
-        const { data: sessionData, error: sessionError } = await supabase.auth.setSession({ access_token, refresh_token });
-        if (!sessionError && sessionData?.user) {
-          setStep('success');
-          setTimeout(() => navigate('/dashboard'), 1200);
-          return;
-        }
-        // Session expired — clear it and sign in fresh
-        localStorage.removeItem(`vc_session_${name.toLowerCase()}`);
-      }
+      // 1. Check if anonymous name is taken
+      const { data: existingAnon } = await supabase.from('users').select('id').eq('anonymous_username', anon).maybeSingle();
+      if (existingAnon) { setError('Anonymous name taken. Try another!'); setLoading(false); return; }
 
-      // Check username uniqueness before creating
-      const { data: existing } = await supabase.from('users').select('id').eq('anonymous_username', name).maybeSingle();
-      if (existing) { setError('Username taken. Try another!'); setLoading(false); return; }
-
-      // Anonymous sign-in — no email required
-      const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously({
-        options: { data: { anonymous_username: name } }
+      // 2. Check if real username is taken (via auth)
+      const virtualEmail = `${real.toLowerCase()}@voidchat.internal`;
+      
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: virtualEmail,
+        password: pw,
+        options: { data: { anonymous_username: anon, real_username: real } }
       });
-      if (anonError) { setError(anonError.message); setLoading(false); return; }
-      if (!anonData?.user) { setError('Could not create anonymous session'); setLoading(false); return; }
 
-      const userId = anonData.user.id;
-
-      // Create user profile
-      const { error: profileError } = await supabase.from('users').insert({ id: userId, anonymous_username: name });
-      if (profileError) {
-        if (profileError.code === '23505') { setError('Username taken. Try another!'); }
-        else { setError(profileError.message); }
-        await supabase.auth.signOut(); setLoading(false); return;
+      if (authError) {
+        if (authError.message.includes('already registered')) setError('Username taken. Try another!');
+        else setError(authError.message);
+        setLoading(false);
+        return;
       }
 
-      // Persist session locally so same username can rejoin
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        localStorage.setItem(`vc_session_${name.toLowerCase()}`, JSON.stringify({
-          access_token: session.access_token,
-          refresh_token: session.refresh_token,
-        }));
+      if (!authData.user) { setError('Could not create account'); setLoading(false); return; }
+
+      // 3. Create profile
+      const { error: profileError } = await supabase.from('users').insert({
+        id: authData.user.id,
+        anonymous_username: anon,
+        real_username: real
+      });
+
+      if (profileError) {
+        setError(profileError.message);
+        setLoading(false);
+        return;
       }
 
       setStep('success');
       setTimeout(() => navigate('/dashboard'), 1200);
     } catch (err) {
       setError('Something went wrong. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  const handleLogin = async () => {
+    const anon = anonymousUsername.trim();
+    const pw = password.trim();
+
+    if (!anon || !pw) { setError('Please provide all details'); return; }
+
+    setLoading(true);
+
+    try {
+      // 1. Find the real username associated with this anonymous name
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('real_username')
+        .eq('anonymous_username', anon)
+        .maybeSingle();
+
+      if (userError || !userData) {
+        setError('Invalid anonymous name or password');
+        setLoading(false);
+        return;
+      }
+
+      // 2. Sign in with the virtual email derived from real_username
+      const virtualEmail = `${userData.real_username.toLowerCase()}@voidchat.internal`;
+      
+      const { error: loginError } = await supabase.auth.signInWithPassword({
+        email: virtualEmail,
+        password: pw
+      });
+
+      if (loginError) {
+        setError('Invalid anonymous name or password');
+        setLoading(false);
+        return;
+      }
+
+      setStep('success');
+      setTimeout(() => navigate('/dashboard'), 1200);
+    } catch (err) {
+      setError('Connection failed. Please try again.');
       setLoading(false);
     }
   };
@@ -210,30 +264,74 @@ export default function Join() {
               initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5, type: 'spring', stiffness: 200, damping: 25 }}>
               <div className="glass border border-white/10 rounded-3xl p-8 backdrop-blur-xl">
-                <form onSubmit={handleJoin} className="space-y-4">
+                
+                {/* Mode Tabs */}
+                <div className="flex p-1 bg-white/5 rounded-2xl mb-8 border border-white/5">
+                  <button onClick={() => setMode('login')} className={`flex-1 py-2 text-sm font-semibold rounded-xl transition ${mode === 'login' ? 'bg-violet-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Login</button>
+                  <button onClick={() => setMode('signup')} className={`flex-1 py-2 text-sm font-semibold rounded-xl transition ${mode === 'signup' ? 'bg-violet-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Sign Up</button>
+                </div>
+
+                <form onSubmit={handleAuth} className="space-y-4">
+                  {mode === 'signup' && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
+                      <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">
+                        Real Username (Internal)
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm font-mono">ID</span>
+                        <input type="text" className="input-field pl-10" placeholder="johndoe"
+                          value={realUsername} onChange={e => { setRealUsername(e.target.value); setError(''); }}
+                          maxLength={30} autoComplete="off" />
+                      </div>
+                    </motion.div>
+                  )}
+
                   <div>
                     <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">
-                      Anonymous Username
+                      Anonymous name
                     </label>
                     <div className="relative">
                       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm font-mono">@</span>
                       <input type="text" className="input-field pl-8" placeholder="ghost_123"
-                        value={username} onChange={e => { setUsername(e.target.value); setError(''); }}
+                        value={anonymousUsername} onChange={e => { setAnonymousUsername(e.target.value); setError(''); }}
                         maxLength={20} autoFocus autoComplete="off" />
                     </div>
                   </div>
+
                   <div>
                     <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">
-                      Invite Code
+                      Secure Password
                     </label>
                     <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">🔑</span>
-                      <input type="text" className="input-field pl-10 font-mono tracking-widest uppercase"
-                        placeholder="VOIDCHAT" value={inviteCode}
-                        onChange={e => { setInviteCode(e.target.value.toUpperCase()); setError(''); }}
-                        maxLength={20} autoComplete="off" />
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">🔐</span>
+                      <input type={showPassword ? "text" : "password"} className="input-field pl-10 pr-10" placeholder="••••••••"
+                        value={password} onChange={e => { setPassword(e.target.value); setError(''); }}
+                        maxLength={32} autoComplete="off" />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
                     </div>
                   </div>
+
+                  {mode === 'signup' && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
+                      <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">
+                        Invite Code
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">🔑</span>
+                        <input type={showInviteCode ? "text" : "password"} className="input-field pl-10 pr-10 font-mono tracking-widest uppercase"
+                          placeholder="••••••••" value={inviteCode}
+                          onChange={e => { setInviteCode(e.target.value.toUpperCase()); setError(''); }}
+                          maxLength={20} autoComplete="off" />
+                        <button type="button" onClick={() => setShowInviteCode(!showInviteCode)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                          {showInviteCode ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
 
                   <AnimatePresence>
                     {error && (
@@ -244,21 +342,21 @@ export default function Join() {
                     )}
                   </AnimatePresence>
 
-                  <motion.button type="submit" disabled={loading || !username.trim() || !inviteCode.trim()}
-                    className="w-full py-3.5 rounded-2xl font-semibold text-base text-white transition-all relative overflow-hidden mt-2"
+                  <motion.button type="submit" disabled={loading}
+                    className="w-full py-3.5 rounded-2xl font-semibold text-base text-white transition-all relative overflow-hidden mt-4"
                     style={{ background: 'linear-gradient(135deg, #7c3aed, #5b21b6)' }}
                     whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}>
                     {loading ? (
                       <span className="flex items-center justify-center gap-2">
                         <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
-                        Joining...
+                        {mode === 'signup' ? 'Creating...' : 'Connecting...'}
                       </span>
                     ) : (
                       <span className="flex items-center justify-center gap-2">
-                        Enter the Void 🌌
+                        {mode === 'signup' ? 'Create Account 🌌' : 'Enter the Void 🌌'}
                       </span>
                     )}
-                    {/* Shimmer */}
+                    {/* Shimmer overlay remains same */}
                     <motion.div className="absolute inset-0 pointer-events-none"
                       style={{ background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.12) 50%, transparent 60%)' }}
                       animate={{ x: ['-100%', '200%'] }} transition={{ duration: 2, repeat: Infinity, ease: 'linear', repeatDelay: 1 }} />
