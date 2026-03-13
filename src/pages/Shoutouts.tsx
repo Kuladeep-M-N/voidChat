@@ -281,40 +281,72 @@ export default function Shoutouts() {
           ? `${totalReactionCount} live reaction${totalReactionCount === 1 ? '' : 's'} have been tapped across the feed.`
           : 'Ask for a clap, laugh, or heart and the hype meter will start climbing.';
 
-  const trendingCards = [
-    {
-      id: 'question',
-      label: 'Trending Question',
-      title: 'Question pulse',
-      body: QUESTION_PROMPTS[pulseTick % QUESTION_PROMPTS.length],
-      meta: 'Updates every few seconds',
-      border: 'border-cyan-400/55',
-      accent: 'from-cyan-400/30 via-sky-400/8 to-transparent',
-      titleClass: 'text-cyan-200',
-    },
-    {
-      id: 'signal',
-      label: 'Who Likes Me?',
-      title: isMostlyForMe ? 'This wave feels personal' : 'Most of the chaos is for other people',
-      body: isMostlyForMe
-        ? `${receivedCount} shoutout${receivedCount === 1 ? '' : 's'} are pointed at @${myName} right now.`
-        : `${otherPeopleCount} shoutout${otherPeopleCount === 1 ? '' : 's'} are circling the rest of the room while ${receivedCount} found you.`,
-      meta: isMostlyForMe ? 'You are in the spotlight' : 'Global room energy is stronger',
-      border: 'border-violet-400/55',
-      accent: 'from-violet-400/30 via-fuchsia-400/10 to-transparent',
-      titleClass: 'text-violet-200',
-    },
-    {
-      id: 'insight',
-      label: 'Space Output',
-      title: insightTitle,
-      body: insightBody,
-      meta: recentBurst > 0 ? `${recentBurst} post${recentBurst === 1 ? '' : 's'} in the last hour` : 'Waiting on the next spark',
-      border: 'border-pink-500/55',
-      accent: 'from-pink-500/28 via-rose-400/8 to-transparent',
-      titleClass: 'text-pink-200',
-    },
-  ] as const;
+  const trendingShoutouts = useMemo(() => {
+    return [...shoutouts]
+      .map(s => ({
+        ...s,
+        reactionCount: Object.values(reactions[s.id] ?? {}).reduce((sum, userIds) => sum + userIds.length, 0)
+      }))
+      .sort((a, b) => b.reactionCount - a.reactionCount || new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 3);
+  }, [shoutouts, reactions]);
+
+  const trendingCards = useMemo(() => {
+    if (trendingShoutouts.length === 0) {
+      return [
+        {
+          id: 'question',
+          label: 'Trending Question',
+          title: 'Question pulse',
+          body: QUESTION_PROMPTS[pulseTick % QUESTION_PROMPTS.length],
+          meta: 'Updates every few seconds',
+          border: 'border-cyan-400/55',
+          accent: 'from-cyan-400/30 via-sky-400/8 to-transparent',
+          titleClass: 'text-cyan-200',
+        },
+        {
+          id: 'signal',
+          label: 'Who Likes Me?',
+          title: isMostlyForMe ? 'This wave feels personal' : 'Most of the chaos is for other people',
+          body: isMostlyForMe
+            ? `${receivedCount} shoutout${receivedCount === 1 ? '' : 's'} are pointed at @${myName} right now.`
+            : `${otherPeopleCount} shoutout${otherPeopleCount === 1 ? '' : 's'} are circling the rest of the room while ${receivedCount} found you.`,
+          meta: isMostlyForMe ? 'You are in the spotlight' : 'Global room energy is stronger',
+          border: 'border-violet-400/55',
+          accent: 'from-violet-400/30 via-fuchsia-400/10 to-transparent',
+          titleClass: 'text-violet-200',
+        },
+        {
+          id: 'insight',
+          label: 'Space Output',
+          title: insightTitle,
+          body: insightBody,
+          meta: recentBurst > 0 ? `${recentBurst} post${recentBurst === 1 ? '' : 's'} in the last hour` : 'Waiting on the next spark',
+          border: 'border-pink-500/55',
+          accent: 'from-pink-500/28 via-rose-400/8 to-transparent',
+          titleClass: 'text-pink-200',
+        },
+      ];
+    }
+
+    return trendingShoutouts.map((s, idx) => {
+      const styles = [
+        { border: 'border-cyan-400/55', accent: 'from-cyan-400/30 via-sky-400/8 to-transparent', titleClass: 'text-cyan-200' },
+        { border: 'border-violet-400/55', accent: 'from-violet-400/30 via-fuchsia-400/10 to-transparent', titleClass: 'text-violet-200' },
+        { border: 'border-pink-500/55', accent: 'from-pink-500/28 via-rose-400/8 to-transparent', titleClass: 'text-pink-200' }
+      ];
+      const style = styles[idx % styles.length];
+      
+      return {
+        id: s.id,
+        label: `Hottest Trend #${idx + 1}`,
+        title: `From @${s.from_alias} to @${s.to_alias}`,
+        body: s.message,
+        meta: `${s.reactionCount} reaction${s.reactionCount === 1 ? '' : 's'} sparked`,
+        ...style
+      };
+    });
+  }, [trendingShoutouts, pulseTick, isMostlyForMe, receivedCount, myName, otherPeopleCount, insightTitle, insightBody, recentBurst]);
 
   const startReply = (shoutout: Shoutout) => {
     const preview = shoutout.message.length > 88 ? `${shoutout.message.slice(0, 88)}...` : shoutout.message;
