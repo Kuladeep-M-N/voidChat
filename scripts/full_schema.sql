@@ -29,7 +29,7 @@ CREATE POLICY "rooms_insert" ON public.chat_rooms FOR INSERT WITH CHECK (true);
 
 -- Seed default rooms
 INSERT INTO public.chat_rooms (name) VALUES
-  ('general'), ('memes'), ('gaming'), ('music'), ('random')
+  ('general'), ('gaming'), ('music'), ('random')
 ON CONFLICT (name) DO NOTHING;
 
 -- 3. MESSAGES table

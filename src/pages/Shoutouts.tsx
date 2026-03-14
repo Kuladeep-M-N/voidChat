@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft,
   AtSign,
+  Copy,
   Megaphone,
   MessageCircle,
   MoreHorizontal,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { toast } from 'sonner';
 
 interface Shoutout {
   id: string;
@@ -129,6 +131,9 @@ export default function Shoutouts() {
   const [reactions, setReactions] = useState<Record<string, Record<string, string[]>>>({});
   const [pulseTick, setPulseTick] = useState(0);
   const [activeReplyId, setActiveReplyId] = useState<string | null>(null);
+  const [replyMessage, setReplyMessage] = useState('');
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [presenceCount, setPresenceCount] = useState(1);
 
   useEffect(() => {
@@ -232,10 +237,14 @@ export default function Shoutouts() {
 
     channelRef.current = channel;
 
+    const handleGlobalClick = () => setActiveMenuId(null);
+    window.addEventListener('click', handleGlobalClick);
+
     return () => {
       active = false;
       channelRef.current = null;
       supabase.removeChannel(channel);
+      window.removeEventListener('click', handleGlobalClick);
     };
   }, [user]);
 
@@ -245,6 +254,9 @@ export default function Shoutouts() {
 
   const visibleShoutouts = useMemo(() => {
     const filtered = shoutouts.filter((item) => {
+      // Exclude comments from all main tabs
+      if (item.parent_id) return false;
+      
       if (tab === 'for_me') return item.to_alias === myName;
       if (tab === 'from_me') return item.from_alias === myName;
       return true;
@@ -261,19 +273,19 @@ export default function Shoutouts() {
     });
   }, [myName, reactions, shoutouts, sortMode, tab]);
 
-  const receivedCount = shoutouts.filter((item) => item.to_alias === myName).length;
-  const sentCount = shoutouts.filter((item) => item.from_alias === myName).length;
-  const recentBurst = shoutouts.filter((item) => Date.now() - new Date(item.created_at).getTime() < 1000 * 60 * 60).length;
+  const receivedCount = shoutouts.filter((item) => !item.parent_id && item.to_alias === myName).length;
+  const sentCount = shoutouts.filter((item) => !item.parent_id && item.from_alias === myName).length;
+  const recentBurst = shoutouts.filter((item) => !item.parent_id && Date.now() - new Date(item.created_at).getTime() < 1000 * 60 * 60).length;
 
   const liveMembers = presenceCount;
 
-  const topSender = topAlias(shoutouts.map((item) => item.from_alias));
-  const topTarget = topAlias(shoutouts.map((item) => item.to_alias));
+  const topSender = topAlias(shoutouts.filter(s => !s.parent_id).map((item) => item.from_alias));
+  const topTarget = topAlias(shoutouts.filter(s => !s.parent_id).map((item) => item.to_alias));
   const totalReactionCount = Object.values(reactions).reduce(
     (sum, shoutoutReactionMap) => sum + Object.values(shoutoutReactionMap).reduce((inner, ids) => inner + ids.length, 0),
     0,
   );
-  const otherPeopleCount = Math.max(shoutouts.length - receivedCount, 0);
+  const otherPeopleCount = Math.max(shoutouts.filter(s => !s.parent_id).length - receivedCount, 0);
   const isMostlyForMe = receivedCount > 0 && receivedCount >= otherPeopleCount;
 
   const rotatingInsightIndex = pulseTick % 3;
@@ -305,11 +317,18 @@ export default function Shoutouts() {
 
   const trendingShoutouts = useMemo(() => {
     return [...shoutouts]
-      .map(s => ({
-        ...s,
-        reactionCount: Object.values(reactions[s.id] ?? {}).reduce((sum, userIds) => sum + userIds.length, 0)
-      }))
-      .sort((a, b) => b.reactionCount - a.reactionCount || new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .filter(s => !s.parent_id) // Only top-level posts can trend
+      .map(s => {
+        const reactionCount = Object.values(reactions[s.id] ?? {}).reduce((sum, userIds) => sum + userIds.length, 0);
+        const commentCount = shoutouts.filter(child => child.parent_id === s.id).length;
+        return {
+          ...s,
+          reactionCount,
+          commentCount,
+          engagementScore: reactionCount + commentCount
+        };
+      })
+      .sort((a, b) => b.engagementScore - a.engagementScore || new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, 3);
   }, [shoutouts, reactions]);
 
@@ -364,20 +383,25 @@ export default function Shoutouts() {
         label: `Hottest Trend #${idx + 1}`,
         title: `From @${s.from_alias} to @${s.to_alias}`,
         body: s.message,
-        meta: `${s.reactionCount} reaction${s.reactionCount === 1 ? '' : 's'} sparked`,
+        meta: `${s.reactionCount} reaction${s.reactionCount === 1 ? '' : 's'} · ${s.commentCount} comment${s.commentCount === 1 ? '' : 's'}`,
         ...style
       };
     });
   }, [trendingShoutouts, pulseTick, isMostlyForMe, receivedCount, myName, otherPeopleCount, insightTitle, insightBody, recentBurst]);
 
-  const startReply = (shoutout: Shoutout) => {
-    setActiveReplyId(shoutout.id);
-    setMessage(''); // Clear parent message box if it was being used
-    setToAlias(shoutout.from_alias);
+  const toggleComments = (shoutoutId: string) => {
+    setActiveCommentId(prev => prev === shoutoutId ? null : shoutoutId);
   };
 
   const clearReply = () => {
     setActiveReplyId(null);
+    setReplyMessage('');
+  };
+
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success('Message copied to clipboard');
+    setActiveMenuId(null);
   };
 
   const toggleReaction = async (shoutoutId: string, emoji: string) => {
@@ -446,14 +470,20 @@ export default function Shoutouts() {
     }).select().single();
 
     if (!error && newShoutout) {
+      toast.success(parentId ? 'Comment added!' : 'Shoutout broadcasted!');
       if (!parentId) {
         setMessage('');
         setToAlias('');
       } else {
-        setActiveReplyId(null);
+        setReplyMessage('');
+        // Ensure the panel stays open if it was the target
+        if (activeCommentId !== parentId) {
+          setActiveCommentId(parentId);
+        }
       }
     } else if (error) {
       console.error('Post shoutout error:', error);
+      toast.error('Failed to send. Check database connection.');
     }
 
     setPosting(false);
@@ -465,6 +495,7 @@ export default function Shoutouts() {
     const { error } = await supabase.from('shoutouts').delete().eq('id', shoutoutId);
 
     if (!error) {
+      toast.success('Shoutout deleted');
       setShoutouts((previous) => previous.filter((item) => item.id !== shoutoutId));
       setReactions((previous) => {
         const next = { ...previous };
@@ -473,6 +504,7 @@ export default function Shoutouts() {
       });
     } else {
       console.error('Delete shoutout error:', error);
+      toast.error('Failed to delete shoutout');
     }
   };
 
@@ -729,7 +761,7 @@ export default function Shoutouts() {
 
         <section className="flex flex-wrap items-center gap-3">
           {[
-            { id: 'all' as const, label: 'Global', extra: shoutouts.length },
+            { id: 'all' as const, label: 'Global', extra: shoutouts.filter(s => !s.parent_id).length },
             { id: 'for_me' as const, label: 'For You', extra: receivedCount },
             { id: 'from_me' as const, label: 'From Me', extra: sentCount },
           ].map((item) => {
@@ -824,15 +856,54 @@ export default function Shoutouts() {
                               </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="relative flex items-center gap-2">
                             {profile?.is_admin && (
                               <button onClick={() => deleteShoutout(shoutout.id)} className="rounded-full border border-white/10 p-2 text-white/35 transition hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300"><Trash2 className="h-4 w-4" /></button>
                             )}
-                            <button className="rounded-full p-2 text-white/20 transition hover:bg-white/5 hover:text-white/60"><MoreHorizontal className="h-5 w-5" /></button>
+                            <div className="relative">
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuId(activeMenuId === shoutout.id ? null : shoutout.id);
+                                }} 
+                                className={`rounded-full p-2 transition ${activeMenuId === shoutout.id ? 'bg-white/10 text-white' : 'text-white/20 hover:bg-white/5 hover:text-white/60'}`}
+                              >
+                                <MoreHorizontal className="h-5 w-5" />
+                              </button>
+                              
+                              <AnimatePresence>
+                                {activeMenuId === shoutout.id && (
+                                  <motion.div
+                                    initial={{ opacity: 0, scale: 0.95, y: 10, x: 20 }}
+                                    animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
+                                    exit={{ opacity: 0, scale: 0.95, y: 10, x: 20 }}
+                                    className="absolute right-0 top-12 z-50 w-48 overflow-hidden rounded-2xl border border-white/10 bg-[#16161a]/95 p-1.5 shadow-2xl backdrop-blur-xl"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <button 
+                                      onClick={() => handleCopy(shoutout.message)}
+                                      className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-xs font-bold text-white/70 transition hover:bg-white/5 hover:text-white"
+                                    >
+                                      <Copy className="h-4 w-4 text-cyan-400" />
+                                      COPY MESSAGE
+                                    </button>
+                                    {isMine && !profile?.is_admin && (
+                                      <button 
+                                        onClick={() => deleteShoutout(shoutout.id)}
+                                        className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-xs font-bold text-red-400/70 transition hover:bg-red-500/10 hover:text-red-400"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                        DELETE POST
+                                      </button>
+                                    )}
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
                           </div>
                         </div>
 
-                        <div className="mt-6 flex flex-col gap-4 border-t border-white/8 pt-5 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-white/8 pt-5">
                           <div className="flex flex-wrap items-center gap-2">
                             {REACTIONS.map((reaction) => {
                               const who = shoutoutReactions[reaction.emoji] ?? [];
@@ -847,93 +918,131 @@ export default function Shoutouts() {
                             })}
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => startReply(shoutout)}
-                            className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm font-bold text-white/70 transition hover:border-cyan-400/35 hover:bg-cyan-400/10 hover:text-cyan-200"
-                          >
-                            <Reply className="h-4 w-4" />
-                            REPLY
-                          </button>
+                          <div className="flex items-center gap-3 ml-auto">
+                            <button
+                              type="button"
+                              onClick={() => toggleComments(shoutout.id)}
+                              className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-xs font-bold transition ${activeCommentId === shoutout.id ? 'border-violet-500/40 bg-violet-500/10 text-violet-300' : 'border-white/10 bg-white/[0.04] text-white/60 hover:border-white/20'}`}
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                              {children.length > 0 ? (
+                                <span>{children.length} {children.length === 1 ? 'COMMENT' : 'COMMENTS'}</span>
+                              ) : (
+                                <span>ADD COMMENT</span>
+                              )}
+                            </button>
+                          </div>
                         </div>
-
-                        {activeReplyId === shoutout.id && (
-                          <motion.div 
-                            initial={{ opacity: 0, height: 0 }} 
-                            animate={{ opacity: 1, height: 'auto' }}
-                            className="mt-6 space-y-3 rounded-2xl bg-white/[0.03] p-4"
-                          >
-                            <textarea
-                              autoFocus
-                              placeholder={`Reply to @${shoutout.from_alias}...`}
-                              className="w-full bg-transparent text-sm text-white placeholder-white/20 outline-none"
-                              rows={2}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                  e.preventDefault();
-                                  post(shoutout.id, e.currentTarget.value);
-                                }
-                              }}
-                            />
-                            <div className="flex justify-end gap-3">
-                              <button onClick={() => setActiveReplyId(null)} className="text-xs font-bold text-white/30 hover:text-white/60">CANCEL</button>
-                              <button onClick={() => {
-                                const ta = document.querySelector('textarea') as HTMLTextAreaElement;
-                                post(shoutout.id, ta.value);
-                              }} className="text-xs font-bold text-cyan-400 hover:text-cyan-300">SEND REPLY</button>
-                            </div>
-                          </motion.div>
-                        )}
                       </div>
                     </motion.article>
 
-                    {/* Children / Comments */}
-                    {children.length > 0 && (
-                      <div className="ml-8 space-y-4 border-l-2 border-white/5 pl-8 sm:ml-12 lg:ml-16">
-                        {children.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map(child => {
-                          const childReactions = reactions[child.id] ?? {};
-                          const childReactionCount = Object.values(childReactions).reduce((sum, ids) => sum + ids.length, 0);
-                          
-                          return (
-                            <motion.div 
-                              key={child.id}
-                              initial={{ opacity: 0, x: -10 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              className="relative rounded-2xl border border-white/5 bg-white/[0.02] p-4"
-                            >
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-white/30">From @{child.from_alias}</span>
-                                <span className="text-[10px] text-white/20 font-mono tracking-tighter">{timeAgo(child.created_at)}</span>
-                              </div>
-                              <p className="text-sm text-white/85 leading-relaxed">{child.message}</p>
-                              
-                              <div className="mt-3 flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  {REACTIONS.slice(0, 3).map(r => {
-                                    const who = childReactions[r.emoji] ?? [];
-                                    const count = who.length;
-                                    const hasReacted = Boolean(user && who.includes(user.id));
-                                    return (
-                                      <button key={r.emoji} onClick={() => toggleReaction(child.id, r.emoji)} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] transition ${hasReacted ? 'bg-violet-500/10 text-violet-300 border border-violet-500/20' : 'text-white/40 hover:text-white/70'}`}>
-                                        <span>{r.emoji}</span>
-                                        <span className="font-mono">{count}</span>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                                {profile?.is_admin && (
-                                  <button onClick={() => deleteShoutout(child.id)} className="text-white/20 hover:text-red-400/60 transition"><Trash2 className="h-3 w-3" /></button>
-                                )}
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
                 );
               })}
           </AnimatePresence>
+
+          <AnimatePresence>
+            {activeCommentId && (() => {
+              const activeShoutout = shoutouts.find(s => s.id === activeCommentId);
+              if (!activeShoutout) return null;
+              const children = shoutouts.filter(s => s.parent_id === activeCommentId).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+              
+              return (
+                <>
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setActiveCommentId(null)}
+                    className="fixed inset-0 z-[60] bg-black/60"
+                  />
+                  <motion.div 
+                    initial={{ x: '100%', opacity: 0.5 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: '100%', opacity: 0.5 }}
+                    transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                    className="fixed right-0 top-0 bottom-0 z-[70] w-full max-w-md border-l border-white/10 bg-[#0a0a0c]/95 p-0 shadow-2xl backdrop-blur-3xl sm:max-w-lg"
+                  >
+                    <div className="flex flex-col h-full">
+                      <div className="flex items-center justify-between border-b border-white/8 p-6">
+                        <div>
+                          <h3 className="text-lg font-bold tracking-tight text-white">Shoutout Context</h3>
+                          <p className="text-xs text-white/40 font-mono italic">@{activeShoutout.from_alias} to @{activeShoutout.to_alias}</p>
+                        </div>
+                        <button onClick={() => setActiveCommentId(null)} className="rounded-full bg-white/5 p-2 text-white/40 transition hover:bg-white/10 hover:text-white">
+                          <X className="h-5 w-5" />
+                        </button>
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+                        <div className="mb-8 rounded-2xl bg-white/[0.03] p-5 border border-white/5">
+                           <p className="text-white/85 leading-relaxed italic">"{activeShoutout.message}"</p>
+                        </div>
+
+                        <div className="mb-8 space-y-4">
+                          <h4 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400">
+                             <MessageCircle className="h-3 w-3" />
+                             Conversation ({children.length})
+                          </h4>
+                          
+                          <div className="space-y-4">
+                            <div className="rounded-2xl bg-violet-500/5 border border-violet-500/10 p-4">
+                              <textarea
+                                autoFocus
+                                placeholder="Add your voice to the thread..."
+                                className="w-full bg-transparent text-sm text-white placeholder-white/20 outline-none resize-none"
+                                rows={3}
+                                value={replyMessage}
+                                onChange={(e) => setReplyMessage(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    post(activeShoutout.id, replyMessage);
+                                  }
+                                }}
+                              />
+                              <div className="mt-2 flex justify-end">
+                                <button 
+                                  onClick={() => post(activeShoutout.id, replyMessage)} 
+                                  disabled={!replyMessage.trim() || posting}
+                                  className="rounded-full bg-cyan-500 px-6 py-2 text-[11px] font-black uppercase tracking-widest text-white transition hover:bg-cyan-400 disabled:opacity-30"
+                                >
+                                  {posting ? 'SENDING...' : 'POST COMMENT'}
+                                </button>
+                              </div>
+                            </div>
+
+                            <AnimatePresence initial={false}>
+                              {children.map(child => (
+                                <motion.div 
+                                  key={child.id}
+                                  initial={{ opacity: 0, x: 20 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  className="relative rounded-2xl border border-white/5 bg-white/[0.02] p-4"
+                                >
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">@{child.from_alias}</span>
+                                      <span className="text-[10px] text-white/20 font-mono">{timeAgo(child.created_at)}</span>
+                                    </div>
+                                    {profile?.is_admin && (
+                                      <button onClick={() => deleteShoutout(child.id)} className="text-white/10 hover:text-red-400/60 transition"><Trash2 className="h-3 w-3" /></button>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-white/80 leading-relaxed font-light">{child.message}</p>
+                                </motion.div>
+                              ))}
+                            </AnimatePresence>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                </>
+              );
+            })()}
+          </AnimatePresence>
+
 
           {visibleShoutouts.length === 0 && (
             <div className="rounded-[2rem] border border-dashed border-white/10 bg-white/[0.02] px-6 py-20 text-center">

@@ -14,15 +14,28 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function clearData() {
-  console.log('Clearing messages...');
-  const { error: msgError } = await supabase.from('messages').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-  if (msgError) console.error('Error clearing messages:', msgError);
-  else console.log('Messages cleared successfully.');
+  const tables = [
+    'qna_answers',
+    'qna_questions',
+    'poll_votes',
+    'polls',
+    'shoutouts',
+    'confession_comments',
+    'confessions',
+    'messages',
+    'voice_rooms',
+    'users'
+  ];
 
-  console.log('Clearing voice rooms...');
-  const { error: vrError } = await supabase.from('voice_rooms').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-  if (vrError) console.error('Error clearing voice rooms:', vrError);
-  else console.log('Voice rooms cleared successfully.');
+  for (const table of tables) {
+    console.log(`Clearing ${table}...`);
+    const { error } = await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (error) {
+      console.error(`Error clearing ${table}:`, error);
+    } else {
+      console.log(`${table} cleared successfully.`);
+    }
+  }
 
   console.log('Done!');
 }
