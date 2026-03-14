@@ -79,6 +79,8 @@ export default function Dashboard() {
         items.push({ id: doc.id, ...doc.data() } as Room);
       });
       setRooms(items);
+    }, (error) => {
+      console.error("Dashboard rooms listener error:", error);
     });
 
     return () => unsubscribe();

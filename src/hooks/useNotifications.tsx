@@ -76,6 +76,8 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
           });
         }
       });
+    }, (error) => {
+      console.error("Notifications listener error:", error);
     });
 
     return () => unsubscribe();
