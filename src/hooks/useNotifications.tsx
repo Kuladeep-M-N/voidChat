@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { 
   collection, 
   query, 
@@ -103,18 +103,19 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
     };
   }, [user]);
 
-  const clearUnread = (roomId: string) => {
+  const clearUnread = useCallback((roomId: string) => {
     setUnreadCounts(prev => {
+      if (!prev[roomId]) return prev;
       const next = { ...prev };
       delete next[roomId];
       return next;
     });
-  };
+  }, []);
 
-  const markAsActive = (roomId: string | null) => {
+  const markAsActive = useCallback((roomId: string | null) => {
     activeRoomIdRef.current = roomId;
     if (roomId) clearUnread(roomId);
-  };
+  }, [clearUnread]);
 
   return (
     <NotificationContext.Provider value={{ unreadCounts, onlineCount, clearUnread, markAsActive }}>

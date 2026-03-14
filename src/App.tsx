@@ -11,6 +11,9 @@ import VoiceRooms from './pages/VoiceRooms';
 import Shoutouts from './pages/Shoutouts';
 import QnA from './pages/QnA';
 import AdminModeration from './pages/AdminModeration';
+import ChatCenter from './pages/ChatCenter';
+import DebateArena from './pages/DebateArena';
+import DebateThread from './pages/DebateThread';
 
 
 const Spinner = () => (
@@ -59,6 +62,9 @@ function App() {
             <Route path="/qna" element={<ProtectedRoute><QnA /></ProtectedRoute>} />
             <Route path="/voice" element={<ProtectedRoute><div className="h-0 overflow-hidden" /></ProtectedRoute>} />
             <Route path="/shoutouts" element={<ProtectedRoute><Shoutouts /></ProtectedRoute>} />
+            <Route path="/chat-center" element={<ProtectedRoute><ChatCenter /></ProtectedRoute>} />
+            <Route path="/debate-arena" element={<ProtectedRoute><DebateArena /></ProtectedRoute>} />
+            <Route path="/debate-arena/:id" element={<ProtectedRoute><DebateThread /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute><AdminModeration /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

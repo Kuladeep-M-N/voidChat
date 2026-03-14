@@ -124,6 +124,7 @@ export default function VoiceRooms() {
   // Room list state
   const [rooms, setRooms] = useState<VoiceRoom[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [showChat, setShowChat] = useState(false); // Mobile sidebar toggle
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
 
@@ -365,6 +366,13 @@ export default function VoiceRooms() {
     };
   }, [user, activeRoom]);
 
+  // Auto-scroll chat
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatMessages]);
+
 
   const leaveRoom = useCallback(() => {
     localStreamRef.current?.getTracks().forEach(t => t.stop());
@@ -444,15 +452,19 @@ export default function VoiceRooms() {
 
   const sendChat = () => {
     if (!chatInput.trim() || !activeRoom) return;
-    const chatRef = ref(rtdb, `chat/${activeRoom.id}`);
     const msg: ChatMessage = { 
-      id: Date.now().toString(), 
+      id: `local-${Date.now()}`, 
       userId: user!.uid, 
       username: profile?.anonymous_username ?? 'Anon', 
       text: chatInput.trim() 
     };
-    push(chatRef, msg);
+    
+    // Optimistic Update
+    setChatMessages(prev => [...prev, msg]);
     setChatInput('');
+
+    const chatRef = ref(rtdb, `chat/${activeRoom.id}`);
+    push(chatRef, { ...msg, id: Date.now().toString() }); // Push with server-assigned ID
   };
 
   const toggleMute = useCallback(() => {
@@ -528,6 +540,12 @@ export default function VoiceRooms() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setShowChat(!showChat)}
+              className="lg:hidden w-10 h-10 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 flex items-center justify-center text-slate-200 shadow-sm transition-all active:scale-95"
+            >
+              <span className="material-symbols-outlined text-lg">group</span>
+            </button>
             <button className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 transition-colors text-sm font-semibold text-slate-200 shadow-sm">
               <span className="material-symbols-outlined text-lg">share</span> Share
             </button>
@@ -621,7 +639,17 @@ export default function VoiceRooms() {
           </div>
 
           {/* Sidebar Chat */}
-          <aside className="hidden lg:flex w-96 bg-[#181820]/70 backdrop-blur-xl border-l border-white/5 flex-col relative z-10 shadow-[-10px_0_30px_rgba(0,0,0,0.2)]">
+          <aside className={`${showChat ? 'flex fixed inset-0 z-[100]' : 'hidden'} lg:flex lg:relative lg:inset-auto w-full lg:w-96 bg-[#181820]/70 backdrop-blur-xl border-l border-white/5 flex-col relative z-10 shadow-[-10px_0_30px_rgba(0,0,0,0.2)]`}>
+            {/* Header for mobile sidebar */}
+            <div className="lg:hidden flex items-center justify-between p-6 border-b border-white/5">
+              <h3 className="text-white font-bold">Room Management</h3>
+              <button 
+                onClick={() => setShowChat(false)}
+                className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white/70"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
             <div className="p-6 border-b border-white/5">
               <h3 className="font-bold flex items-center gap-2 text-lg text-slate-100">
                 <span className="material-symbols-outlined text-indigo-400">forum</span> Live Comments
@@ -645,7 +673,7 @@ export default function VoiceRooms() {
                      <div className={`w-8 h-8 rounded-full flex shrink-0 items-center justify-center text-xs font-bold text-white shadow-sm ${
                        isMe ? 'bg-indigo-500 border border-indigo-400/50' : 'bg-slate-600 border border-slate-500'
                      }`}>
-                       {msg.username.slice(0, 2).toUpperCase()}
+                       {(msg.username || "??").slice(0, 2).toUpperCase()}
                      </div>
                      <div className={`flex flex-col min-w-0 flex-1 ${isMe ? 'items-end' : ''}`}>
                        <div className={`flex items-baseline gap-2 mb-1 ${isMe ? 'flex-row-reverse' : ''}`}>

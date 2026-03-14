@@ -43,8 +43,12 @@ interface RoomMember { user_id: string; role: string; anonymous_username: string
 
 const EMOJI_REACTIONS = ['❤️', '😂', '🔥', '👀', '😮', '👍'];
 const COLORS = ['#7c3aed','#0891b2','#059669','#d97706','#dc2626','#be185d','#4338ca','#7c3aed'];
-const getColor = (s: string) => COLORS[(s.charCodeAt(0) + s.charCodeAt(1) || 0) % COLORS.length];
-const getInitials = (s: string) => s.slice(0, 2).toUpperCase();
+const getColor = (s: string) => {
+  if (!s) return COLORS[0];
+  const charSum = (s.charCodeAt(0) || 0) + (s.charCodeAt(1) || 0);
+  return COLORS[charSum % COLORS.length];
+};
+const getInitials = (s: string) => (s || '??').slice(0, 2).toUpperCase();
 
 export default function ChatRoom() {
   const { id: roomId } = useParams<{ id: string }>();
@@ -133,26 +137,35 @@ export default function ChatRoom() {
       const unsubscribeMembers = onSnapshot(allMembersQuery, (snapshot) => {
         const rolesMap = new Map<string, string>();
         const membersList: RoomMember[] = [];
+        const seen = new Set<string>();
         snapshot.forEach((doc) => {
           const m = doc.data();
+          if (seen.has(m.user_id)) return;
+          seen.add(m.user_id);
+          
           rolesMap.set(m.user_id, m.role);
           membersList.push({
             user_id: m.user_id,
             role: m.role,
-            anonymous_username: m.anonymous_username
+            anonymous_username: m.anonymous_username || 'Anonymous'
           });
-          nameCache.current.set(m.user_id, m.anonymous_username);
+          nameCache.current.set(m.user_id, m.anonymous_username || 'Anonymous');
         });
         setMembers(membersList);
         setUserRoles(rolesMap);
       });
-
       return unsubscribeMembers;
     };
 
-    const unsubscribePromise = loadUserRoleAndMembers();
-    return () => {
-      unsubscribePromise.then(unsubscribe => unsubscribe && unsubscribe());
+    let isMounted = true;
+    let unsub: (() => void) | undefined;
+    loadUserRoleAndMembers().then(u => {
+      if (isMounted) unsub = u;
+      else u?.();
+    });
+    return () => { 
+      isMounted = false;
+      if (unsub) unsub(); 
     };
   }, [roomId, user, profile]);
 
@@ -162,22 +175,33 @@ export default function ChatRoom() {
 
     const q = query(
       collection(db, 'messages'), 
-      where('room_id', '==', roomId), 
-      orderBy('created_at', 'desc'),
-      limit(100)
+      where('room_id', '==', roomId)
+      // orderBy removed to avoid composite index requirement
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items: Message[] = [];
+      const dbMessages: Message[] = [];
       snapshot.forEach((doc) => {
         const data = doc.data();
-        items.push({ 
+        dbMessages.push({ 
           id: doc.id, 
           ...data,
-          anonymous_username: nameCache.current.get(data.user_id) ?? '???'
+          anonymous_username: nameCache.current.get(data.user_id) || data.anonymous_username || 'Anonymous'
         } as Message);
       });
-      setMessages(items.reverse());
+      
+      // Sort in memory and limit to latest 100
+      const sorted = dbMessages.sort((a, b) => {
+          const timeA = a.created_at?.toMillis?.() || a.created_at?.seconds * 1000 || Date.now();
+          const timeB = b.created_at?.toMillis?.() || b.created_at?.seconds * 1000 || Date.now();
+          
+          if (timeA === timeB) return 0;
+          return timeA - timeB;
+      }).slice(-100);
+      
+      setMessages(sorted);
+    }, (err) => {
+      console.error("Messages sync error:", err);
     });
 
     return () => unsubscribe();
@@ -261,6 +285,19 @@ export default function ChatRoom() {
     }
 
     sending.current = true;
+    
+    // Optimistic Update
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMsg: Message = {
+      id: tempId,
+      content,
+      user_id: user.uid,
+      anonymous_username: profile.anonymous_username,
+      created_at: { toDate: () => new Date() }, // Mock timestamp
+      optimistic: true
+    };
+    
+    setMessages(prev => [...prev, optimisticMsg]);
     setText('');
     
     const typingRef = ref(rtdb, `rooms/${roomId}/typing/${user.uid}`);
@@ -271,11 +308,15 @@ export default function ChatRoom() {
         content,
         user_id: user.uid,
         room_id: roomId,
+        anonymous_username: profile.anonymous_username, // Denormalize name for instant display
         created_at: serverTimestamp()
       });
     } catch (error) {
       console.error("Failed to send message:", error);
       toast.error("Failed to send message");
+      // Remove optimistic message on failure
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setText(content); // Restore text
     } finally {
       sending.current = false;
     }
@@ -322,7 +363,7 @@ export default function ChatRoom() {
       {/* Header */}
       <header className="border-b border-white/5 glass shrink-0 z-50">
         <div className="max-w-3xl mx-auto flex items-center gap-3 px-4 py-3">
-          <Link to="/dashboard">
+          <Link to="/chat-center">
             <button className="btn-ghost rounded-xl p-2 text-slate-400 shrink-0">←</button>
           </Link>
           <div className="w-9 h-9 rounded-full bg-violet-500/30 border border-violet-500/40 flex items-center justify-center font-bold text-violet-300 shrink-0">
@@ -617,7 +658,7 @@ export default function ChatRoom() {
                         if (!roomId) return;
                         try {
                           await updateDoc(doc(db, 'chat_rooms', roomId), { is_archived: true });
-                          navigate('/dashboard');
+                          navigate('/chat-center');
                         } catch (error) {
                           alert('Failed to archive room.');
                         }
