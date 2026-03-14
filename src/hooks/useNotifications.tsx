@@ -1,5 +1,19 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase';
+import { 
+  collection, 
+  query, 
+  onSnapshot, 
+  limit, 
+  orderBy, 
+  where 
+} from 'firebase/firestore';
+import { 
+  ref, 
+  onValue, 
+  set, 
+  onDisconnect 
+} from 'firebase/database';
+import { db, rtdb } from '../lib/firebase';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 
@@ -37,66 +51,58 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (!user) return;
 
-    // Global listener for new messages
-    const channel = supabase.channel('global-messages')
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'messages' 
-      }, (payload) => {
-        const newMessage = payload.new;
-        const roomId = newMessage.room_id;
+    // Global listener for new messages via Firestore
+    // Note: This assumes a root "messages" collection for global notifications
+    const q = query(collection(db, 'messages'), orderBy('created_at', 'desc'), limit(1));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const newMessage = change.doc.data();
+          const roomId = newMessage.room_id;
 
-        // Don't count or notify if user is in the room OR it's their own message
-        if (roomId === activeRoomIdRef.current || newMessage.user_id === user.id) {
-          return;
+          // Don't count or notify if user is in the room OR it's their own message
+          if (roomId === activeRoomIdRef.current || newMessage.user_id === user.uid) {
+            return;
+          }
+
+          setUnreadCounts(prev => ({
+            ...prev,
+            [roomId]: (prev[roomId] || 0) + 1
+          }));
+
+          // Show toast notification
+          toast.message(`New message in room`, {
+            description: newMessage.content.substring(0, 50) + (newMessage.content.length > 50 ? '...' : ''),
+          });
         }
+      });
+    });
 
-        setUnreadCounts(prev => ({
-          ...prev,
-          [roomId]: (prev[roomId] || 0) + 1
-        }));
-
-        // Show toast notification
-        toast.message(`New message in ${roomId}`, {
-          description: newMessage.content.substring(0, 50) + (newMessage.content.length > 50 ? '...' : ''),
-        });
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => unsubscribe();
   }, [user]);
 
   useEffect(() => {
     if (!user) return;
 
-    const presenceChannel = supabase.channel('global-presence');
-    
-    presenceChannel
-      .on('presence', { event: 'sync' }, () => {
-        const state = presenceChannel.presenceState();
-        const uniqueUsers = new Set(Object.values(state).flat().map((p: any) => p.user_id));
-        setOnlineCount(uniqueUsers.size || 1);
-      })
-      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-        console.log('join', key, newPresences);
-      })
-      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-        console.log('leave', key, leftPresences);
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await presenceChannel.track({
-            user_id: user.id,
-            online_at: new Date().toISOString(),
-          });
-        }
-      });
+    const presenceRef = ref(rtdb, 'presence/global/' + user.uid);
+    const globalPresenceRef = ref(rtdb, 'presence/global');
+
+    // Track own presence
+    set(presenceRef, {
+      user_id: user.uid,
+      online_at: new Date().toISOString(),
+    });
+    onDisconnect(presenceRef).remove();
+
+    // Listen to global presence
+    const unsubscribe = onValue(globalPresenceRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      setOnlineCount(Object.keys(data).length || 1);
+    });
 
     return () => {
-      supabase.removeChannel(presenceChannel);
+      set(presenceRef, null);
+      unsubscribe();
     };
   }, [user]);
 

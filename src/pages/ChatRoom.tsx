@@ -1,7 +1,31 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from '../lib/supabase';
+import { 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot, 
+  addDoc, 
+  updateDoc, 
+  doc, 
+  getDoc, 
+  getDocs,
+  serverTimestamp,
+  setDoc,
+  deleteDoc
+} from 'firebase/firestore';
+import { 
+  ref, 
+  onValue, 
+  set as rtdbSet, 
+  onDisconnect, 
+  push,
+  onChildAdded,
+  remove as rtdbRemove
+} from 'firebase/database';
+import { db, rtdb } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
 import { AlertTriangle } from 'lucide-react';
@@ -10,7 +34,7 @@ import ReportModal from '../components/ReportModal';
 import { toast } from 'sonner';
 
 interface Message {
-  id: string; content: string; created_at: string;
+  id: string; content: string; created_at: any;
   user_id: string; anonymous_username: string; optimistic?: boolean;
 }
 interface TypingUser { id: string; username: string; }
@@ -46,7 +70,6 @@ export default function ChatRoom() {
   const [reportingContent, setReportingContent] = useState<{ type: 'message' | 'user'; id: string } | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nameCache = useRef<Map<string, string>>(new Map());
   const sending = useRef(false);
@@ -60,302 +83,151 @@ export default function ChatRoom() {
     }
   }, [user, roomId, markAsActive]);
 
-  // ── Fetch room name + messages (runs when user is ready, NOT waiting for profile) ──
+  // ── Fetch room data ──
   useEffect(() => {
-    if (!roomId || !user) return;
+    if (!roomId) return;
 
-    const loadRoomData = async () => {
-      // 1. Fetch Room Data
-      const { data: roomData } = await supabase.from('chat_rooms')
-        .select('name, category, only_admins_can_message, is_archived, created_by')
-        .eq('id', roomId).single();
-        
-      if (roomData) { 
-        setRoomName(roomData.name); 
-        setRoomCategory(roomData.category); 
-        setOnlyAdminsCanMessage(roomData.only_admins_can_message); 
+    const roomRef = doc(db, 'chat_rooms', roomId);
+    const unsubscribe = onSnapshot(roomRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const roomData = snapshot.data();
+        setRoomName(roomData.name);
+        setRoomCategory(roomData.category);
+        setOnlyAdminsCanMessage(roomData.only_admins_can_message);
         setIsArchived(roomData.is_archived || false);
         setRoomCreatorId(roomData.created_by);
-      } 
+      }
+    });
 
-      // 2. Fetch User Role
-      let { data: memberData, error: roleError } = await supabase
-        .from('room_members')
-        .select('role')
-        .eq('room_id', roomId)
-        .eq('user_id', user.id)
-        .maybeSingle();
+    return () => unsubscribe();
+  }, [roomId]);
+
+  // ── Fetch user role and all members ──
+  useEffect(() => {
+    if (!roomId || !user || !profile) return;
+
+    const loadUserRoleAndMembers = async () => {
+      // 1. Fetch User Role
+      const memberQuery = query(collection(db, 'room_members'), where('room_id', '==', roomId), where('user_id', '==', user.uid));
+      const memberSnapshot = await getDocs(memberQuery);
       
-      if (!memberData) {
-        // Auto-join ONLY if not already a member. 
-        // We use insert instead of upsert here to avoid demoting creators/admins.
-        const { error: joinError } = await supabase
-          .from('room_members')
-          .insert({ room_id: roomId, user_id: user.id, role: 'member' });
-        
-        if (joinError) {
-           console.error('Error joining room:', joinError);
-           // If it's a 409, it means they joined in a race — fetch again
-           if (joinError.code === '23505') {
-              const { data: retryData } = await supabase
-                .from('room_members')
-                .select('role')
-                .eq('room_id', roomId)
-                .eq('user_id', user.id)
-                .maybeSingle();
-              memberData = retryData;
-           }
-        } else {
-           memberData = { role: 'member' };
-        }
+      let finalRole = 'member';
+      if (memberSnapshot.empty) {
+        // Auto-join
+        await addDoc(collection(db, 'room_members'), {
+          room_id: roomId,
+          user_id: user.uid,
+          role: 'member',
+          anonymous_username: profile.anonymous_username,
+          joined_at: serverTimestamp()
+        });
+      } else {
+        finalRole = memberSnapshot.docs[0].data().role;
       }
       
-      const finalRole = (roomData && roomData.created_by === user.id) ? 'creator' : (memberData?.role || 'member');
       setUserRole(finalRole);
 
-      // 3. Fetch All Members
-      const { data: allMembers } = await supabase
-        .from('room_members')
-        .select('user_id, role, users!inner(anonymous_username)')
-        .eq('room_id', roomId);
-        
-      if (allMembers) {
+      // 2. Fetch All Members
+      const allMembersQuery = query(collection(db, 'room_members'), where('room_id', '==', roomId));
+      const unsubscribeMembers = onSnapshot(allMembersQuery, (snapshot) => {
         const rolesMap = new Map<string, string>();
-        setMembers(allMembers.map(m => {
+        const membersList: RoomMember[] = [];
+        snapshot.forEach((doc) => {
+          const m = doc.data();
           rolesMap.set(m.user_id, m.role);
-          return {
+          membersList.push({
             user_id: m.user_id,
             role: m.role,
-            anonymous_username: (m.users as any).anonymous_username
-          };
-        }));
+            anonymous_username: m.anonymous_username
+          });
+          nameCache.current.set(m.user_id, m.anonymous_username);
+        });
+        setMembers(membersList);
         setUserRoles(rolesMap);
-      }
+      });
+
+      return unsubscribeMembers;
     };
 
-    loadRoomData();
-
-    const fetchMessages = async () => {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('id, content, created_at, user_id')
-        .eq('room_id', roomId)
-        .order('created_at', { ascending: true });
-
-      if (error || !data) return;
-
-      // Fetch all unique user names in one query
-      const userIds = [...new Set(data.map(m => m.user_id))];
-      if (userIds.length) {
-        const { data: users } = await supabase.from('users').select('id, anonymous_username').in('id', userIds);
-        users?.forEach(u => nameCache.current.set(u.id, u.anonymous_username));
-      }
-
-      setMessages(data.map(m => ({
-        ...m,
-        anonymous_username: nameCache.current.get(m.user_id) ?? '???'
-      })));
+    const unsubscribePromise = loadUserRoleAndMembers();
+    return () => {
+      unsubscribePromise.then(unsubscribe => unsubscribe && unsubscribe());
     };
+  }, [roomId, user, profile]);
 
-    fetchMessages();
-  }, [roomId, user]);
-
-  // ── Realtime subscription (separate from data fetch) ──
+  // ── Realtime Messages ──
   useEffect(() => {
     if (!roomId || !user) return;
 
-    const channelName = `room:${roomId}`;
+    const q = query(
+      collection(db, 'messages'), 
+      where('room_id', '==', roomId), 
+      orderBy('created_at', 'asc')
+    );
 
-    // Remove if already exists to ensure fresh connection on room change
-    const existingChannel = supabase.getChannels().find(c => c.topic === `realtime:${channelName}`);
-    if (existingChannel) {
-      supabase.removeChannel(existingChannel);
-    }
-
-    const ch = supabase.channel(channelName, { 
-      config: { 
-        presence: { key: user.id },
-        broadcast: { ack: true }
-      } 
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items: Message[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        items.push({ 
+          id: doc.id, 
+          ...data,
+          anonymous_username: nameCache.current.get(data.user_id) ?? '???'
+        } as Message);
+      });
+      setMessages(items);
     });
-    
-    channelRef.current = ch;
 
-    // Cache own name if available
-    if (profile?.anonymous_username) {
-      nameCache.current.set(user.id, profile.anonymous_username);
-    }
+    return () => unsubscribe();
+  }, [roomId, user]);
 
-    ch
-      .on('presence', { event: 'sync' }, () => {
-        const state = ch.presenceState();
-        setOnlineCount(Object.keys(state).length || 1);
-      })
-      .on('presence', { event: 'join' }, ({ newPresences }) => {
-        console.log('Joined:', newPresences);
-      })
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
-        async (payload) => {
-          const msg = payload.new as any;
-          
-          // Manual filter by room_id (since room_id might not always trigger strict filter)
-          if (msg.room_id !== roomId) return;
+  // ── Realtime Presence / Typing / Reactions (RTDB) ──
+  useEffect(() => {
+    if (!roomId || !user || !profile || isArchived) return;
 
-          // Avoid duplicate for the sender (handled by optimistic update)
-          if (msg.user_id === user.id) return;
+    const presenceRef = ref(rtdb, `rooms/${roomId}/presence/${user.uid}`);
+    const typingRef = ref(rtdb, `rooms/${roomId}/typing/${user.uid}`);
+    const roomPresenceRef = ref(rtdb, `rooms/${roomId}/presence`);
+    const roomTypingRef = ref(rtdb, `rooms/${roomId}/typing`);
+    const roomReactionsRef = ref(rtdb, `rooms/${roomId}/reactions`);
 
-          // Get username (from cache or fetch)
-          let username = nameCache.current.get(msg.user_id);
-          if (!username) {
-            const { data } = await supabase.from('users').select('anonymous_username').eq('id', msg.user_id).maybeSingle();
-            username = data?.anonymous_username ?? '???';
-            nameCache.current.set(msg.user_id, username);
-          }
+    // Presence
+    rtdbSet(presenceRef, {
+      user_id: user.uid,
+      username: profile.anonymous_username,
+      online_at: new Date().toISOString()
+    });
+    onDisconnect(presenceRef).remove();
 
-          setMessages(prev => {
-            if (prev.some(m => m.id === msg.id)) return prev;
-            
-            // Deduplicate: if we have an optimistic message with same content/user, replace it
-            const matchingIndex = prev.findIndex(m => 
-              m.optimistic && m.user_id === msg.user_id && m.content === msg.content
-            );
-            
-            if (matchingIndex !== -1) {
-              const updated = [...prev];
-              updated[matchingIndex] = { ...msg, anonymous_username: username! };
-              return updated;
-            }
-            
-            return [...prev, { ...msg, anonymous_username: username! }];
-          });
+    const unsubPresence = onValue(roomPresenceRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      setOnlineCount(Object.keys(data).length || 1);
+    });
+
+    // Typing
+    const unsubTyping = onValue(roomTypingRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      const typers: TypingUser[] = [];
+      Object.entries(data).forEach(([uid, val]: [string, any]) => {
+        if (uid !== user.uid) {
+          typers.push({ id: uid, username: val.username });
         }
-      );
-
-    // ── Fallback Polling (Every 10 seconds) ──
-    const pollInterval = setInterval(async () => {
-      if (!roomId) return;
-      
-      const { data, error } = await supabase
-        .from('messages')
-        .select('id, content, created_at, user_id')
-        .eq('room_id', roomId)
-        .order('created_at', { ascending: true });
-
-      if (error || !data) return;
-
-      // Update cache for any new users
-      const unknownUserIds = [...new Set(data.map(m => m.user_id))].filter(id => !nameCache.current.has(id));
-      if (unknownUserIds.length) {
-        const { data: users } = await supabase.from('users').select('id, anonymous_username').in('id', unknownUserIds);
-        users?.forEach(u => nameCache.current.set(u.id, u.anonymous_username));
-      }
-
-      setMessages(prev => {
-        const existingIds = new Set(prev.map(m => m.id));
-        const finalMsgs = [...prev];
-        
-        data.forEach(m => {
-          if (existingIds.has(m.id)) return;
-          
-          // Check for soft match with optimistic messages
-          const matchingIndex = finalMsgs.findIndex(pm => 
-            pm.optimistic && pm.user_id === m.user_id && pm.content === m.content
-          );
-          
-          if (matchingIndex !== -1) {
-            finalMsgs[matchingIndex] = {
-              ...m,
-              anonymous_username: nameCache.current.get(m.user_id) ?? '???'
-            };
-            existingIds.add(m.id);
-          } else {
-            finalMsgs.push({
-              ...m,
-              anonymous_username: nameCache.current.get(m.user_id) ?? '???'
-            });
-            existingIds.add(m.id);
-          }
-        });
-        
-        // Merge and sort
-        const sorted = finalMsgs.sort(
-          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        );
-        
-        // Final dedupe for safety
-        const seen = new Set();
-        return sorted.filter(m => seen.has(m.id) ? false : seen.add(m.id));
       });
-    }, 10000);
-
-    // Only subscribe to typing/reactions if the room isn't archived
-    if (!isArchived) {
-      ch.on('broadcast', { event: 'typing' }, ({ payload }) => {
-        if (payload.userId === user.id) return;
-        setTypingUsers(prev => prev.find(u => u.id === payload.userId) ? prev : [...prev, { id: payload.userId, username: payload.username }]);
-        
-        // Auto-clear typing indicator
-        setTimeout(() => {
-          setTypingUsers(prev => prev.filter(u => u.id !== payload.userId));
-        }, 3500);
-      })
-      .on('broadcast', { event: 'stop_typing' }, ({ payload }) => {
-        setTypingUsers(prev => prev.filter(u => u.id !== payload.userId));
-      })
-      .on('broadcast', { event: 'msg_reaction' }, ({ payload }) => {
-        setReactions(prev => {
-          const r = { ...(prev[payload.msgId] ?? {}) };
-          const who = r[payload.emoji] ?? [];
-          if (who.includes(payload.userId)) return prev;
-          r[payload.emoji] = [...who, payload.userId];
-          return { ...prev, [payload.msgId]: r };
-        });
-      })
-      .on('broadcast', { event: 'chat_message' }, ({ payload }) => {
-        if (payload.user_id === user.id) return;
-        setMessages(prev => {
-          if (prev.some(m => m.id === payload.id)) return prev;
-          
-          // Even for broadcast, check if we somehow have a matching content already (unlikely but safe)
-          const matchingIndex = prev.findIndex(m => 
-            m.optimistic && m.user_id === payload.user_id && m.content === payload.content
-          );
-          
-          if (matchingIndex !== -1) {
-             const updated = [...prev];
-             updated[matchingIndex] = payload;
-             return updated;
-          }
-          
-          return [...prev, payload];
-        });
-      });
-    }
-
-    // Also listen for archiving events dynamically
-    ch.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_rooms', filter: `id=eq.${roomId}` }, (payload) => {
-      if (payload.new.is_archived) {
-         setIsArchived(true);
-      }
+      setTypingUsers(typers);
     });
 
-    ch.subscribe(async (status) => {
-      console.log(`Subscription status for ${roomId}:`, status);
-      if (status === 'SUBSCRIBED' && profile) {
-        await ch.track({ 
-          username: profile.anonymous_username,
-          user_id: user.id,
-          online_at: new Date().toISOString()
-        });
-      }
+    // Reactions
+    const unsubReactions = onValue(roomReactionsRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      setReactions(data);
     });
 
-    return () => { 
-      supabase.removeChannel(ch); 
-      channelRef.current = null;
-      clearInterval(pollInterval);
+    return () => {
+      rtdbRemove(presenceRef);
+      rtdbRemove(typingRef);
+      unsubPresence();
+      unsubTyping();
+      unsubReactions();
     };
   }, [roomId, user, profile, isArchived]);
 
@@ -364,15 +236,17 @@ export default function ChatRoom() {
   }, [messages]);
 
   const emitTyping = useCallback(() => {
-    if (!channelRef.current || !profile || isArchived) return;
-    channelRef.current.send({ type: 'broadcast', event: 'typing', payload: { userId: user!.id, username: profile.anonymous_username } });
+    if (!roomId || !user || !profile || isArchived) return;
+    const typingRef = ref(rtdb, `rooms/${roomId}/typing/${user.uid}`);
+    rtdbSet(typingRef, { username: profile.anonymous_username });
+    
     if (typingTimer.current) clearTimeout(typingTimer.current);
-    setTimeout(() => {
-      channelRef.current?.send({ type: 'broadcast', event: 'stop_typing', payload: { userId: user!.id } });
+    typingTimer.current = setTimeout(() => {
+      rtdbRemove(typingRef);
     }, 2000);
-  }, [profile, user, isArchived]);
+  }, [roomId, user, profile, isArchived]);
 
-  const sendMessage = useCallback(() => {
+  const sendMessage = useCallback(async () => {
     const content = text.trim();
     if (!content || !user || !roomId || !profile || sending.current || isArchived) return;
 
@@ -385,58 +259,38 @@ export default function ChatRoom() {
     }
 
     sending.current = true;
-
-    const tempId = `OPT_${Date.now()}_${Math.random()}`;
-    // Add optimistic immediately — it will be replaced by the DB event
-    setMessages(prev => [...prev, {
-      id: tempId, content, created_at: new Date().toISOString(),
-      user_id: user.id, anonymous_username: profile.anonymous_username, optimistic: true
-    }]);
-    
     setText('');
-    if (typingTimer.current) clearTimeout(typingTimer.current);
-    const stopTypingPayload = { userId: user.id };
-    channelRef.current?.send({ type: 'broadcast', event: 'stop_typing', payload: stopTypingPayload });
+    
+    const typingRef = ref(rtdb, `rooms/${roomId}/typing/${user.uid}`);
+    rtdbRemove(typingRef);
 
-    // Broadcast message instantly to others for sub-second delivery
-    const broadcastMsg = {
-      id: tempId, content, created_at: new Date().toISOString(),
-      user_id: user.id, anonymous_username: profile.anonymous_username, optimistic: true
-    };
-    channelRef.current?.send({ type: 'broadcast', event: 'chat_message', payload: broadcastMsg });
-
-    // Fire and forget the DB insert so the UI doesn't lag
-    (async () => {
-      const { data: savedMsg, error } = await supabase.from('messages')
-        .insert({ content, user_id: user.id, room_id: roomId })
-        .select().single();
-        
-      if (error) {
-        console.error("Failed to send message:", error);
-        setMessages(prev => prev.filter(m => m.id !== tempId));
-      } else if (savedMsg) {
-        // Update the optimistic message with the real data instantly
-        setMessages(prev => prev.map(m => 
-          m.id === tempId ? { ...savedMsg, anonymous_username: profile.anonymous_username, optimistic: false } : m
-        ));
-      }
+    try {
+      await addDoc(collection(db, 'messages'), {
+        content,
+        user_id: user.uid,
+        room_id: roomId,
+        created_at: serverTimestamp()
+      });
+    } catch (error) {
+      console.error("Failed to send message:", error);
+      toast.error("Failed to send message");
+    } finally {
       sending.current = false;
-    })();
-      
+    }
   }, [text, user, roomId, profile, isArchived, onlyAdminsCanMessage, userRole]);
 
   const reactToMessage = useCallback((msgId: string, emoji: string) => {
-    if (!user || isArchived) return;
+    if (!user || !roomId || isArchived) return;
     setPicker(null);
-    setReactions(prev => {
-      const r = { ...(prev[msgId] ?? {}) };
-      const who = r[emoji] ?? [];
-      if (who.includes(user.id)) return prev;
-      r[emoji] = [...who, user.id];
-      return { ...prev, [msgId]: r };
-    });
-    channelRef.current?.send({ type: 'broadcast', event: 'msg_reaction', payload: { msgId, emoji, userId: user.id } });
-  }, [user]);
+    
+    const reactionRef = ref(rtdb, `rooms/${roomId}/reactions/${msgId}/${emoji}`);
+    onValue(reactionRef, (snapshot) => {
+      const uids = snapshot.val() || [];
+      if (!uids.includes(user.uid)) {
+        rtdbSet(reactionRef, [...uids, user.uid]);
+      }
+    }, { onlyOnce: true });
+  }, [user, roomId, isArchived]);
 
   // Group consecutive messages by user
   const grouped = messages.map((msg, i) => {
@@ -504,7 +358,7 @@ export default function ChatRoom() {
         ) : (
           <>
             {grouped.map((msg) => {
-              const isMe = msg.user_id === user?.id;
+              const isMe = msg.user_id === user?.uid;
               const color = getColor(msg.anonymous_username);
               const msgReactions = reactions[msg.id] ?? {};
 
@@ -594,10 +448,10 @@ export default function ChatRoom() {
                           <button key={emoji} onClick={e => { e.stopPropagation(); reactToMessage(msg.id, emoji); }}
                             disabled={isArchived}
                             className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border transition-all ${
-                              who.includes(user!.id)
+                              (who as string[]).includes(user!.uid)
                                 ? 'border-violet-500/50 bg-violet-500/15 text-violet-300'
                                 : 'border-white/10 text-slate-400'} ${!isArchived ? 'hover:border-violet-500/30' : 'cursor-default'}`}>
-                            {emoji} {who.length}
+                            {emoji} {(who as string[]).length}
                           </button>
                         ))}
                       </div>
@@ -606,7 +460,7 @@ export default function ChatRoom() {
                     {/* Time + delivery */}
                     {msg.isLast && (
                       <span className={`text-[10px] mt-1 px-1 flex items-center gap-1 ${isMe ? 'text-slate-500 self-end' : 'text-slate-600 self-start'}`}>
-                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {msg.created_at?.toDate ? msg.created_at.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}
                         {isMe && (
                           <span className={msg.optimistic ? 'text-slate-600' : 'text-violet-400'}>
                             {msg.optimistic ? '○' : '✓✓'}
@@ -739,7 +593,8 @@ export default function ChatRoom() {
                     checked={onlyAdminsCanMessage}
                     onChange={async (e) => {
                       const newValue = e.target.checked;
-                      await supabase.from('chat_rooms').update({ only_admins_can_message: newValue }).eq('id', roomId);
+                      if (!roomId) return;
+                      await updateDoc(doc(db, 'chat_rooms', roomId), { only_admins_can_message: newValue });
                       setOnlyAdminsCanMessage(newValue);
                     }}
                     className="w-4 h-4"
@@ -757,10 +612,11 @@ export default function ChatRoom() {
                   <button 
                     onClick={async () => {
                       if(window.confirm('Are you sure you want to Delete/Archive this chat room? It will be moved to history and become read-only.')) {
-                        const { error } = await supabase.from('chat_rooms').update({ is_archived: true }).eq('id', roomId);
-                        if (!error) {
+                        if (!roomId) return;
+                        try {
+                          await updateDoc(doc(db, 'chat_rooms', roomId), { is_archived: true });
                           navigate('/dashboard');
-                        } else {
+                        } catch (error) {
                           alert('Failed to archive room.');
                         }
                       }

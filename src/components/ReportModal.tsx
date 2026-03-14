@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, X, Shield, CheckCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
 
@@ -32,18 +33,15 @@ export default function ReportModal({ isOpen, onClose, targetType, targetId }: R
     if (!user || !reason) return;
 
     setSubmitting(true);
-    const { error } = await supabase.from('reports').insert({
-      reporter_id: user.id,
-      target_type: targetType,
-      target_id: targetId,
-      reason,
-      description
-    });
-
-    if (error) {
-      console.error('Report error:', error);
-      toast.error('Failed to send report. Please try again.');
-    } else {
+    try {
+      await addDoc(collection(db, 'reports'), {
+        reporter_id: user.uid,
+        target_type: targetType,
+        target_id: targetId,
+        reason,
+        description,
+        created_at: serverTimestamp()
+      });
       setSubmitted(true);
       setTimeout(() => {
         onClose();
@@ -51,6 +49,9 @@ export default function ReportModal({ isOpen, onClose, targetType, targetId }: R
         setReason('');
         setDescription('');
       }, 2000);
+    } catch (error) {
+      console.error('Report error:', error);
+      toast.error('Failed to send report. Please try again.');
     }
     setSubmitting(false);
   };

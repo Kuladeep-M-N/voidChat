@@ -2,17 +2,41 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Trash2, Archive } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  getDocs,
+  serverTimestamp 
+} from 'firebase/firestore';
+import { 
+  ref, 
+  onValue, 
+  set, 
+  push, 
+  onChildAdded, 
+  remove, 
+  off, 
+  update, 
+  onDisconnect 
+} from 'firebase/database';
+import { db, rtdb } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 
 interface VoiceRoom {
   id: string;
   name: string;
-  created_at: string;
+  created_at: any;
   created_by: string;
   status?: 'active' | 'ended';
-  ended_at?: string;
-  creator?: { anonymous_username: string };
+  ended_at?: any;
+  creator_name?: string;
 }
 
 type Role = 'speaker' | 'audience';
@@ -40,20 +64,9 @@ const STUN_FALLBACK = [
 ];
 
 async function getIceServers(): Promise<RTCIceServer[]> {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-ice-servers`, {
-      headers: {
-        Authorization: `Bearer ${session?.access_token ?? ''}`,
-        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-      },
-    });
-    if (!res.ok) throw new Error('ICE fetch failed');
-    return await res.json();
-  } catch {
-    console.warn('Falling back to STUN-only ICE servers');
-    return STUN_FALLBACK;
-  }
+  // Logic for Firebase functions will be added in next phase
+  // Falling back to STUN for now
+  return STUN_FALLBACK;
 }
 
 function useSpeakingDetector(stream: MediaStream | null): boolean {
@@ -116,66 +129,101 @@ export default function VoiceRooms() {
   // WebRTC refs
   const localStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const remoteAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const joiningRef = useRef<boolean>(false);
 
   const isSpeaking = useSpeakingDetector(localStreamRef.current);
 
-  // No auto-redirect here since this is globally mounted now
-
   // Load rooms
   useEffect(() => {
     if (!user) return;
 
-    const fetchRooms = async () => {
-      // Join with users table to get the creator's anonymous name
-      const { data } = await supabase
-        .from('voice_rooms')
-        .select('*, creator:users(anonymous_username)')
-        .order('created_at', { ascending: false });
-      if (data) setRooms(data as VoiceRoom[]);
-    };
-
-    fetchRooms();
-
-    const ch = supabase.channel('voice-rooms-list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'voice_rooms' }, () => {
-        fetchRooms(); // Refresh the whole list on any change for simplicity
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(ch); };
-  }, [user]);
-
-  // Keep initial presence and updates in sync
-  useEffect(() => {
-    if (!user || !activeRoom || !channelRef.current) return;
-
-    // Auto-scroll chat
-    if (chatScrollRef.current) {
-      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-    }
-
-    setParticipants(prev => prev.map(p =>
-      p.userId === user.id ? { ...p, speaking: isSpeaking, muted, role: myRole, handRaised } : p
-    ));
-
-    // Broadcast for immediate UI updates on peers
-    channelRef.current.send({
-      type: 'broadcast', event: 'status',
-      payload: { userId: user.id, muted, speaking: isSpeaking, role: myRole, handRaised },
+    const q = query(collection(db, 'voice_rooms'), orderBy('created_at', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items: VoiceRoom[] = [];
+      snapshot.forEach((doc) => {
+        items.push({ id: doc.id, ...doc.data() } as VoiceRoom);
+      });
+      setRooms(items);
     });
 
-    // Track for Presence state (for new joiners and syncs)
-    channelRef.current.track({
+    return () => unsubscribe();
+  }, [user]);
+
+  // Signaling and Presence via RTDB
+  useEffect(() => {
+    if (!user || !activeRoom) return;
+
+    const roomId = activeRoom.id;
+    const presenceRef = ref(rtdb, `presence/${roomId}/${user.uid}`);
+    const signalingInRef = ref(rtdb, `signaling/${roomId}/${user.uid}`);
+
+    // Update presence
+    set(presenceRef, {
       username: profile?.anonymous_username ?? 'Anonymous',
       muted,
       role: myRole,
-      handRaised
+      handRaised,
+      speaking: isSpeaking
+    });
+    onDisconnect(presenceRef).remove();
+
+    // Listen to signaling
+    const signalingUnsubscribe = onChildAdded(signalingInRef, async (snapshot) => {
+      const { from, type, data } = snapshot.val();
+      await remove(snapshot.ref); // Consume signal
+
+      if (type === 'offer') {
+        const pc = await createPeer(from, false);
+        await pc.setRemoteDescription(new RTCSessionDescription(data));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        const outRef = ref(rtdb, `signaling/${roomId}/${from}`);
+        push(outRef, { from: user.uid, type: 'answer', data: answer });
+      } else if (type === 'answer') {
+        const pc = peersRef.current.get(from);
+        if (pc) await pc.setRemoteDescription(new RTCSessionDescription(data));
+      } else if (type === 'candidate') {
+        const pc = peersRef.current.get(from);
+        if (pc) await pc.addIceCandidate(new RTCIceCandidate(data));
+      }
     });
 
-  }, [isSpeaking, muted, myRole, handRaised, user, activeRoom, profile]);
+    // Listen to participants
+    const participantsRef = ref(rtdb, `presence/${roomId}`);
+    const participantsUnsubscribe = onValue(participantsRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      const users: Participant[] = Object.entries(data).map(([uid, info]: [string, any]) => ({
+        userId: uid,
+        username: info.username,
+        speaking: info.speaking,
+        muted: info.muted,
+        role: info.role,
+        handRaised: info.handRaised
+      }));
+      setParticipants(users);
+
+      // Create peers for new participants
+      users.forEach(p => {
+        if (p.userId !== user.uid && !peersRef.current.has(p.userId)) {
+          createPeer(p.userId, true);
+        }
+      });
+    });
+
+    // Listen to chat
+    const chatRef = ref(rtdb, `chat/${roomId}`);
+    const chatUnsubscribe = onChildAdded(chatRef, (snapshot) => {
+      setChatMessages(prev => [...prev, snapshot.val()]);
+    });
+
+    return () => {
+      remove(presenceRef);
+      off(signalingInRef);
+      off(participantsRef);
+      off(chatRef);
+    };
+  }, [user, activeRoom, muted, myRole, handRaised, isSpeaking]);
 
   // Create Peer Connection
   const createPeer = useCallback(async (remoteUserId: string, isInitiator: boolean) => {
@@ -190,7 +238,6 @@ export default function VoiceRooms() {
         pc.addTrack(track, localStreamRef.current!);
       });
     } else {
-      // If audience, we still need to receive audio from speakers
       pc.addTransceiver('audio', { direction: 'recvonly' });
     }
 
@@ -207,11 +254,9 @@ export default function VoiceRooms() {
     };
 
     pc.onicecandidate = ({ candidate }) => {
-      if (candidate) {
-        channelRef.current?.send({
-          type: 'broadcast', event: 'ice-candidate',
-          payload: { from: user!.id, to: remoteUserId, candidate },
-        });
+      if (candidate && activeRoom) {
+        const outRef = ref(rtdb, `signaling/${activeRoom.id}/${remoteUserId}`);
+        push(outRef, { from: user!.uid, type: 'candidate', data: candidate });
       }
     };
 
@@ -226,17 +271,15 @@ export default function VoiceRooms() {
 
     peersRef.current.set(remoteUserId, pc);
 
-    if (isInitiator) {
+    if (isInitiator && activeRoom) {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      channelRef.current?.send({
-        type: 'broadcast', event: 'offer',
-        payload: { from: user!.id, to: remoteUserId, offer },
-      });
+      const outRef = ref(rtdb, `signaling/${activeRoom.id}/${remoteUserId}`);
+      push(outRef, { from: user!.uid, type: 'offer', data: offer });
     }
 
     return pc;
-  }, [user]);
+  }, [user, activeRoom]);
 
   const leaveRoom = useCallback(() => {
     localStreamRef.current?.getTracks().forEach(t => t.stop());
@@ -245,7 +288,6 @@ export default function VoiceRooms() {
     peersRef.current.clear();
     remoteAudiosRef.current.forEach(a => a.remove());
     remoteAudiosRef.current.clear();
-    if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
     setActiveRoom(null); setParticipants([]); setChatMessages([]); setHandRaised(false);
   }, []);
 
@@ -253,245 +295,78 @@ export default function VoiceRooms() {
     if (joiningRef.current) return;
     joiningRef.current = true;
     setJoining(true); setErrorMsg(null);
-    console.log('JoinRoom Debug - Room Object:', room);
-    console.log('JoinRoom Debug - User ID:', user?.id);
 
-    // OPEN VOICE MODEL: Request mic immediately on join
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      // Mute by default: Disable tracks immediately
       stream.getAudioTracks().forEach(track => {
         track.enabled = false;
       });
       localStreamRef.current = stream;
       setMyRole('speaker');
-      setMuted(true); // Default to muted
+      setMuted(true);
+      setActiveRoom(room);
+      setChatMessages([{ id: '1', userId: 'sys', username: 'System', text: `Connected to ${room.name}.`, isSystem: true }]);
     } catch (err) {
       console.warn('Microphone access denied, joining as listener only.');
       setMyRole('audience');
       setMuted(true);
+      setActiveRoom(room);
+    } finally {
+      setJoining(false);
+      joiningRef.current = false;
     }
+  }, []);
 
-    // Ensure no lingering channels from hot reloads or fast clicks
-    const cleanupTopic = `voice:${room.id}`;
-    supabase.getChannels().forEach(ch => {
-      if (ch.topic === cleanupTopic || ch.topic === `realtime:${cleanupTopic}`) {
-        supabase.removeChannel(ch);
-      }
-    });
-
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
-      channelRef.current = null;
-    }
-
-    const ch = supabase.channel(cleanupTopic, { config: { presence: { key: user!.id } } });
-    channelRef.current = ch;
-
-    ch.on('presence', { event: 'sync' }, () => {
-      const state = ch.presenceState<{ username: string; muted: boolean; role: Role; handRaised: boolean }>();
-      const users = Object.entries(state).map(([userId, data]) => {
-        const info = data[0];
-        // For the current user, we prefer our local state to avoid race conditions during initial join
-        const isMe = String(userId) === String(user?.id);
-        return {
-          userId,
-          username: info.username,
-          speaking: false,
-          muted: isMe ? muted : info.muted,
-          role: (isMe && myRole !== 'audience') ? myRole : (info.role || 'audience'),
-          handRaised: isMe ? handRaised : (info.handRaised ?? false)
-        };
-      });
-
-      // Strict limit check
-      if (users.length > 18 && users.find(u => u.userId === user!.id)) {
-        leaveRoom();
-        setErrorMsg('Room is full (Maximum 18 participants).');
-        return;
-      }
-
-      setParticipants(users);
-      users.forEach(p => {
-        if (p.userId !== user!.id && !peersRef.current.has(p.userId)) {
-          createPeer(p.userId, true);
-        }
-      });
-    });
-
-    ch.on('presence', { event: 'join' }, ({ key, newPresences }) => {
-      const info = newPresences[0];
-      setParticipants(prev => {
-        if (prev.find(p => p.userId === key)) return prev;
-        return [...prev, { userId: key, username: info.username, speaking: false, muted: info.muted, role: info.role, handRaised: info.handRaised ?? false }];
-      });
-    });
-
-    ch.on('presence', { event: 'leave' }, ({ key }) => {
-      peersRef.current.get(key)?.close();
-      peersRef.current.delete(key);
-      remoteAudiosRef.current.get(key)?.remove();
-      remoteAudiosRef.current.delete(key);
-      setParticipants(prev => prev.filter(p => p.userId !== key));
-    });
-
-    // Handle offers and answers
-    ch.on('broadcast', { event: 'offer' }, async ({ payload }) => {
-      if (payload.to !== user!.id) return;
-      const pc = await createPeer(payload.from, false);
-      try {
-        await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        ch.send({ type: 'broadcast', event: 'answer', payload: { from: user!.id, to: payload.from, answer } });
-      } catch (err) { console.error('Offer handling failed:', err); }
-    });
-
-    ch.on('broadcast', { event: 'answer' }, async ({ payload }) => {
-      if (payload.to !== user!.id) return;
-      const pc = peersRef.current.get(payload.from);
-      if (pc && pc.signalingState !== 'stable') {
-        try { await pc.setRemoteDescription(new RTCSessionDescription(payload.answer)); }
-        catch (err) { console.error('Answer handling failed:', err); }
-      }
-    });
-
-    ch.on('broadcast', { event: 'ice-candidate' }, async ({ payload }) => {
-      if (payload.to !== user!.id) return;
-      const pc = peersRef.current.get(payload.from);
-      if (pc) {
-        try { await pc.addIceCandidate(new RTCIceCandidate(payload.candidate)); }
-        catch (err) { console.error('ICE failed:', err); }
-      }
-    });
-
-    ch.on('broadcast', { event: 'status' }, ({ payload }) => {
-      setParticipants(prev => prev.map(p =>
-        p.userId === payload.userId
-          ? { ...p, speaking: payload.speaking, muted: payload.muted, role: payload.role, handRaised: payload.handRaised }
-          : p
-      ));
-    });
-
-    ch.on('broadcast', { event: 'chat' }, ({ payload }) => {
-      setChatMessages(prev => [...prev, payload]);
-    });
-
-
-
-    ch.on('broadcast', { event: 'room-closed' }, () => {
-      leaveRoom();
-      setErrorMsg('The host has ended this room.');
-    });
-
-    let retryCount = 0;
-    const maxRetries = 3;
-
-    const attemptSubscribe = () => {
-      ch.subscribe(async (status, err) => {
-        if (status === 'SUBSCRIBED') {
-          try {
-            // Join as audience by default
-            const presenceStatus = await ch.track({
-              username: profile?.anonymous_username ?? 'Anonymous',
-              muted: true,
-              role: 'audience',
-              handRaised: false
-            });
-
-            if (presenceStatus === 'ok') {
-              setActiveRoom(room);
-              setJoining(false);
-              joiningRef.current = false;
-              setChatMessages([{ id: '1', userId: 'sys', username: 'System', text: `Connected to ${room.name}. Everyone can speak!`, isSystem: true }]);
-            } else {
-              throw new Error('Presence track failed');
-            }
-          } catch (e) {
-            console.error("Failed to track presence", e);
-            leaveRoom();
-            setErrorMsg('Failed to join the room properly.');
-            setJoining(false);
-            joiningRef.current = false;
-          }
-        } else if (status === 'TIMED_OUT' && retryCount < maxRetries) {
-          retryCount++;
-          console.warn(`Connection timed out, retrying attempt ${retryCount}...`);
-          // Add a slight backoff
-          setTimeout(() => {
-            supabase.removeChannel(ch); // clean the failed one
-            joiningRef.current = false; // Allow retry
-            joinRoom(room); // recursively try again
-          }, 1500 * retryCount);
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || err) {
-          console.error("Channel error:", status, err);
-          leaveRoom();
-          setErrorMsg(`Failed to connect to room: ${status}. Please try again.`);
-          setJoining(false);
-          joiningRef.current = false;
-        }
-      });
-    };
-
-    attemptSubscribe();
-  }, [user, profile, createPeer, leaveRoom]);
-
-  // Clean up
   useEffect(() => () => { leaveRoom(); }, [leaveRoom]);
 
   const createRoom = async () => {
     const name = newName.trim();
     if (!name || !user) return;
     setCreating(true);
-    const { data } = await supabase.from('voice_rooms').insert({ name, created_by: user.id }).select().single();
-    if (data) joinRoom(data as VoiceRoom);
-    setNewName(''); setShowCreate(false); setCreating(false);
+    try {
+      const docRef = await addDoc(collection(db, 'voice_rooms'), {
+        name,
+        created_by: user.uid,
+        status: 'active',
+        created_at: serverTimestamp(),
+        creator_name: profile?.anonymous_username || 'Anonymous'
+      });
+      const room = { id: docRef.id, name, created_by: user.uid, created_at: new Date() };
+      joinRoom(room as VoiceRoom);
+    } catch (err) {
+      console.error('Create room error:', err);
+    } finally {
+      setNewName(''); setShowCreate(false); setCreating(false);
+    }
   };
 
   const endRoom = async () => {
-    if (!activeRoom || !channelRef.current) return;
+    if (!activeRoom) return;
     const roomId = activeRoom.id;
-    console.log('Ending room:', roomId);
-
     try {
-      // 1. Tell everyone to leave first
-      channelRef.current.send({ type: 'broadcast', event: 'room-closed', payload: {} });
-
-      // 2. Mark as ended instead of deleting
-      const { error } = await supabase
-        .from('voice_rooms')
-        .update({ status: 'ended', ended_at: new Date().toISOString() })
-        .eq('id', roomId);
-
-      if (error) {
-        console.error('Failed to end room status (archiving failed):', error);
-        // Fallback: if archiving fails (e.g. SQL not run or RLS missing), try deleting
-        const { error: delError } = await supabase.from('voice_rooms').delete().eq('id', roomId);
-        if (delError) {
-          console.error('Delete fallback also failed:', delError);
-          setErrorMsg('Permission Denied: You do not have permission to delete or update this room in the database. Please run the SQL fix.');
-        } else {
-          console.log('Room deleted as fallback.');
-          setRooms(prev => prev.filter(r => r.id !== roomId));
-        }
-      } else {
-        console.log('Room archived successfully');
-        setRooms(prev => prev.map(r => r.id === roomId ? { ...r, status: 'ended', ended_at: new Date().toISOString() } : r));
-      }
-
-      // 3. Leave locally
+      await updateDoc(doc(db, 'voice_rooms', roomId), {
+        status: 'ended',
+        ended_at: serverTimestamp()
+      });
       leaveRoom();
     } catch (err) {
-      console.error('End room crashed:', err);
+      console.error('End room error:', err);
+      // Fallback: delete if update fails
+      await deleteDoc(doc(db, 'voice_rooms', roomId));
       leaveRoom();
     }
   };
 
   const sendChat = () => {
-    if (!chatInput.trim() || !channelRef.current) return;
-    const msg: ChatMessage = { id: Date.now().toString(), userId: user!.id, username: profile?.anonymous_username ?? 'Anon', text: chatInput.trim() };
-    channelRef.current.send({ type: 'broadcast', event: 'chat', payload: msg });
-    setChatMessages(prev => [...prev, msg]);
+    if (!chatInput.trim() || !activeRoom) return;
+    const chatRef = ref(rtdb, `chat/${activeRoom.id}`);
+    const msg: ChatMessage = { 
+      id: Date.now().toString(), 
+      userId: user!.uid, 
+      username: profile?.anonymous_username ?? 'Anon', 
+      text: chatInput.trim() 
+    };
+    push(chatRef, msg);
     setChatInput('');
   };
 
@@ -579,7 +454,7 @@ export default function VoiceRooms() {
               <span className="text-violet-400 font-bold text-sm">{participants.length}</span>
               <span className="text-white/30 text-[9px] font-black uppercase tracking-widest">Online</span>
             </div>
-            {(user?.id === activeRoom.created_by || profile?.is_admin) && (
+            {(user?.uid === activeRoom.created_by || profile?.is_admin) && (
               <button
                 onClick={() => { if (confirm('End this room for everyone?')) endRoom(); }}
                 className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-red-500/20"
@@ -597,7 +472,7 @@ export default function VoiceRooms() {
             <div className="max-w-xl mx-auto">
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-4 gap-y-8 gap-x-6 py-4">
                 {participants.map((p) => {
-                  const isMe = p.userId === user?.id;
+                  const isMe = p.userId === user?.uid;
                   return (
                     <motion.div key={p.userId}
                       className="flex flex-col items-center gap-2 relative"
@@ -755,14 +630,14 @@ export default function VoiceRooms() {
                           <button
                             onClick={async (e) => {
                               e.stopPropagation();
-                              if (window.confirm('Permanently delete this voice room and all its history?')) {
-                                const { error } = await supabase.from('voice_rooms').delete().eq('id', room.id);
-                                if (error) {
-                                  alert('Failed to delete: ' + error.message);
-                                } else {
-                                  setRooms(prev => prev.filter(r => r.id !== room.id));
+                                if (window.confirm('Permanently delete this voice room and all its history?')) {
+                                  try {
+                                    await deleteDoc(doc(db, 'voice_rooms', room.id));
+                                    setRooms(prev => prev.filter(r => r.id !== room.id));
+                                  } catch (error: any) {
+                                    alert('Failed to delete: ' + error.message);
+                                  }
                                 }
-                              }
                             }}
                             className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-all opacity-0 group-hover:opacity-100"
                             title="Delete Permanently"
@@ -777,10 +652,10 @@ export default function VoiceRooms() {
                       <h3 className="font-bold text-white text-lg mb-1 truncate">{room.name}</h3>
                       <div className="flex items-center gap-2 mt-3">
                         <div className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-white/50 border border-white/10">
-                          {room.creator?.anonymous_username?.slice(0, 1) || 'A'}
+                          {room.creator_name?.slice(0, 1) || 'A'}
                         </div>
                         <span className="text-[10px] text-white/40 font-bold uppercase tracking-tighter">
-                          Started by {room.creator?.anonymous_username || 'Anonymous'}
+                          Started by {room.creator_name || 'Anonymous'}
                         </span>
                       </div>
                     </motion.div>
@@ -807,11 +682,11 @@ export default function VoiceRooms() {
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 if (window.confirm('Permanently delete this archived voice room?')) {
-                                  const { error } = await supabase.from('voice_rooms').delete().eq('id', room.id);
-                                  if (error) {
-                                    alert('Failed to delete: ' + error.message);
-                                  } else {
+                                  try {
+                                    await deleteDoc(doc(db, 'voice_rooms', room.id));
                                     setRooms(prev => prev.filter(r => r.id !== room.id));
+                                  } catch (error: any) {
+                                    alert('Failed to delete: ' + error.message);
                                   }
                                 }
                               }} 
@@ -827,7 +702,7 @@ export default function VoiceRooms() {
                       <h3 className="font-semibold text-white/80 text-base mb-1 truncate">{room.name}</h3>
                       <div className="space-y-1">
                         <p className="text-[10px] text-white/30 font-medium">
-                          Opened by {room.creator?.anonymous_username || 'Anonymous'}
+                          Opened by {room.creator_name || 'Anonymous'}
                         </p>
                         <p className="text-[9px] text-white/20">
                           Ended {new Date(room.ended_at || room.created_at).toLocaleDateString()}

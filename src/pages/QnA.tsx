@@ -1,7 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { supabase } from '../lib/supabase';
+import { 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  setDoc,
+  serverTimestamp,
+  getDocs,
+  increment
+} from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 
 interface QnaQuestion {
@@ -13,7 +28,7 @@ interface QnaQuestion {
   upvotes: number;
   views: number;
   is_resolved: boolean;
-  created_at: string;
+  created_at: any;
 }
 
 interface QnaAnswer {
@@ -23,7 +38,7 @@ interface QnaAnswer {
   user_id: string;
   upvotes: number;
   is_accepted: boolean;
-  created_at: string;
+  created_at: any;
 }
 
 const TAGS = ['general', 'career', 'relationships', 'study', 'tech', 'random'] as const;
@@ -51,8 +66,10 @@ const getAnonymousAlias = (userId: string, isMe: boolean) => {
   return `${adj} ${noun} ${suffix}`;
 };
 
-const timeAgo = (date: string) => {
-  const diff = (Date.now() - new Date(date).getTime()) / 1000;
+const timeAgo = (date: any) => {
+  if (!date) return 'just now';
+  const d = date?.toDate ? date.toDate() : new Date(date);
+  const diff = (Date.now() - d.getTime()) / 1000;
   if (diff < 60) return 'just now';
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -92,48 +109,29 @@ export default function QnA() {
   useEffect(() => {
     if (!user) return;
 
-    Promise.all([
-      supabase.from('qna_questions').select('*').order('created_at', { ascending: false }),
-      supabase.from('qna_answers').select('*').order('created_at', { ascending: true }),
-    ]).then(([{ data: qData, error: qError }, { data: aData, error: aError }]) => {
-      if (qError) console.error('QnA questions load error:', qError);
-      if (aError) console.error('QnA answers load error:', aError);
-      if (qData) setQuestions(qData as QnaQuestion[]);
-      if (aData) setAnswers(aData as QnaAnswer[]);
+    // 1. Questions Real-time Sync
+    const qQuery = query(collection(db, 'qna_questions'), orderBy('created_at', 'desc'));
+    const unsubscribeQuestions = onSnapshot(qQuery, (snapshot) => {
+      const items: QnaQuestion[] = [];
+      snapshot.forEach((doc) => {
+        items.push({ id: doc.id, ...doc.data() } as QnaQuestion);
+      });
+      setQuestions(items);
     });
 
-    const channel = supabase
-      .channel('qna-live')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'qna_questions' }, (payload) => {
-        setQuestions((prev) => [payload.new as QnaQuestion, ...prev]);
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'qna_questions' }, (payload) => {
-        setQuestions((prev) => prev.map((item) => (item.id === payload.new.id ? (payload.new as QnaQuestion) : item)));
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'qna_questions' }, (payload) => {
-        const deletedId = payload.old.id as string;
-        setQuestions((prev) => prev.filter((item) => item.id !== deletedId));
-        setAnswers((prev) => prev.filter((item) => item.question_id !== deletedId));
-        setActiveQuestionId((prev) => (prev === deletedId ? null : prev));
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'qna_answers' }, (payload) => {
-        setAnswers((prev) => {
-          const next = payload.new as QnaAnswer;
-          if (prev.find((item) => item.id === next.id)) return prev;
-          return [...prev, next];
-        });
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'qna_answers' }, (payload) => {
-        setAnswers((prev) => prev.map((item) => (item.id === payload.new.id ? (payload.new as QnaAnswer) : item)));
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'qna_answers' }, (payload) => {
-        const deletedId = payload.old.id as string;
-        setAnswers((prev) => prev.filter((item) => item.id !== deletedId));
-      })
-      .subscribe();
+    // 2. Answers Real-time Sync
+    const aQuery = query(collection(db, 'qna_answers'), orderBy('created_at', 'asc'));
+    const unsubscribeAnswers = onSnapshot(aQuery, (snapshot) => {
+      const items: QnaAnswer[] = [];
+      snapshot.forEach((doc) => {
+        items.push({ id: doc.id, ...doc.data() } as QnaAnswer);
+      });
+      setAnswers(items);
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      unsubscribeQuestions();
+      unsubscribeAnswers();
     };
   }, [user]);
 
@@ -159,7 +157,9 @@ export default function QnA() {
       if (a.is_accepted && !b.is_accepted) return -1;
       if (!a.is_accepted && b.is_accepted) return 1;
       if (a.upvotes !== b.upvotes) return b.upvotes - a.upvotes;
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      const aTime = a.created_at?.toDate ? a.created_at.toDate().getTime() : new Date(a.created_at || 0).getTime();
+      const bTime = b.created_at?.toDate ? b.created_at.toDate().getTime() : new Date(b.created_at || 0).getTime();
+      return aTime - bTime;
     });
     return list;
   }, [activeQuestionId, answersByQuestion]);
@@ -181,12 +181,15 @@ export default function QnA() {
     });
 
     return [...filtered].sort((a, b) => {
-      if (sortBy === 'new') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      const aTime = a.created_at?.toDate ? a.created_at.toDate().getTime() : new Date(a.created_at || 0).getTime();
+      const bTime = b.created_at?.toDate ? b.created_at.toDate().getTime() : new Date(b.created_at || 0).getTime();
+
+      if (sortBy === 'new') return bTime - aTime;
       if (sortBy === 'unanswered') {
         const aAnswered = (answersByQuestion.get(a.id) ?? []).length;
         const bAnswered = (answersByQuestion.get(b.id) ?? []).length;
         if (aAnswered !== bAnswered) return aAnswered - bAnswered;
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        return bTime - aTime;
       }
       const scoreA = a.upvotes * 3 + (answersByQuestion.get(a.id)?.length ?? 0) * 2 + a.views;
       const scoreB = b.upvotes * 3 + (answersByQuestion.get(b.id)?.length ?? 0) * 2 + b.views;
@@ -206,25 +209,30 @@ export default function QnA() {
 
     setQuestionSubmitting(true);
     setQuestionError('');
-    const { error } = await supabase.from('qna_questions').insert({
-      title: cleanTitle,
-      content: cleanContent,
-      tag,
-      user_id: user.id,
-    });
-    setQuestionSubmitting(false);
 
-    if (error) {
-      console.error('Question submit error:', error);
-      setQuestionError(error.message.includes('check constraint') 
+    try {
+      await addDoc(collection(db, 'qna_questions'), {
+        title: cleanTitle,
+        content: cleanContent,
+        tag,
+        user_id: user.uid,
+        upvotes: 0,
+        views: 0,
+        is_resolved: false,
+        created_at: serverTimestamp(),
+      });
+
+      setTitle('');
+      setContent('');
+      setTag('general');
+    } catch (err: any) {
+      console.error('Question submit error:', err);
+      setQuestionError(err.message.includes('check constraint') 
         ? 'Title must be 5+ chars, Content must be 10+ chars.' 
-        : 'Failed to post: ' + error.message);
-      return;
+        : 'Failed to post: ' + err.message);
+    } finally {
+      setQuestionSubmitting(false);
     }
-
-    setTitle('');
-    setContent('');
-    setTag('general');
   };
 
   const submitAnswer = async () => {
@@ -234,84 +242,109 @@ export default function QnA() {
 
     setAnswerSubmitting(true);
     setAnswerError('');
-    const { error } = await supabase.from('qna_answers').insert({
-      question_id: activeQuestion.id,
-      content: clean,
-      user_id: user.id,
-    });
-    setAnswerSubmitting(false);
 
-    if (error) {
-      console.error('Answer submit error:', error);
-      setAnswerError(error.message.includes('check constraint') 
+    try {
+      await addDoc(collection(db, 'qna_answers'), {
+        question_id: activeQuestion.id,
+        content: clean,
+        user_id: user.uid,
+        upvotes: 0,
+        is_accepted: false,
+        created_at: serverTimestamp(),
+      });
+      setAnswerText('');
+    } catch (err: any) {
+      console.error('Answer submit error:', err);
+      setAnswerError(err.message.includes('check constraint') 
         ? 'Answer is too short (min 2 chars).' 
         : 'Failed to post answer.');
-      return;
+    } finally {
+      setAnswerSubmitting(false);
     }
-
-    setAnswerText('');
   };
 
   const upvoteQuestion = async (question: QnaQuestion) => {
     if (questionVotes.has(question.id)) return;
     setQuestionVotes((prev) => new Set(prev).add(question.id));
-    setQuestions((prev) => prev.map((item) => (item.id === question.id ? { ...item, upvotes: item.upvotes + 1 } : item)));
-    await supabase.from('qna_questions').update({ upvotes: question.upvotes + 1 }).eq('id', question.id);
+    
+    try {
+      await updateDoc(doc(db, 'qna_questions', question.id), {
+        upvotes: increment(1)
+      });
+    } catch (err) {
+      console.error('Upvote question error:', err);
+    }
   };
 
   const upvoteAnswer = async (answer: QnaAnswer) => {
     if (answerVotes.has(answer.id)) return;
     setAnswerVotes((prev) => new Set(prev).add(answer.id));
-    setAnswers((prev) => prev.map((item) => (item.id === answer.id ? { ...item, upvotes: item.upvotes + 1 } : item)));
-    await supabase.from('qna_answers').update({ upvotes: answer.upvotes + 1 }).eq('id', answer.id);
+
+    try {
+      await updateDoc(doc(db, 'qna_answers', answer.id), {
+        upvotes: increment(1)
+      });
+    } catch (err) {
+      console.error('Upvote answer error:', err);
+    }
   };
 
   const openQuestion = async (question: QnaQuestion) => {
     setActiveQuestionId(question.id);
     if (viewedQuestionIds.has(question.id)) return;
     setViewedQuestionIds((prev) => new Set(prev).add(question.id));
-    setQuestions((prev) => prev.map((item) => (item.id === question.id ? { ...item, views: item.views + 1 } : item)));
-    await supabase.from('qna_questions').update({ views: question.views + 1 }).eq('id', question.id);
+    
+    try {
+      await updateDoc(doc(db, 'qna_questions', question.id), {
+        views: increment(1)
+      });
+    } catch (err) {
+      console.error('View count error:', err);
+    }
   };
 
   const acceptAnswer = async (answer: QnaAnswer) => {
-    if (!user || !activeQuestion || activeQuestion.user_id !== user.id) return;
+    if (!user || !activeQuestion || activeQuestion.user_id !== user.uid) return;
 
     const questionAnswers = answersByQuestion.get(activeQuestion.id) ?? [];
     const currentlyAccepted = questionAnswers.find((item) => item.is_accepted);
     const shouldAccept = !answer.is_accepted;
 
-    setAnswers((prev) =>
-      prev.map((item) => {
-        if (item.question_id !== activeQuestion.id) return item;
-        if (item.id === answer.id) return { ...item, is_accepted: shouldAccept };
-        if (item.is_accepted) return { ...item, is_accepted: false };
-        return item;
-      }),
-    );
-    setQuestions((prev) =>
-      prev.map((item) => (item.id === activeQuestion.id ? { ...item, is_resolved: shouldAccept } : item)),
-    );
-
-    if (currentlyAccepted && currentlyAccepted.id !== answer.id) {
-      await supabase.from('qna_answers').update({ is_accepted: false }).eq('id', currentlyAccepted.id);
+    try {
+      if (currentlyAccepted && currentlyAccepted.id !== answer.id) {
+        await updateDoc(doc(db, 'qna_answers', currentlyAccepted.id), { is_accepted: false });
+      }
+      await updateDoc(doc(db, 'qna_answers', answer.id), { is_accepted: shouldAccept });
+      await updateDoc(doc(db, 'qna_questions', activeQuestion.id), { is_resolved: shouldAccept });
+    } catch (err) {
+      console.error('Accept answer error:', err);
     }
-    await supabase.from('qna_answers').update({ is_accepted: shouldAccept }).eq('id', answer.id);
-    await supabase.from('qna_questions').update({ is_resolved: shouldAccept }).eq('id', activeQuestion.id);
   };
 
   const deleteQuestion = async (question: QnaQuestion) => {
-    if (!user || (question.user_id !== user.id && !profile?.is_admin)) return;
-    setQuestions((prev) => prev.filter((item) => item.id !== question.id));
-    setAnswers((prev) => prev.filter((item) => item.question_id !== question.id));
+    if (!user || (question.user_id !== user.uid && !profile?.is_admin)) return;
+    
     if (activeQuestionId === question.id) setActiveQuestionId(null);
-    await supabase.from('qna_questions').delete().eq('id', question.id);
+
+    try {
+      await deleteDoc(doc(db, 'qna_questions', question.id));
+      // Delete associated answers
+      const answersSnap = await getDocs(query(collection(db, 'qna_answers'), where('question_id', '==', question.id)));
+      const deletePromises = answersSnap.docs.map(a => deleteDoc(a.ref));
+      await Promise.all(deletePromises);
+    } catch (err) {
+      console.error('Delete question error:', err);
+    }
   };
 
   const deleteAnswer = async (answer: QnaAnswer) => {
-    if (!user || (answer.user_id !== user.id && !profile?.is_admin)) return;
-    setAnswers((prev) => prev.filter((item) => item.id !== answer.id));
-    await supabase.from('qna_answers').delete().eq('id', answer.id);
+    if (!user || (answer.user_id !== user.uid && !profile?.is_admin)) return;
+
+    try {
+      await deleteDoc(doc(db, 'qna_answers', answer.id));
+    } catch (err) {
+      console.error('Delete answer error:', err);
+    }
   };
 
   if (loading) {
@@ -469,7 +502,7 @@ export default function QnA() {
           <AnimatePresence>
             {visibleQuestions.map((question, index) => {
               const answerCount = answersByQuestion.get(question.id)?.length ?? 0;
-              const alias = getAnonymousAlias(question.user_id, question.user_id === user?.id);
+              const alias = getAnonymousAlias(question.user_id, question.user_id === user?.uid);
               return (
                 <motion.div
                   key={question.id}
@@ -502,7 +535,7 @@ export default function QnA() {
                       asked by {alias} | {timeAgo(question.created_at)}
                     </div>
                     <div className="flex items-center gap-2">
-                      {(question.user_id === user?.id || profile?.is_admin) && (
+                      {(question.user_id === user?.uid || profile?.is_admin) && (
                         <button
                           onClick={() => deleteQuestion(question)}
                           className="text-xs px-2.5 py-1 rounded-lg border border-red-500/30 text-red-300 hover:bg-red-500/10"
@@ -564,7 +597,7 @@ export default function QnA() {
                     <h2 className="text-lg font-semibold text-white mt-1">{activeQuestion.title}</h2>
                     <p className="text-xs text-slate-500 mt-1">
                       asked {timeAgo(activeQuestion.created_at)} by{' '}
-                      {getAnonymousAlias(activeQuestion.user_id, activeQuestion.user_id === user?.id)}
+                      {getAnonymousAlias(activeQuestion.user_id, activeQuestion.user_id === user?.uid)}
                     </p>
                   </div>
                   <button
@@ -584,8 +617,8 @@ export default function QnA() {
                   </div>
                 )}
                 {activeQuestionAnswers.map((answer) => {
-                  const mine = answer.user_id === user?.id;
-                  const canAccept = activeQuestion.user_id === user?.id;
+                  const mine = answer.user_id === user?.uid;
+                  const canAccept = activeQuestion.user_id === user?.uid;
                   return (
                     <div
                       key={answer.id}

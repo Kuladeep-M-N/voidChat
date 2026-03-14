@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -16,7 +16,19 @@ import {
   MoreVertical,
   Flag
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { 
+  collection, 
+  query, 
+  orderBy, 
+  onSnapshot, 
+  updateDoc, 
+  doc, 
+  deleteDoc,
+  getDoc,
+  getDocs,
+  where
+} from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
 
@@ -28,10 +40,8 @@ interface Report {
   reason: string;
   description: string;
   status: 'pending' | 'reviewed' | 'resolved' | 'ignored';
-  created_at: string;
-  reporter?: {
-    anonymous_username: string;
-  };
+  created_at: any;
+  reporter_name?: string;
 }
 
 export default function AdminModeration() {
@@ -41,6 +51,7 @@ export default function AdminModeration() {
   const [filter, setFilter] = useState<'all' | 'pending' | 'reviewed' | 'resolved' | 'ignored'>('pending');
   const [search, setSearch] = useState('');
   const [fetching, setFetching] = useState(true);
+  const [nameCache] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (!loading && (!user || !profile?.is_admin)) {
@@ -49,70 +60,77 @@ export default function AdminModeration() {
     }
   }, [loading, user, profile, navigate]);
 
-  const fetchReports = async () => {
-    setFetching(true);
-    const { data, error } = await supabase
-      .from('reports')
-      .select(`
-        *,
-        reporter:reporter_id (
-          anonymous_username
-        )
-      `)
-      .order('created_at', { ascending: false });
+  useEffect(() => {
+    if (!user || !profile?.is_admin) return;
 
-    if (error) {
+    setFetching(true);
+    const q = query(collection(db, 'reports'), orderBy('created_at', 'desc'));
+    
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const reportsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Report[];
+
+      const userIds = [...new Set(reportsData.map(r => r.reporter_id))];
+      
+      for (const userId of userIds) {
+        if (!nameCache.has(userId)) {
+          const userDoc = await getDoc(doc(db, 'users', userId));
+          if (userDoc.exists()) {
+            nameCache.set(userId, userDoc.data().anonymous_username);
+          } else {
+            nameCache.set(userId, 'Anonymous');
+          }
+        }
+      }
+
+      setReports(reportsData.map(r => ({
+        ...r,
+        reporter_name: nameCache.get(r.reporter_id) || 'Anonymous'
+      })));
+      setFetching(false);
+    }, (error) => {
       console.error('Fetch reports error:', error);
       toast.error('Failed to fetch reports.');
-    } else {
-      setReports(data || []);
-    }
-    setFetching(false);
-  };
+      setFetching(false);
+    });
 
-  useEffect(() => {
-    if (user && profile?.is_admin) {
-      fetchReports();
-    }
+    return () => unsubscribe();
   }, [user, profile]);
 
   const updateReportStatus = async (reportId: string, newStatus: string) => {
-    const { error } = await supabase
-      .from('reports')
-      .update({ status: newStatus })
-      .eq('id', reportId);
-
-    if (error) {
-      toast.error('Failed to update report status.');
-    } else {
+    try {
+      await updateDoc(doc(db, 'reports', reportId), {
+        status: newStatus
+      });
       toast.success(`Report marked as ${newStatus}.`);
-      setReports(current => current.map(r => r.id === reportId ? { ...r, status: newStatus as any } : r));
+    } catch (error) {
+      console.error('Update report error:', error);
+      toast.error('Failed to update report status.');
     }
   };
 
   const deleteTargetContent = async (report: Report) => {
     if (!window.confirm(`Are you sure you want to delete this ${report.target_type}?`)) return;
 
-    let tableName = '';
+    let collectionName = '';
     switch (report.target_type) {
-      case 'shoutout': tableName = 'shoutouts'; break;
-      case 'confession': tableName = 'confessions'; break;
-      case 'message': tableName = 'messages'; break;
+      case 'shoutout': collectionName = 'shoutouts'; break;
+      case 'confession': collectionName = 'confessions'; break;
+      case 'message': collectionName = 'messages'; break;
       case 'user': 
-        toast.error('Cannot delete users directly through this panel yet. Use Supabase dashboard.');
+        toast.error('Cannot delete users directly through this panel yet. Use Firebase dashboard.');
         return;
     }
 
-    const { error } = await supabase
-      .from(tableName)
-      .delete()
-      .eq('id', report.target_id);
-
-    if (error) {
-      toast.error(`Failed to delete content: ${error.message}`);
-    } else {
+    try {
+      await deleteDoc(doc(db, collectionName, report.target_id));
       toast.success('Content deleted successfully.');
       updateReportStatus(report.id, 'resolved');
+    } catch (error: any) {
+      console.error('Delete content error:', error);
+      toast.error(`Failed to delete content: ${error.message}`);
     }
   };
 
@@ -165,7 +183,7 @@ export default function AdminModeration() {
               />
             </div>
             <button 
-              onClick={fetchReports}
+              onClick={() => window.location.reload()}
               className="flex h-12 items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-6 text-sm font-bold hover:bg-white/10 transition"
             >
               REFRESH
@@ -259,7 +277,7 @@ export default function AdminModeration() {
                       </div>
                       <div className="flex items-center gap-2">
                         <UserX size={14} />
-                        REPORTER: <span className="font-semibold text-white/60">{report.reporter?.anonymous_username || 'Anonymous'}</span>
+                        REPORTER: <span className="font-semibold text-white/60">{report.reporter_name || 'Anonymous'}</span>
                       </div>
                     </div>
                   </div>

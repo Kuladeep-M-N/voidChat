@@ -19,11 +19,24 @@ import {
   Zap,
   Sparkles
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { 
+  collection, 
+  query, 
+  orderBy, 
+  onSnapshot, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  where,
+  getDocs,
+  serverTimestamp 
+} from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
 
-interface Room { id: string; name: string; category: string; created_at: string; is_archived?: boolean; }
+interface Room { id: string; name: string; category: string; created_at: any; is_archived?: boolean; }
 
 const roomThemes = {
   general: { bg: 'bg-gradient-to-br from-blue-600/20 to-cyan-600/20', icon: '💬', border: 'border-blue-500/30' },
@@ -58,22 +71,17 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from('chat_rooms').select('id, name, category, created_at, is_archived').order('created_at', { ascending: false })
-      .then(({ data }) => { if (data) setRooms(data); });
+    
+    const q = query(collection(db, 'chat_rooms'), orderBy('created_at', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items: Room[] = [];
+      snapshot.forEach((doc) => {
+        items.push({ id: doc.id, ...doc.data() } as Room);
+      });
+      setRooms(items);
+    });
 
-    const channel = supabase.channel('rooms-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_rooms' }, (payload) => {
-        const eventType = payload.eventType;
-        if (eventType === 'INSERT') {
-          setRooms(prev => [payload.new as Room, ...prev]);
-        } else if (eventType === 'UPDATE') {
-          setRooms(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } : r));
-        } else if (eventType === 'DELETE') {
-          setRooms(prev => prev.filter(r => r.id !== payload.old.id));
-        }
-      }).subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+    return () => unsubscribe();
   }, [user]);
 
   const createRoom = async () => {
@@ -82,50 +90,53 @@ export default function Dashboard() {
 
     setCreating(true);
 
-    // Check if room name exists
-    const { data: existing } = await supabase.from('chat_rooms')
-      .select('id')
-      .eq('name', name)
-      .eq('is_archived', false)
-      .single();
+    try {
+      // Check if room name exists
+      const q = query(collection(db, 'chat_rooms'), where('name', '==', name), where('is_archived', '==', false));
+      const existing = await getDocs(q);
 
-    if (existing) {
-      alert('A room with this name already exists and is active. Please choose a different name.');
-      setCreating(false);
-      return;
-    }
-
-    // Create the room
-    const { data: room, error } = await supabase.from('chat_rooms')
-      .insert({ name, created_by: user.id, category: 'general' })
-      .select().single();
-
-    if (room && !error) {
-      await supabase.from('room_members').insert({ room_id: room.id, user_id: user.id, role: 'creator' });
-      navigate(`/room/${room.id}`);
-    } else {
-      console.error('Create room error:', error);
-      if (error?.code === '23505') {
-        alert('This room name is already taken (even in history). Please use a unique name.');
-      } else {
-        alert(error?.message || 'Failed to create room. Please ensure the latest SQL script has been run.');
+      if (!existing.empty) {
+        alert('A room with this name already exists and is active. Please choose a different name.');
+        setCreating(false);
+        return;
       }
-    }
 
-    setNewRoomName('');
-    setShowCreate(false);
-    setCreating(false);
+      // Create the room
+      const roomRef = await addDoc(collection(db, 'chat_rooms'), {
+        name,
+        created_by: user.uid,
+        category: 'general',
+        is_archived: false,
+        created_at: serverTimestamp()
+      });
+
+      // Join the room as creator
+      await addDoc(collection(db, 'room_members'), {
+        room_id: roomRef.id,
+        user_id: user.uid,
+        role: 'creator',
+        joined_at: serverTimestamp()
+      });
+
+      navigate(`/room/${roomRef.id}`);
+    } catch (error: any) {
+      console.error('Create room error:', error);
+      alert(error.message || 'Failed to create room.');
+    } finally {
+      setNewRoomName('');
+      setShowCreate(false);
+      setCreating(false);
+    }
   };
 
   const archiveRoom = async (roomId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!window.confirm('Archive this room? it will be moved to history.')) return;
-    const { error } = await supabase.from('chat_rooms').update({ is_archived: true }).eq('id', roomId);
-    if (error) {
+    try {
+      await updateDoc(doc(db, 'chat_rooms', roomId), { is_archived: true });
+    } catch (error) {
       console.error('Archive room error:', error);
       alert('Failed to archive room.');
-    } else {
-      setRooms(prev => prev.map(r => r.id === roomId ? { ...r, is_archived: true } : r));
     }
   };
 
@@ -134,12 +145,11 @@ export default function Dashboard() {
     if (!profile?.is_admin) return;
     if (!window.confirm('PERMANENTLY delete this room and all its messages? This cannot be undone.')) return;
     
-    const { error } = await supabase.from('chat_rooms').delete().eq('id', roomId);
-    if (error) {
+    try {
+      await deleteDoc(doc(db, 'chat_rooms', roomId));
+    } catch (error) {
       console.error('Delete room error:', error);
       alert('Failed to delete room permanently.');
-    } else {
-      setRooms(prev => prev.filter(r => r.id !== roomId));
     }
   };
 

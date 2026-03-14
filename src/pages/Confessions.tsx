@@ -1,7 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { User } from '@supabase/supabase-js';
 import {
   ArrowLeft,
   Bookmark,
@@ -17,7 +16,23 @@ import {
   TrendingUp,
   X,
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot, 
+  addDoc, 
+  updateDoc, 
+  doc, 
+  getDoc,
+  getDocs,
+  deleteDoc,
+  serverTimestamp,
+  increment,
+  limit
+} from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
 import { containsInappropriateContent } from '../lib/filter';
@@ -147,7 +162,7 @@ function CommentPanel({
   onReport,
 }: {
   confession: Confession;
-  user: User | null;
+  user: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   profile: any;
   onClose: () => void;
@@ -161,81 +176,38 @@ function CommentPanel({
   const meta = getCategoryMeta(confession.category);
 
   useEffect(() => {
-    const load = async () => {
-      const { data, error } = await supabase
-        .from('confession_comments')
-        .select('*')
-        .eq('confession_id', confession.id)
-        .order('created_at', { ascending: true });
+    const q = query(
+      collection(db, 'confession_comments'),
+      where('confession_id', '==', confession.id),
+      orderBy('created_at', 'asc')
+    );
 
-      if (error || !data) return;
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const commentsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as any[];
 
-      const ids = [...new Set(data.map((comment) => comment.user_id))];
-      if (ids.length) {
-        const { data: users } = await supabase
-          .from('users')
-          .select('id, anonymous_username')
-          .in('id', ids);
-        users?.forEach((entry) => nameCache.set(entry.id, entry.anonymous_username));
+      const userIds = [...new Set(commentsData.map(c => c.user_id))];
+      
+      for (const userId of userIds) {
+        if (!nameCache.has(userId)) {
+          const userDoc = await getDoc(doc(db, 'users', userId));
+          if (userDoc.exists()) {
+            nameCache.set(userId, userDoc.data().anonymous_username);
+          } else {
+            nameCache.set(userId, '???');
+          }
+        }
       }
 
-      setComments(
-        data.map((comment) => ({
-          ...comment,
-          anonymous_username: nameCache.get(comment.user_id) ?? '???',
-        })),
-      );
-    };
+      setComments(commentsData.map(c => ({
+        ...c,
+        anonymous_username: nameCache.get(c.user_id) || '???'
+      })));
+    });
 
-    load();
-
-    const channel = supabase
-      .channel(`comments:${confession.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'confession_comments',
-          filter: `confession_id=eq.${confession.id}`,
-        },
-        async (payload) => {
-          const comment = payload.new as Omit<Comment, 'anonymous_username'>;
-          let username = nameCache.get(comment.user_id);
-          if (!username) {
-            const { data } = await supabase
-              .from('users')
-              .select('anonymous_username')
-              .eq('id', comment.user_id)
-              .single();
-            username = data?.anonymous_username ?? '???';
-            nameCache.set(comment.user_id, username);
-          }
-
-          setComments((current) => {
-            if (current.find((entry) => entry.id === comment.id)) return current;
-            // Check for matching optimistic comment (same user, same content, recent)
-            const matchingIndex = current.findIndex(entry => 
-              entry.id.startsWith('OPT_') && 
-              entry.user_id === comment.user_id && 
-              entry.content === comment.content
-            );
-            
-            if (matchingIndex !== -1) {
-              const next = [...current];
-              next[matchingIndex] = { ...comment, anonymous_username: username };
-              return next;
-            }
-            
-            return [...current, { ...comment, anonymous_username: username }];
-          });
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => unsubscribe();
   }, [confession.id, nameCache]);
 
   useEffect(() => {
@@ -259,31 +231,24 @@ function CommentPanel({
       confession_id: confession.id,
       content,
       created_at: new Date().toISOString(),
-      user_id: user.id,
+      user_id: user.uid,
       anonymous_username: profile?.anonymous_username ?? '???',
     };
 
     setComments((current) => [...current, optimistic]);
     setText('');
 
-    const { data: savedData, error } = await supabase
-      .from('confession_comments')
-      .insert({
+    try {
+      await addDoc(collection(db, 'confession_comments'), {
         confession_id: confession.id,
-        user_id: user.id,
+        user_id: user.uid,
         content,
-      })
-      .select()
-      .single();
-
-    if (error) {
+        created_at: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('Comment post error:', error);
       setComments((current) => current.filter((entry) => entry.id !== optimistic.id));
-    } else if (savedData) {
-      setComments((current) =>
-        current.map((entry) =>
-          entry.id === optimistic.id ? { ...savedData, anonymous_username: optimistic.anonymous_username } : entry
-        )
-      );
+      toast.error('Failed to post comment');
     }
 
     setPosting(false);
@@ -338,7 +303,7 @@ function CommentPanel({
             </div>
           ) : (
             comments.map((comment) => {
-              const isMe = comment.user_id === user?.id;
+              const isMe = comment.user_id === user?.uid;
               const color = getColor(comment.anonymous_username);
               return (
                 <div key={comment.id} className="flex gap-3">
@@ -441,137 +406,67 @@ export default function Confessions() {
   useEffect(() => {
     if (!user) return;
 
-    supabase
-      .from('confessions')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .then(({ data, error }) => {
-        if (error) {
-          console.error('Confession load error:', error);
-          return;
-        }
-        if (data) {
-          const confessions = data as Confession[];
-          setConfessions(confessions);
-          
-          // Clean up orphaned bookmarks (IDs in localStorage that no longer exist in DB)
-          const validIds = new Set(confessions.map(c => c.id));
-          setBookmarkedIds((current) => {
-            const next = new Set<string>();
-            current.forEach(id => {
-              if (validIds.has(id)) next.add(id);
-            });
-            if (next.size !== current.size) {
-              writeStoredIds(LOCAL_STORAGE_KEYS.bookmarks, next);
-            }
-            return next;
-          });
-        }
-      });
+    // Load confessions
+    const qConfessions = query(
+      collection(db, 'confessions'),
+      orderBy('created_at', 'desc')
+    );
 
-    supabase
-      .from('confession_comments')
-      .select('confession_id')
-      .then(({ data }) => {
-        if (!data) return;
-        const counts: Record<string, number> = {};
-        data.forEach((row) => {
-          counts[row.confession_id] = (counts[row.confession_id] || 0) + 1;
+    const unsubscribeConfessions = onSnapshot(qConfessions, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Confession[];
+      
+      setConfessions(data);
+      
+      // Clean up orphaned bookmarks
+      const validIds = new Set(data.map(c => c.id));
+      setBookmarkedIds((current) => {
+        const next = new Set<string>();
+        current.forEach(id => {
+          if (validIds.has(id)) next.add(id);
         });
-        setCommentCounts(counts);
-      });
-
-    supabase
-      .from('reports')
-      .select('target_id')
-      .eq('target_type', 'confession')
-      .then(({ data }) => {
-        if (!data) return;
-        const rCounts: Record<string, number> = {};
-        data.forEach((r) => {
-          rCounts[r.target_id] = (rCounts[r.target_id] || 0) + 1;
-        });
-        setReportCounts(rCounts);
-      });
-
-    const channel = supabase
-      .channel('confessions-all')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confessions' }, (payload) => {
-        const newConfession = payload.new as Confession;
-        setConfessions((current) => {
-          if (current.some((entry) => entry.id === newConfession.id)) return current;
-          return [newConfession, ...current];
-        });
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'confessions' }, (payload) => {
-        setConfessions((current) =>
-          current.map((entry) => (entry.id === payload.new.id ? (payload.new as Confession) : entry)),
-        );
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'confessions' }, (payload) => {
-        const deletedId = payload.old.id;
-        setConfessions((current) => current.filter((entry) => entry.id !== deletedId));
-        
-        // Update bookmarks if the deleted confession was saved
-        setBookmarkedIds((current) => {
-          if (!current.has(deletedId)) return current;
-          const next = new Set(current);
-          next.delete(deletedId);
+        if (next.size !== current.size) {
           writeStoredIds(LOCAL_STORAGE_KEYS.bookmarks, next);
-          return next;
-        });
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'confession_comments' }, (payload) => {
-        setCommentCounts((current) => ({
-          ...current,
-          [payload.new.confession_id]: (current[payload.new.confession_id] || 0) + 1,
-        }));
-      })
-      .subscribe();
+        }
+        return next;
+      });
+    });
 
-    const interval = window.setInterval(async () => {
-      const { data: confessionData } = await supabase
-        .from('confessions')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(60);
+    // Load comment counts (approximate - real-time updates handled via snapshot)
+    const qComments = query(collection(db, 'confession_comments'));
+    const unsubscribeComments = onSnapshot(qComments, (snapshot) => {
+      const counts: Record<string, number> = {};
+      snapshot.docs.forEach((doc) => {
+        const confessionId = doc.data().confession_id;
+        if (confessionId) {
+          counts[confessionId] = (counts[confessionId] || 0) + 1;
+        }
+      });
+      setCommentCounts(counts);
+    });
 
-      if (confessionData) {
-        setConfessions((current) => {
-          const merged = [...(confessionData as Confession[]), ...current].sort(
-            (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
-          );
-          const seen = new Set<string>();
-          return merged.filter((entry) => {
-            if (seen.has(entry.id)) return false;
-            seen.add(entry.id);
-            return true;
-          });
-        });
-      }
-
-      const { data: commentData } = await supabase.from('confession_comments').select('confession_id');
-      if (commentData) {
-        const counts: Record<string, number> = {};
-        commentData.forEach((row) => {
-          counts[row.confession_id] = (counts[row.confession_id] || 0) + 1;
-        });
-        setCommentCounts(counts);
-      }
-
-      const { data: reportData } = await supabase.from('reports').select('target_id').eq('target_type', 'confession');
-      if (reportData) {
-        const counts: Record<string, number> = {};
-        reportData.forEach((row) => {
-          counts[row.target_id] = (counts[row.target_id] || 0) + 1;
-        });
-        setReportCounts(counts);
-      }
-    }, 10000);
+    // Load report counts
+    const qReports = query(
+      collection(db, 'reports'),
+      where('target_type', '==', 'confession')
+    );
+    const unsubscribeReports = onSnapshot(qReports, (snapshot) => {
+      const rCounts: Record<string, number> = {};
+      snapshot.docs.forEach((doc) => {
+        const targetId = doc.data().target_id;
+        if (targetId) {
+          rCounts[targetId] = (rCounts[targetId] || 0) + 1;
+        }
+      });
+      setReportCounts(rCounts);
+    });
 
     return () => {
-      supabase.removeChannel(channel);
-      window.clearInterval(interval);
+      unsubscribeConfessions();
+      unsubscribeComments();
+      unsubscribeReports();
     };
   }, [user]);
 
@@ -593,7 +488,7 @@ export default function Confessions() {
     const optimistic: Confession = {
       id: optimisticId,
       content,
-      user_id: user.id,
+      user_id: user.uid,
       category,
       likes: 0,
       created_at: new Date().toISOString(),
@@ -602,27 +497,20 @@ export default function Confessions() {
     setConfessions((current) => [optimistic, ...current]);
     setText('');
 
-    const { data: savedData, error } = await supabase
-      .from('confessions')
-      .insert({
+    try {
+      await addDoc(collection(db, 'confessions'), {
         content,
-        user_id: user.id,
+        user_id: user.uid,
         category,
         likes: 0,
-      })
-      .select()
-      .single();
-
-    if (error) {
+        created_at: serverTimestamp(),
+      });
+      window.localStorage.removeItem(LOCAL_STORAGE_KEYS.draft);
+    } catch (error: any) {
       console.error('Post error:', error);
       setPostError(`Failed: ${error.message}`);
       setConfessions((current) => current.filter((entry) => entry.id !== optimisticId));
       setText(content);
-    } else if (savedData) {
-      setConfessions((current) =>
-        current.map((entry) => (entry.id === optimisticId ? (savedData as Confession) : entry)),
-      );
-      window.localStorage.removeItem(LOCAL_STORAGE_KEYS.draft);
     }
 
     setPosting(false);
@@ -636,13 +524,24 @@ export default function Confessions() {
       current.map((entry) => (entry.id === confession.id ? { ...entry, likes: entry.likes + 1 } : entry)),
     );
 
-    await supabase.from('confessions').update({ likes: confession.likes + 1 }).eq('id', confession.id);
+    try {
+      await updateDoc(doc(db, 'confessions', confession.id), {
+        likes: increment(1)
+      });
+    } catch (error) {
+      console.error('Like error:', error);
+    }
   };
 
   const deleteOwn = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this confession? This action cannot be undone.')) return;
     setConfessions((current) => current.filter((entry) => entry.id !== id));
-    await supabase.from('confessions').delete().eq('id', id);
+    try {
+      await deleteDoc(doc(db, 'confessions', id));
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast.error('Failed to delete confession');
+    }
   };
 
   const toggleBookmark = (id: string) => {
@@ -1099,7 +998,7 @@ export default function Confessions() {
                             <X size={15} />
                             Hide
                           </button>
-                          {(confession.user_id === user?.id || profile?.is_admin) ? (
+                          {(confession.user_id === user?.uid || profile?.is_admin) ? (
                             <button
                               onClick={() => deleteOwn(confession.id)}
                               className="confession-action text-red-300 hover:border-red-400/30 hover:bg-red-500/10"

@@ -11,14 +11,28 @@ import {
   Waves,
   X,
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  setDoc,
+  serverTimestamp,
+  getDocs
+} from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 
 interface Poll {
   id: string;
   question: string;
   options: string[];
-  created_at: string;
+  created_at: any;
   created_by: string;
   tag: string;
   closed: boolean;
@@ -29,7 +43,7 @@ interface Vote {
   poll_id: string;
   option_index: number;
   user_id: string;
-  created_at: string;
+  created_at: any;
 }
 
 const TAGS = [
@@ -95,99 +109,42 @@ export default function Polls() {
   useEffect(() => {
     if (!user) return;
 
-    Promise.all([
-      supabase.from('polls').select('*').order('created_at', { ascending: false }),
-      supabase.from('poll_votes').select('*').order('created_at', { ascending: false }),
-    ]).then(([{ data: pollData, error: pollError }, { data: voteData, error: voteError }]) => {
-      if (pollError) console.error('Poll load error:', pollError);
-      if (voteError) console.error('Vote load error:', voteError);
-
-      if (pollData) {
-        setPolls(
-          pollData.map((poll) => ({
-            ...poll,
-            options: poll.options as string[],
-            closed: poll.closed ?? false,
-            tag: poll.tag ?? 'random',
-          })),
-        );
-      }
-
-      if (voteData) {
-        const votes = voteData as Vote[];
-        setAllVotes(votes);
-
-        const mine = new Map<string, number>();
-        votes.filter((vote) => vote.user_id === user.id).forEach((vote) => mine.set(vote.poll_id, vote.option_index));
-        setMyVotes(mine);
-      }
+    // 1. Polls Real-time Sync
+    const pollsQuery = query(collection(db, 'polls'), orderBy('created_at', 'desc'));
+    const unsubscribePolls = onSnapshot(pollsQuery, (snapshot) => {
+      const items: Poll[] = [];
+      snapshot.forEach((doc) => {
+        items.push({ id: doc.id, ...doc.data() } as Poll);
+      });
+      setPolls(items);
     });
 
-    const channel = supabase
-      .channel('polls-live')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'polls' }, (payload) => {
-        const poll = payload.new as Poll & { options: string[] };
-        setPolls((prev) => {
-          if (prev.some((item) => item.id === poll.id)) return prev;
-          return [{ ...poll, options: poll.options ?? [], closed: poll.closed ?? false, tag: poll.tag ?? 'random' }, ...prev];
-        });
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'polls' }, (payload) => {
-        const poll = payload.new as Poll & { options: string[] };
-        setPolls((prev) =>
-          prev.map((item) =>
-            item.id === poll.id
-              ? { ...poll, options: poll.options ?? item.options, closed: poll.closed ?? false, tag: poll.tag ?? 'random' }
-              : item,
-          ),
-        );
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'polls' }, (payload) => {
-        const deletedId = payload.old.id as string;
-        setPolls((prev) => prev.filter((item) => item.id !== deletedId));
-        setAllVotes((prev) => prev.filter((vote) => vote.poll_id !== deletedId));
-        setMyVotes((prev) => {
-          const next = new Map(prev);
-          next.delete(deletedId);
-          return next;
-        });
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'poll_votes' }, (payload) => {
-        const vote = payload.new as Vote;
-        setAllVotes((prev) => [vote, ...prev.filter((item) => !(item.poll_id === vote.poll_id && item.user_id === vote.user_id))]);
-        if (vote.user_id === user.id) {
-          setMyVotes((prev) => new Map(prev).set(vote.poll_id, vote.option_index));
+    // 2. Votes Real-time Sync
+    const votesQuery = query(collection(db, 'poll_votes'), orderBy('created_at', 'desc'));
+    const unsubscribeVotes = onSnapshot(votesQuery, (snapshot) => {
+      const votes: Vote[] = [];
+      const mine = new Map<string, number>();
+      
+      snapshot.forEach((doc) => {
+        const vote = { id: doc.id, ...doc.data() } as Vote;
+        votes.push(vote);
+        if (vote.user_id === user.uid) {
+          mine.set(vote.poll_id, vote.option_index);
         }
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'poll_votes' }, (payload) => {
-        const vote = payload.new as Vote;
-        setAllVotes((prev) => prev.map((item) => (item.id === vote.id ? vote : item)));
-        if (vote.user_id === user.id) {
-          setMyVotes((prev) => new Map(prev).set(vote.poll_id, vote.option_index));
-        }
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'poll_votes' }, (payload) => {
-        const deletedId = payload.old.id as string;
-        const deletedPollId = payload.old.poll_id as string;
-        const deletedUserId = payload.old.user_id as string;
-        setAllVotes((prev) => prev.filter((item) => item.id !== deletedId));
-        if (deletedUserId === user.id) {
-          setMyVotes((prev) => {
-            const next = new Map(prev);
-            next.delete(deletedPollId);
-            return next;
-          });
-        }
-      })
-      .subscribe();
+      });
+      
+      setAllVotes(votes);
+      setMyVotes(mine);
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      unsubscribePolls();
+      unsubscribeVotes();
     };
   }, [user, navigate]);
 
   const voteBuckets = useMemo(() => {
-    const bucket = new Map<string, { total: number; counts: number[]; latestVoteAt: string | null }>();
+    const bucket = new Map<string, { total: number; counts: number[]; latestVoteAt: any | null }>();
 
     polls.forEach((poll) => {
       bucket.set(poll.id, {
@@ -204,7 +161,10 @@ export default function Polls() {
       if (vote.option_index >= 0 && vote.option_index < entry.counts.length) {
         entry.counts[vote.option_index] += 1;
       }
-      if (!entry.latestVoteAt || new Date(vote.created_at).getTime() > new Date(entry.latestVoteAt).getTime()) {
+      const voteTime = vote.created_at?.toDate ? vote.created_at.toDate().getTime() : new Date(vote.created_at || 0).getTime();
+      const latestTime = entry.latestVoteAt?.toDate ? entry.latestVoteAt.toDate().getTime() : new Date(entry.latestVoteAt || 0).getTime();
+      
+      if (!entry.latestVoteAt || voteTime > latestTime) {
         entry.latestVoteAt = vote.created_at;
       }
     });
@@ -228,7 +188,9 @@ export default function Polls() {
         if (sortBy === 'popular') {
           return (voteBuckets.get(b.id)?.total ?? 0) - (voteBuckets.get(a.id)?.total ?? 0);
         }
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        const aTime = a.created_at?.toDate ? a.created_at.toDate().getTime() : new Date(a.created_at || 0).getTime();
+        const bTime = b.created_at?.toDate ? b.created_at.toDate().getTime() : new Date(b.created_at || 0).getTime();
+        return bTime - aTime;
       });
   }, [filterTag, polls, sortBy, voteBuckets]);
 
@@ -242,71 +204,56 @@ export default function Polls() {
     setCreating(true);
     setCreateError('');
 
-    const { error } = await supabase.from('polls').insert({
-      question: cleanQuestion,
-      options: cleanOptions,
-      created_by: user.id,
-      tag,
-      closed: false,
-    });
+    try {
+      await addDoc(collection(db, 'polls'), {
+        question: cleanQuestion,
+        options: cleanOptions,
+        created_by: user.uid,
+        tag,
+        closed: false,
+        created_at: serverTimestamp(),
+      });
 
-    setCreating(false);
-
-    if (error) {
-      console.error('Create poll error:', error);
-      setCreateError(error.message);
-      return;
+      setQuestion('');
+      setOptions(['', '']);
+      setTag('random');
+      setShowCreate(false);
+    } catch (err: any) {
+      console.error('Create poll error:', err);
+      setCreateError(err.message);
+    } finally {
+      setCreating(false);
     }
-
-    setQuestion('');
-    setOptions(['', '']);
-    setTag('random');
-    setShowCreate(false);
   };
 
   const vote = async (poll: Poll, optionIndex: number) => {
     if (!user || poll.closed) return;
 
     setActionError('');
-
-    const previousVotes = allVotes;
-    const previousMyVotes = myVotes;
-    const existingVote = allVotes.find((item) => item.poll_id === poll.id && item.user_id === user.id);
-    const optimisticVote: Vote = existingVote
-      ? { ...existingVote, option_index: optionIndex, created_at: new Date().toISOString() }
-      : {
-          id: `optimistic-${poll.id}-${user.id}`,
-          poll_id: poll.id,
-          option_index: optionIndex,
-          user_id: user.id,
-          created_at: new Date().toISOString(),
-        };
-
-    setMyVotes((prev) => new Map(prev).set(poll.id, optionIndex));
-    setAllVotes((prev) => [optimisticVote, ...prev.filter((item) => !(item.poll_id === poll.id && item.user_id === user.id))]);
-
-    const { error } = await supabase.from('poll_votes').upsert(
-      { poll_id: poll.id, user_id: user.id, option_index: optionIndex },
-      { onConflict: 'poll_id,user_id' },
-    );
-
-    if (error) {
-      console.error('Vote error:', error);
-      setActionError(error.message);
-      setAllVotes(previousVotes);
-      setMyVotes(previousMyVotes);
+    
+    try {
+      const voteId = `${poll.id}_${user.uid}`;
+      await setDoc(doc(db, 'poll_votes', voteId), {
+        poll_id: poll.id,
+        user_id: user.uid,
+        option_index: optionIndex,
+        created_at: serverTimestamp()
+      });
+    } catch (err: any) {
+      console.error('Vote error:', err);
+      setActionError(err.message);
     }
   };
 
   const closePoll = async (poll: Poll) => {
     setActionError('');
-    setPolls((prev) => prev.map((item) => (item.id === poll.id ? { ...item, closed: true } : item)));
-
-    const { error } = await supabase.from('polls').update({ closed: true }).eq('id', poll.id);
-    if (error) {
-      console.error('Close poll error:', error);
-      setActionError(error.message);
-      setPolls((prev) => prev.map((item) => (item.id === poll.id ? { ...item, closed: false } : item)));
+    try {
+      await updateDoc(doc(db, 'polls', poll.id), {
+        closed: true
+      });
+    } catch (err: any) {
+      console.error('Close poll error:', err);
+      setActionError(err.message);
     }
   };
 
@@ -314,25 +261,14 @@ export default function Polls() {
     if (!window.confirm('Are you sure you want to delete this poll? All votes will be lost.')) return;
     setActionError('');
 
-    const previousPolls = polls;
-    const previousVotes = allVotes;
-    const previousMyVotes = myVotes;
-
-    setPolls((prev) => prev.filter((item) => item.id !== pollId));
-    setAllVotes((prev) => prev.filter((item) => item.poll_id !== pollId));
-    setMyVotes((prev) => {
-      const next = new Map(prev);
-      next.delete(pollId);
-      return next;
-    });
-
-    const { error } = await supabase.from('polls').delete().eq('id', pollId);
-    if (error) {
-      console.error('Delete poll error:', error);
-      setActionError(error.message);
-      setPolls(previousPolls);
-      setAllVotes(previousVotes);
-      setMyVotes(previousMyVotes);
+    try {
+      await deleteDoc(doc(db, 'polls', pollId));
+      const votesSnap = await getDocs(query(collection(db, 'poll_votes'), where('poll_id', '==', pollId)));
+      const deletePromises = votesSnap.docs.map(v => deleteDoc(v.ref));
+      await Promise.all(deletePromises);
+    } catch (err: any) {
+      console.error('Delete poll error:', err);
+      setActionError(err.message);
     }
   };
 
@@ -457,7 +393,7 @@ export default function Polls() {
               const total = bucket?.total ?? 0;
               const voted = myVotes.has(poll.id);
               const myOptionIndex = myVotes.get(poll.id);
-              const isOwn = poll.created_by === user?.id || profile?.is_admin;
+              const isOwn = poll.created_by === user?.uid || profile?.is_admin;
               const tagInfo = TAGS.find((item) => item.key === poll.tag);
               const winningVotes = Math.max(...(bucket?.counts ?? [0]));
               const leadingIndex = (bucket?.counts ?? []).findIndex((count) => count === winningVotes);
@@ -487,7 +423,7 @@ export default function Polls() {
                         <h3 className="font-semibold text-white leading-snug text-lg">{poll.question}</h3>
                         <div className="mt-2 flex items-center gap-2 flex-wrap text-xs text-slate-300">
                           <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-                            host {getAlias(poll.created_by, poll.created_by === user?.id)}
+                            host {getAlias(poll.created_by, poll.created_by === user?.uid)}
                           </span>
                           <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
                             posted {timeAgo(poll.created_at)}

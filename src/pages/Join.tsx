@@ -2,7 +2,21 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Eye, EyeOff } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword,
+  updateProfile
+} from 'firebase/auth';
+import { 
+  doc, 
+  setDoc, 
+  getDocs, 
+  collection, 
+  query, 
+  where,
+  limit
+} from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 
 // Floating particle
 interface Particle { x: number; y: number; vx: number; vy: number; size: number; opacity: number; color: string; }
@@ -126,45 +140,43 @@ export default function Join() {
     setLoading(true);
 
     try {
-      // 1. Check if anonymous name is taken
-      const { data: existingAnon } = await supabase.from('users').select('id').eq('anonymous_username', anon).maybeSingle();
-      if (existingAnon) { setError('Anonymous name taken. Try another!'); setLoading(false); return; }
+      // 1. Check if anonymous name is taken in Firestore
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('anonymous_username', '==', anon), limit(1));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) { 
+        setError('Anonymous name taken. Try another!'); 
+        setLoading(false); 
+        return; 
+      }
 
-      // 2. Check if real username is taken (via auth)
+      // 2. Create Firebase Auth user
       const virtualEmail = `${real.toLowerCase()}@voidchat.internal`;
       
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: virtualEmail,
-        password: pw,
-        options: { data: { anonymous_username: anon, real_username: real } }
-      });
+      const userCredential = await createUserWithEmailAndPassword(auth, virtualEmail, pw);
+      const user = userCredential.user;
 
-      if (authError) {
-        if (authError.message.includes('already registered')) setError('Username taken. Try another!');
-        else setError(authError.message);
-        setLoading(false);
-        return;
-      }
+      // Update display name with real username
+      await updateProfile(user, { displayName: real });
 
-      if (!authData.user) { setError('Could not create account'); setLoading(false); return; }
-
-      // 3. Create profile
-      const { error: profileError } = await supabase.from('users').insert({
-        id: authData.user.id,
+      // 3. Create Firestore profile
+      await setDoc(doc(db, 'users', user.uid), {
+        id: user.uid,
         anonymous_username: anon,
-        real_username: real
+        real_username: real,
+        joined_at: new Date().toISOString(),
+        is_admin: false
       });
-
-      if (profileError) {
-        setError(profileError.message);
-        setLoading(false);
-        return;
-      }
 
       setStep('success');
       setTimeout(() => navigate('/dashboard'), 1200);
-    } catch (err) {
-      setError('Something went wrong. Please try again.');
+    } catch (err: any) {
+      if (err.code === 'auth/email-already-in-use') {
+        setError('Username taken. Try another!');
+      } else {
+        setError(err.message || 'Something went wrong. Please try again.');
+      }
       setLoading(false);
     }
   };
@@ -178,37 +190,29 @@ export default function Join() {
     setLoading(true);
 
     try {
-      // 1. Find the real username associated with this anonymous name
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('real_username')
-        .eq('anonymous_username', anon)
-        .maybeSingle();
+      // 1. Find the real username associated with this anonymous name in Firestore
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('anonymous_username', '==', anon), limit(1));
+      const querySnapshot = await getDocs(q);
 
-      if (userError || !userData) {
+      if (querySnapshot.empty) {
         setError('Invalid anonymous name or password');
         setLoading(false);
         return;
       }
+
+      const userData = querySnapshot.docs[0].data();
+      const real_username = userData.real_username;
 
       // 2. Sign in with the virtual email derived from real_username
-      const virtualEmail = `${userData.real_username.toLowerCase()}@voidchat.internal`;
+      const virtualEmail = `${real_username.toLowerCase()}@voidchat.internal`;
       
-      const { error: loginError } = await supabase.auth.signInWithPassword({
-        email: virtualEmail,
-        password: pw
-      });
-
-      if (loginError) {
-        setError('Invalid anonymous name or password');
-        setLoading(false);
-        return;
-      }
+      await signInWithEmailAndPassword(auth, virtualEmail, pw);
 
       setStep('success');
       setTimeout(() => navigate('/dashboard'), 1200);
-    } catch (err) {
-      setError('Connection failed. Please try again.');
+    } catch (err: any) {
+      setError('Invalid anonymous name or password');
       setLoading(false);
     }
   };
