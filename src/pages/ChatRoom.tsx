@@ -379,7 +379,7 @@ export default function ChatRoom() {
     // Check permissions
     if (onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole)) return;
 
-    if (containsInappropriateContent(content)) {
+    if (containsInappropriateContent(content).matches) {
       toast.error('Your message contains inappropriate content and cannot be sent.');
       return;
     }
