@@ -508,106 +508,111 @@ export default function VoiceRooms() {
 
   if (isVoiceRoute && activeRoom) {
     return (
-      <div className="flex h-screen w-full flex-col bg-room-dark overflow-hidden font-display">
+      <div className="font-display bg-[#0f1115] text-slate-800 dark:text-slate-200 h-screen w-full flex flex-col transition-colors duration-300 overflow-hidden"
+           style={{
+             backgroundImage: 'radial-gradient(circle at 15% 50%, rgba(139, 92, 246, 0.08), transparent 35%), radial-gradient(circle at 85% 30%, rgba(56, 189, 248, 0.08), transparent 35%)'
+           }}>
+        
         {/* Header */}
-        <div className="flex items-center bg-room-dark/80 backdrop-blur-md p-4 justify-between border-b border-white/10 shrink-0">
-          <div className="flex items-center gap-3">
-            <div 
-              onClick={() => navigate('/dashboard')}
-              className="text-slate-100 flex size-10 items-center justify-center rounded-full hover:bg-white/10 cursor-pointer transition-colors"
-            >
-              <span className="material-symbols-outlined">expand_more</span>
+        <header className="px-6 py-4 flex justify-between items-center z-20 relative bg-[#1c1c24]/80 backdrop-blur-lg border-b border-white/5 shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-indigo-400 flex items-center justify-center shadow-[0_4px_10px_rgba(99,102,241,0.2)]">
+              <span className="material-symbols-outlined text-white font-bold text-[22px]">graphic_eq</span>
             </div>
             <div>
-              <h2 className="text-slate-100 text-base font-bold leading-tight truncate max-w-[150px] sm:max-w-[300px]">
-                {activeRoom.name}
-              </h2>
-              <div className="flex items-center gap-1.5">
-                <span className="flex h-1.5 w-1.5 rounded-full bg-primary-voice animate-pulse"></span>
-                <p className="text-accent-purple text-xs font-medium">Live • {participants.length} participants</p>
+              <h1 className="text-xl font-bold tracking-tight text-white">{activeRoom.name}</h1>
+              <div className="flex items-center gap-2 text-sm text-slate-400">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"></span>
+                <span>Live • {participants.length} participants</span>
               </div>
             </div>
           </div>
-          <div className="flex gap-2">
-            <button className="flex size-10 items-center justify-center rounded-full bg-white/10 text-slate-100 hover:bg-white/20 transition-colors">
-              <span className="material-symbols-outlined text-[20px]">share</span>
+          <div className="flex items-center gap-3">
+            <button className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 transition-colors text-sm font-semibold text-slate-200 shadow-sm">
+              <span className="material-symbols-outlined text-lg">share</span> Share
             </button>
-            {(user?.uid === activeRoom.created_by || profile?.is_admin) && (
-              <button 
-                onClick={() => { if (confirm('End this room for everyone?')) endRoom(); }}
-                className="flex size-10 items-center justify-center rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
-                title="End Room"
-              >
-                <span className="material-symbols-outlined text-[20px]">cancel</span>
-              </button>
-            )}
+            <button 
+              onClick={() => navigate('/dashboard')}
+              className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 transition-colors text-sm font-semibold text-slate-200 shadow-sm"
+            >
+              <span className="material-symbols-outlined text-lg">expand_more</span> Minimize
+            </button>
+            <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold border border-slate-600 shadow-sm">
+               {profile?.anonymous_username?.slice(0, 2).toUpperCase() || 'AN'}
+            </div>
           </div>
-        </div>
+        </header>
 
-        {/* Main Content Area */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar-voice p-4 flex flex-col sm:flex-row gap-6">
-          {/* Stage Area */}
-          <div className="flex-1">
-            <div className="flex items-center justify-between mb-6 px-2">
-              <h4 className="text-accent-purple text-[10px] font-black uppercase tracking-[0.2em]">On Stage</h4>
-              <span className="text-white/20 text-[10px] font-bold">{stageUsers.length} Active</span>
-            </div>
-            
-            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8">
-              {stageUsers.map((p) => {
-                const isMe = p.userId === user?.uid;
-                const active = p.speaking && !p.muted;
-                return (
-                  <motion.div 
-                    key={p.userId} 
-                    layout
-                    initial={{ scale: 0.9, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="flex flex-col items-center gap-3"
-                  >
-                    <div className="relative">
-                      <div className={`size-20 sm:size-24 rounded-full flex items-center justify-center text-2xl font-bold transition-all duration-300 ${
-                        active ? 'border-2 border-accent-purple speaking-glow scale-110 bg-accent-purple/10 text-white' : 'border-2 border-white/5 bg-white/5 text-white/40'
-                      }`}>
-                        {p.username.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div className={`absolute -bottom-1 -right-1 size-7 rounded-full flex items-center justify-center border-2 border-room-dark shadow-lg ${
-                        p.muted ? 'bg-slate-600 text-white' : 'bg-primary-voice text-white'
-                      }`}>
-                        <span className="material-symbols-outlined text-[14px] font-bold">
-                          {p.muted ? 'mic_off' : 'mic'}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-slate-100 text-sm font-bold truncate w-24 sm:w-32">
-                        {isMe ? 'You' : p.username}
-                        {p.userId === activeRoom.created_by && <span className="ml-1 text-primary-voice">★</span>}
-                      </p>
-                      <p className={`text-[9px] font-black uppercase tracking-widest ${active ? 'text-accent-purple' : 'text-slate-500'}`}>
-                        {active ? 'Speaking' : 'Muted'}
-                      </p>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
+        <main className="flex-1 flex relative overflow-hidden">
+          {/* Main Stage Area */}
+          <div className="flex-1 flex flex-col p-4 sm:p-8 overflow-y-auto pb-32 custom-scrollbar-voice">
+            <div className="mb-12">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-sm font-bold tracking-widest uppercase text-slate-400">On Stage</h2>
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/20">
+                  {stageUsers.length} Speakers
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-6 sm:gap-8 items-center justify-center sm:justify-start">
+                {stageUsers.map((p) => {
+                  const isMe = p.userId === user?.uid;
+                  const active = p.speaking && !p.muted;
+                  const isHost = p.userId === activeRoom.created_by;
 
-            {/* Listeners List */}
-            {listenerUsers.length > 0 && (
-              <div className="mt-12 sm:mt-16 border-t border-white/5 pt-8">
-                <div className="flex items-center justify-between mb-6 px-2">
-                  <h3 className="text-slate-100 text-sm font-bold">Listeners ({listenerUsers.length})</h3>
-                </div>
-                <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-4 sm:gap-6">
-                  {listenerUsers.map((p) => (
-                    <div key={p.userId} className="flex flex-col items-center gap-2 group cursor-default">
-                      <div className="size-12 rounded-full bg-white/5 border border-white/5 flex items-center justify-center text-xs font-bold text-white/30 group-hover:text-white/60 transition-colors">
-                        {p.username.slice(0, 2).toUpperCase()}
+                  return (
+                    <div key={p.userId} className={`flex flex-col items-center gap-3 transition-opacity duration-300 ${!active && !isMe ? 'opacity-80 hover:opacity-100' : ''}`}>
+                      <div className="relative">
+                        <div className={`flex items-center justify-center text-3xl font-bold bg-slate-800 object-cover transition-all ${
+                          active 
+                            ? 'w-24 h-24 rounded-full border-[3px] border-sky-300 shadow-[0_0_15px_rgba(125,211,252,0.4),inset_0_0_10px_rgba(125,211,252,0.2)] text-white bg-slate-700 scale-105' 
+                            : 'w-20 h-20 rounded-full border-2 border-slate-700 text-slate-400 hover:border-slate-500'
+                        }`}>
+                          {isHost && !active ? (
+                            <div className="w-full h-full rounded-full bg-gradient-to-br from-indigo-500/80 to-purple-600/80 flex items-center justify-center text-white">
+                              {p.username.slice(0, 2).toUpperCase()}
+                            </div>
+                          ) : (
+                            p.username.slice(0, 2).toUpperCase()
+                          )}
+                        </div>
+                        <div className={`absolute -bottom-1 -right-1 rounded-full border-2 bg-[#0f1115] flex items-center justify-center ${
+                          active ? 'w-8 h-8 border-[#0f1115]' : 'w-7 h-7 border-[#0f1115]'
+                        }`}>
+                           <span className={`material-symbols-outlined drop-shadow-sm ${
+                             p.muted ? 'text-rose-400 text-[14px]' : 'text-sky-300 text-[16px]'
+                           }`}>
+                             {p.muted ? 'mic_off' : 'mic'}
+                           </span>
+                        </div>
                       </div>
-                      <span className="text-slate-400 text-[10px] truncate w-full text-center font-medium">
-                        {p.userId === user?.uid ? 'You' : p.username}
+                      <span className={`${active ? 'font-semibold text-sm text-sky-100' : 'font-medium text-sm text-slate-400'}`}>
+                        {isMe ? 'You' : p.username} {isHost && !isMe ? '★' : ''}
                       </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Listeners Section */}
+            {listenerUsers.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-4 w-full">
+                    <h2 className="text-sm font-bold tracking-widest uppercase text-slate-400 whitespace-nowrap">Listeners</h2>
+                    <div className="h-[1px] bg-white/10 w-full flex-1"></div>
+                    <span className="text-xs text-slate-500 whitespace-nowrap font-medium">{listenerUsers.length} people listening</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-6">
+                  {listenerUsers.map((p) => (
+                    <div key={p.userId} className="flex flex-col items-center gap-2">
+                       <div className="w-12 h-12 rounded-full bg-slate-800/80 flex items-center justify-center opacity-60 hover:opacity-100 transition-opacity cursor-pointer text-xs font-bold text-slate-300 border border-slate-700/50">
+                          {p.username.slice(0, 2).toUpperCase()}
+                       </div>
+                       <span className="text-[11px] text-slate-400 truncate w-full text-center">
+                         {p.userId === user?.uid ? 'You' : p.username}
+                       </span>
                     </div>
                   ))}
                 </div>
@@ -615,108 +620,110 @@ export default function VoiceRooms() {
             )}
           </div>
 
-          {/* Chat Side Panel (Desktop only - simplified for now, as original had mobile chat as a separate flow) */}
-          <div className="hidden lg:flex flex-col w-80 bg-black/20 rounded-3xl border border-white/5 overflow-hidden">
-             <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                <h3 className="text-slate-100 text-sm font-bold">Live Comments</h3>
-             </div>
-             <div className="flex-1 overflow-y-auto custom-scrollbar-voice p-4 space-y-4" ref={chatScrollRef}>
-               {chatMessages.map(msg => (
-                 <div key={msg.id} className={`flex flex-col ${msg.isSystem ? 'items-center' : ''}`}>
-                    {msg.isSystem ? (
-                      <span className="text-[10px] text-white/20 font-bold uppercase tracking-widest bg-white/5 px-3 py-1 rounded-full text-center">
-                        {msg.text}
-                      </span>
-                    ) : (
-                      <div className="bg-white/5 rounded-2xl px-3 py-2 border border-white/5 w-fit max-w-full">
-                        <p className="text-[10px] font-bold text-accent-purple mb-0.5">{msg.username}</p>
-                        <p className="text-sm text-white/80 leading-snug">{msg.text}</p>
-                      </div>
-                    )}
-                 </div>
-               ))}
-             </div>
-             <div className="p-4 bg-black/20 border-t border-white/5 flex gap-2">
+          {/* Sidebar Chat */}
+          <aside className="hidden lg:flex w-96 bg-[#181820]/70 backdrop-blur-xl border-l border-white/5 flex-col relative z-10 shadow-[-10px_0_30px_rgba(0,0,0,0.2)]">
+            <div className="p-6 border-b border-white/5">
+              <h3 className="font-bold flex items-center gap-2 text-lg text-slate-100">
+                <span className="material-symbols-outlined text-indigo-400">forum</span> Live Comments
+              </h3>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6 custom-scrollbar-voice" ref={chatScrollRef}>
+               {chatMessages.map(msg => {
+                 if (msg.isSystem) {
+                   return (
+                     <div key={msg.id} className="flex justify-center">
+                       <span className="text-[10px] font-semibold px-4 py-1.5 rounded-full bg-white/5 text-slate-400 border border-white/5">
+                         {msg.text.toUpperCase()}
+                       </span>
+                     </div>
+                   );
+                 }
+                 
+                 const isMe = msg.userId === user?.uid;
+                 return (
+                   <div key={msg.id} className={`flex gap-3 max-w-full ${isMe ? 'flex-row-reverse' : ''}`}>
+                     <div className={`w-8 h-8 rounded-full flex shrink-0 items-center justify-center text-xs font-bold text-white shadow-sm ${
+                       isMe ? 'bg-indigo-500 border border-indigo-400/50' : 'bg-slate-600 border border-slate-500'
+                     }`}>
+                       {msg.username.slice(0, 2).toUpperCase()}
+                     </div>
+                     <div className={`flex flex-col min-w-0 flex-1 ${isMe ? 'items-end' : ''}`}>
+                       <div className={`flex items-baseline gap-2 mb-1 ${isMe ? 'flex-row-reverse' : ''}`}>
+                         <span className={`font-semibold text-sm ${isMe ? 'text-indigo-300' : 'text-slate-300'}`}>{isMe ? 'You' : msg.username}</span>
+                         <span className="text-[10px] text-slate-500 shrink-0">Live</span>
+                       </div>
+                       <div className={isMe 
+                            ? 'bg-indigo-500/20 border border-indigo-400/30 px-4 py-2 rounded-2xl rounded-tr-none text-slate-100 text-[13px] break-words whitespace-pre-wrap inline-block [word-break:break-word] shadow-sm' 
+                            : 'text-[13px] text-slate-200 bg-white/5 px-4 py-2 rounded-2xl rounded-tl-none border border-white/5 break-words whitespace-pre-wrap inline-block [word-break:break-word] shadow-sm'}>
+                         {msg.text}
+                       </div>
+                     </div>
+                   </div>
+                 );
+               })}
+            </div>
+            
+            <div className="p-4 border-t border-white/5 bg-[#181820]">
+              <div className="relative flex items-center">
                 <input 
                   type="text"
                   value={chatInput}
                   onChange={e => setChatInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && sendChat()}
-                  placeholder="Type a message..."
-                  className="flex-1 bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm text-white focus:outline-none focus:border-accent-purple"
+                  placeholder="Message..."
+                  className="w-full bg-slate-800/80 border border-slate-700/50 rounded-full py-3.5 pl-5 pr-12 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 transition-all shadow-inner"
                 />
                 <button 
                   onClick={sendChat}
-                  className="size-9 bg-accent-purple rounded-full flex items-center justify-center text-room-dark hover:scale-105 transition-transform"
+                  className="absolute right-2 w-9 h-9 rounded-full bg-indigo-500 flex items-center justify-center text-white hover:bg-indigo-400 transition-colors shadow-md"
                 >
-                  <span className="material-symbols-outlined text-[20px] font-bold">send</span>
+                  <span className="material-symbols-outlined text-[18px]">send</span>
                 </button>
-             </div>
-          </div>
-        </div>
-
-        {/* Mobile Message Teaser / Overlay Toggle */}
-        <div className="lg:hidden bg-room-dark/95 border-t border-white/10 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <div className="flex-1 bg-white/5 border border-white/5 rounded-full px-4 py-2.5 flex items-center justify-between group"
-                 onClick={() => { /* Potential: show mobile chat overlay */ }}>
-              <p className="text-slate-400 text-sm truncate pr-2">
-                {chatMessages.length > 0 ? 
-                  `${chatMessages[chatMessages.length-1].username}: ${chatMessages[chatMessages.length-1].text}` : 
-                  'Say something...'}
-              </p>
+              </div>
             </div>
-            <button className="size-11 flex items-center justify-center rounded-full bg-accent-purple/20 text-accent-purple border border-accent-purple/20">
-              <span className="material-symbols-outlined">chat_bubble</span>
+          </aside>
+
+          {/* Floating Controls Bar */}
+          <div className="absolute bottom-4 sm:bottom-8 left-1/2 -translate-x-1/2 bg-[#1c1c24]/90 backdrop-blur-xl rounded-full px-4 sm:px-6 py-2.5 flex items-center gap-2 sm:gap-3 shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/10 z-30 w-[95%] sm:w-auto overflow-x-auto custom-scrollbar-voice justify-center">
+            <button 
+              onClick={toggleMute}
+              className={`w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center transition-all group ${
+                muted ? 'bg-white/5 hover:bg-white/10 text-slate-300' : 'bg-white/10 hover:bg-white/20 text-sky-300 shadow-[0_0_15px_rgba(125,211,252,0.15)]'
+              }`}
+            >
+              <span className={`material-symbols-outlined transition-colors text-[22px] ${!muted && 'text-sky-300'}`}>{muted ? 'mic_off' : 'mic'}</span>
             </button>
+            <button 
+              onClick={() => setHandRaised(!handRaised)}
+              className={`w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center transition-all group ${
+                handRaised ? 'bg-amber-400/20 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.15)]' : 'bg-white/5 hover:bg-white/10 text-slate-300'
+              }`}
+            >
+              <span className={`material-symbols-outlined transition-colors text-[22px] ${handRaised && 'text-amber-300'}`}>back_hand</span>
+            </button>
+            <button className="w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all group">
+              <span className="material-symbols-outlined text-slate-300 group-hover:text-amber-300 transition-colors text-[22px]">add_reaction</span>
+            </button>
+            <button className="w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all group mr-0 sm:mr-2">
+              <span className="material-symbols-outlined text-slate-300 transition-colors text-[22px]">settings</span>
+            </button>
+            <div className="hidden sm:block w-[1px] h-8 bg-white/10 shrink-0"></div>
+            <button 
+              onClick={leaveRoom}
+              className="ml-0 sm:ml-2 px-4 sm:px-6 py-2.5 shrink-0 rounded-full bg-rose-500/80 hover:bg-rose-500 flex items-center gap-2 font-medium text-white shadow-sm transition-all text-sm"
+            >
+              <span className="material-symbols-outlined text-[18px]">logout</span> Leave
+            </button>
+            {(profile?.is_admin || user?.uid === activeRoom.created_by) && (
+               <button 
+                onClick={() => { if (confirm('End this room for everyone?')) endRoom(); }}
+                className="ml-1 sm:ml-2 px-4 sm:px-6 py-2.5 shrink-0 rounded-full bg-slate-700/80 hover:bg-slate-700 flex items-center gap-2 font-medium text-white shadow-sm transition-all border border-white/5 text-sm"
+              >
+                <span className="material-symbols-outlined text-[18px]">cancel</span> End
+              </button>
+            )}
           </div>
-        </div>
-
-        {/* Bottom Navigation Bar */}
-        <div className="flex gap-1 border-t border-white/10 bg-room-dark px-4 pb-10 pt-3 shrink-0">
-          <button 
-            onClick={toggleMute}
-            className="flex flex-1 flex-col items-center justify-center gap-1.5 group outline-none"
-          >
-            <div className={`flex h-12 w-12 items-center justify-center rounded-full transition-all group-active:scale-95 border ${
-              muted ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-primary-voice/10 text-primary-voice border-primary-voice/20'
-            }`}>
-              <span className="material-symbols-outlined font-bold">
-                {muted ? 'mic_off' : 'mic'}
-              </span>
-            </div>
-            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">{muted ? 'Unmute' : 'Mute'}</p>
-          </button>
-
-          <button 
-            onClick={() => setHandRaised(!handRaised)}
-            className="flex flex-1 flex-col items-center justify-center gap-1.5 group outline-none"
-          >
-            <div className={`flex h-12 w-12 items-center justify-center rounded-full transition-all group-active:scale-95 border ${
-              handRaised ? 'bg-accent-purple/20 text-accent-purple border-accent-purple/30' : 'bg-white/5 text-slate-400 border-white/5'
-            }`}>
-              <span className={`material-symbols-outlined ${handRaised ? 'fill-1' : ''}`}>front_hand</span>
-            </div>
-            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Hand</p>
-          </button>
-
-          <button className="flex flex-1 flex-col items-center justify-center gap-1.5 group outline-none">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/5 text-slate-400 border border-white/5 transition-all group-active:scale-95">
-              <span className="material-symbols-outlined">settings</span>
-            </div>
-            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Settings</p>
-          </button>
-
-          <button 
-            onClick={leaveRoom}
-            className="flex flex-1 flex-col items-center justify-center gap-1.5 group outline-none"
-          >
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/10 text-red-500 border border-red-500/20 transition-all group-active:scale-95">
-              <span className="material-symbols-outlined">call_end</span>
-            </div>
-            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Leave</p>
-          </button>
-        </div>
+        </main>
       </div>
     );
   }
