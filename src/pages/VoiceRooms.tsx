@@ -37,8 +37,6 @@ interface VoiceRoom {
   status?: 'active' | 'ended';
   ended_at?: any;
   creator_name?: string;
-  participants_count?: number;
-  duration?: string;
 }
 
 type Role = 'speaker' | 'audience';
@@ -167,6 +165,7 @@ export default function VoiceRooms() {
 
   // Create Peer Connection
   const createPeer = useCallback(async (remoteUserId: string, isInitiator: boolean) => {
+    // Double check if peer already exists to prevent racing
     const existing = peersRef.current.get(remoteUserId);
     if (existing) return existing;
 
@@ -200,6 +199,7 @@ export default function VoiceRooms() {
 
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+        console.warn(`Connection to ${remoteUserId} ${pc.connectionState}. Closing.`);
         pc.close();
         peersRef.current.delete(remoteUserId);
         const audio = remoteAudiosRef.current.get(remoteUserId);
@@ -228,6 +228,7 @@ export default function VoiceRooms() {
   }, [user, activeRoom]);
 
 
+  // 1. Presence Effect: Updates our state to others (muted, speaking, etc.)
   useEffect(() => {
     if (!user || !activeRoom) return;
 
@@ -245,10 +246,11 @@ export default function VoiceRooms() {
     onDisconnect(presenceRef).remove();
 
     return () => {
-      remove(presenceRef).catch(() => {});
+      remove(presenceRef);
     };
   }, [user, activeRoom, profile, muted, myRole, handRaised, isSpeaking]);
 
+  // 2. Signaling Listener Effect: Handles incoming WebRTC signals
   useEffect(() => {
     if (!user || !activeRoom) return;
 
@@ -260,7 +262,7 @@ export default function VoiceRooms() {
       if (!val) return;
       
       const { from, type, data } = val;
-      await remove(snapshot.ref);
+      await remove(snapshot.ref); // Consume signal
 
       if (type === 'offer') {
         const pc = await createPeer(from, false);
@@ -299,6 +301,7 @@ export default function VoiceRooms() {
     };
   }, [user, activeRoom, createPeer]);
 
+  // 3. Participants Listener Effect: Tracks who is in the room
   useEffect(() => {
     if (!user || !activeRoom) return;
 
@@ -317,6 +320,7 @@ export default function VoiceRooms() {
       }));
       setParticipants(users);
 
+      // Deterministic Peer Creation: Only create peer if we are the initiator (UID < Remote UID)
       users.forEach(p => {
         if (p.userId !== user.uid && !peersRef.current.has(p.userId)) {
           const isInitiator = user.uid < p.userId;
@@ -332,6 +336,7 @@ export default function VoiceRooms() {
     };
   }, [user, activeRoom, createPeer]);
 
+  // 4. Chat Listener Effect: Handles room messaging
   useEffect(() => {
     if (!user || !activeRoom) {
       setChatMessages([]);
@@ -341,12 +346,14 @@ export default function VoiceRooms() {
     const roomId = activeRoom.id;
     const chatRef = ref(rtdb, `chat/${roomId}`);
     
+    // Clear messages for new room
     setChatMessages([{ id: '1', userId: 'sys', username: 'System', text: `Connected to ${activeRoom.name}.`, isSystem: true }]);
 
     const chatUnsubscribe = onChildAdded(chatRef, (snapshot) => {
       const msg = snapshot.val();
       if (msg) {
         setChatMessages(prev => {
+          // Prevent duplicates by checking ID
           if (prev.some(m => m.id === msg.id)) return prev;
           return [...prev, msg];
         });
@@ -376,12 +383,16 @@ export default function VoiceRooms() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      stream.getAudioTracks().forEach(track => { track.enabled = false; });
+      stream.getAudioTracks().forEach(track => {
+        track.enabled = false;
+      });
       localStreamRef.current = stream;
       setMyRole('speaker');
       setMuted(true);
       setActiveRoom(room);
+      setChatMessages([{ id: '1', userId: 'sys', username: 'System', text: `Connected to ${room.name}.`, isSystem: true }]);
     } catch (err) {
+      console.warn('Microphone access denied, joining as listener only.');
       setMyRole('audience');
       setMuted(true);
       setActiveRoom(room);
@@ -424,6 +435,8 @@ export default function VoiceRooms() {
       });
       leaveRoom();
     } catch (err) {
+      console.error('End room error:', err);
+      // Fallback: delete if update fails
       await deleteDoc(doc(db, 'voice_rooms', roomId));
       leaveRoom();
     }
@@ -438,7 +451,7 @@ export default function VoiceRooms() {
       username: profile?.anonymous_username ?? 'Anon', 
       text: chatInput.trim() 
     };
-    push(chatRef, msg).catch(() => {});
+    push(chatRef, msg);
     setChatInput('');
   };
 
@@ -448,18 +461,27 @@ export default function VoiceRooms() {
     setMuted(m => !m);
   }, [muted]);
 
+
+
+  // ─────────────────────────── ACTIVE ROOM UI ───────────────────────────
+  // ─────────────────────────── RENDER LOGIC ───────────────────────────
+  if (!user) return null;
+
+  // ─────────────────────────── ACTIVE ROOM UI ───────────────────────────
   if (!user) return null;
 
   const stageUsers = participants.filter(p => !p.muted || p.speaking);
   const listenerUsers = participants.filter(p => p.muted && !p.speaking);
 
   if (!isVoiceRoute && activeRoom) {
+    // Minimized Widget
     return (
       <div className="fixed bottom-6 right-6 z-50 font-display">
         <div className="bg-room-dark/95 backdrop-blur-xl border border-white/10 p-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-4 w-72">
           <div className={`w-12 h-12 rounded-full flex items-center justify-center relative overflow-hidden shrink-0 border-2 ${isSpeaking && !muted ? 'border-accent-purple speaking-glow' : 'border-white/10'}`}>
             <span className="text-xl relative z-10">🎙️</span>
           </div>
+
           <div className="flex-1 min-w-0">
             <h4 className="text-white font-bold text-sm truncate">{activeRoom.name}</h4>
             <div className="flex items-center gap-1.5 mt-0.5">
@@ -467,6 +489,7 @@ export default function VoiceRooms() {
               <span className="text-accent-purple text-[10px] font-bold uppercase tracking-widest">{participants.length} Live</span>
             </div>
           </div>
+
           <div className="flex items-center gap-2 shrink-0">
             <button onClick={toggleMute} className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${muted ? 'bg-red-500/20 text-red-500' : 'bg-white/10 text-white hover:bg-white/20'}`}>
               <span className="material-symbols-outlined text-[20px]">{muted ? 'mic_off' : 'mic'}</span>
@@ -486,13 +509,19 @@ export default function VoiceRooms() {
   if (isVoiceRoute && activeRoom) {
     return (
       <div className="flex h-screen w-full flex-col bg-room-dark overflow-hidden font-display">
+        {/* Header */}
         <div className="flex items-center bg-room-dark/80 backdrop-blur-md p-4 justify-between border-b border-white/10 shrink-0">
           <div className="flex items-center gap-3">
-            <div onClick={() => navigate('/dashboard')} className="text-slate-100 flex size-10 items-center justify-center rounded-full hover:bg-white/10 cursor-pointer transition-colors">
+            <div 
+              onClick={() => navigate('/dashboard')}
+              className="text-slate-100 flex size-10 items-center justify-center rounded-full hover:bg-white/10 cursor-pointer transition-colors"
+            >
               <span className="material-symbols-outlined">expand_more</span>
             </div>
             <div>
-              <h2 className="text-slate-100 text-base font-bold leading-tight truncate max-w-[150px] sm:max-w-[300px]">{activeRoom.name}</h2>
+              <h2 className="text-slate-100 text-base font-bold leading-tight truncate max-w-[150px] sm:max-w-[300px]">
+                {activeRoom.name}
+              </h2>
               <div className="flex items-center gap-1.5">
                 <span className="flex h-1.5 w-1.5 rounded-full bg-primary-voice animate-pulse"></span>
                 <p className="text-accent-purple text-xs font-medium">Live • {participants.length} participants</p>
@@ -504,25 +533,38 @@ export default function VoiceRooms() {
               <span className="material-symbols-outlined text-[20px]">share</span>
             </button>
             {(user?.uid === activeRoom.created_by || profile?.is_admin) && (
-              <button onClick={() => { if (confirm('End this room for everyone?')) endRoom(); }} className="flex size-10 items-center justify-center rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors">
+              <button 
+                onClick={() => { if (confirm('End this room for everyone?')) endRoom(); }}
+                className="flex size-10 items-center justify-center rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
+                title="End Room"
+              >
                 <span className="material-symbols-outlined text-[20px]">cancel</span>
               </button>
             )}
           </div>
         </div>
 
+        {/* Main Content Area */}
         <div className="flex-1 overflow-y-auto custom-scrollbar-voice p-4 flex flex-col sm:flex-row gap-6">
+          {/* Stage Area */}
           <div className="flex-1">
             <div className="flex items-center justify-between mb-6 px-2">
               <h4 className="text-accent-purple text-[10px] font-black uppercase tracking-[0.2em]">On Stage</h4>
               <span className="text-white/20 text-[10px] font-bold">{stageUsers.length} Active</span>
             </div>
+            
             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8">
               {stageUsers.map((p) => {
                 const isMe = p.userId === user?.uid;
                 const active = p.speaking && !p.muted;
                 return (
-                  <motion.div key={p.userId} layout initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex flex-col items-center gap-3">
+                  <motion.div 
+                    key={p.userId} 
+                    layout
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="flex flex-col items-center gap-3"
+                  >
                     <div className="relative">
                       <div className={`size-20 sm:size-24 rounded-full flex items-center justify-center text-2xl font-bold transition-all duration-300 ${
                         active ? 'border-2 border-accent-purple speaking-glow scale-110 bg-accent-purple/10 text-white' : 'border-2 border-white/5 bg-white/5 text-white/40'
@@ -532,7 +574,9 @@ export default function VoiceRooms() {
                       <div className={`absolute -bottom-1 -right-1 size-7 rounded-full flex items-center justify-center border-2 border-room-dark shadow-lg ${
                         p.muted ? 'bg-slate-600 text-white' : 'bg-primary-voice text-white'
                       }`}>
-                        <span className="material-symbols-outlined text-[14px] font-bold">{p.muted ? 'mic_off' : 'mic'}</span>
+                        <span className="material-symbols-outlined text-[14px] font-bold">
+                          {p.muted ? 'mic_off' : 'mic'}
+                        </span>
                       </div>
                     </div>
                     <div className="text-center">
@@ -548,6 +592,8 @@ export default function VoiceRooms() {
                 );
               })}
             </div>
+
+            {/* Listeners List */}
             {listenerUsers.length > 0 && (
               <div className="mt-12 sm:mt-16 border-t border-white/5 pt-8">
                 <div className="flex items-center justify-between mb-6 px-2">
@@ -559,7 +605,9 @@ export default function VoiceRooms() {
                       <div className="size-12 rounded-full bg-white/5 border border-white/5 flex items-center justify-center text-xs font-bold text-white/30 group-hover:text-white/60 transition-colors">
                         {p.username.slice(0, 2).toUpperCase()}
                       </div>
-                      <span className="text-slate-400 text-[10px] truncate w-full text-center font-medium">{p.userId === user?.uid ? 'You' : p.username}</span>
+                      <span className="text-slate-400 text-[10px] truncate w-full text-center font-medium">
+                        {p.userId === user?.uid ? 'You' : p.username}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -567,6 +615,7 @@ export default function VoiceRooms() {
             )}
           </div>
 
+          {/* Chat Side Panel (Desktop only - simplified for now, as original had mobile chat as a separate flow) */}
           <div className="hidden lg:flex flex-col w-80 bg-black/20 rounded-3xl border border-white/5 overflow-hidden">
              <div className="p-4 border-b border-white/5 flex items-center justify-between">
                 <h3 className="text-slate-100 text-sm font-bold">Live Comments</h3>
@@ -575,7 +624,9 @@ export default function VoiceRooms() {
                {chatMessages.map(msg => (
                  <div key={msg.id} className={`flex flex-col ${msg.isSystem ? 'items-center' : ''}`}>
                     {msg.isSystem ? (
-                      <span className="text-[10px] text-white/20 font-bold uppercase tracking-widest bg-white/5 px-3 py-1 rounded-full text-center">{msg.text}</span>
+                      <span className="text-[10px] text-white/20 font-bold uppercase tracking-widest bg-white/5 px-3 py-1 rounded-full text-center">
+                        {msg.text}
+                      </span>
                     ) : (
                       <div className="bg-white/5 rounded-2xl px-3 py-2 border border-white/5 w-fit max-w-full">
                         <p className="text-[10px] font-bold text-accent-purple mb-0.5">{msg.username}</p>
@@ -586,19 +637,33 @@ export default function VoiceRooms() {
                ))}
              </div>
              <div className="p-4 bg-black/20 border-t border-white/5 flex gap-2">
-                <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendChat()} placeholder="Type a message..." className="flex-1 bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm text-white focus:outline-none focus:border-accent-purple" />
-                <button onClick={sendChat} className="size-9 bg-accent-purple rounded-full flex items-center justify-center text-room-dark hover:scale-105 transition-transform">
+                <input 
+                  type="text"
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && sendChat()}
+                  placeholder="Type a message..."
+                  className="flex-1 bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm text-white focus:outline-none focus:border-accent-purple"
+                />
+                <button 
+                  onClick={sendChat}
+                  className="size-9 bg-accent-purple rounded-full flex items-center justify-center text-room-dark hover:scale-105 transition-transform"
+                >
                   <span className="material-symbols-outlined text-[20px] font-bold">send</span>
                 </button>
              </div>
           </div>
         </div>
 
+        {/* Mobile Message Teaser / Overlay Toggle */}
         <div className="lg:hidden bg-room-dark/95 border-t border-white/10 px-4 py-3">
           <div className="flex items-center gap-3">
-            <div className="flex-1 bg-white/5 border border-white/5 rounded-full px-4 py-2.5 flex items-center justify-between group">
+            <div className="flex-1 bg-white/5 border border-white/5 rounded-full px-4 py-2.5 flex items-center justify-between group"
+                 onClick={() => { /* Potential: show mobile chat overlay */ }}>
               <p className="text-slate-400 text-sm truncate pr-2">
-                {chatMessages.length > 0 ? `${chatMessages[chatMessages.length-1].username}: ${chatMessages[chatMessages.length-1].text}` : 'Say something...'}
+                {chatMessages.length > 0 ? 
+                  `${chatMessages[chatMessages.length-1].username}: ${chatMessages[chatMessages.length-1].text}` : 
+                  'Say something...'}
               </p>
             </div>
             <button className="size-11 flex items-center justify-center rounded-full bg-accent-purple/20 text-accent-purple border border-accent-purple/20">
@@ -607,26 +672,45 @@ export default function VoiceRooms() {
           </div>
         </div>
 
+        {/* Bottom Navigation Bar */}
         <div className="flex gap-1 border-t border-white/10 bg-room-dark px-4 pb-10 pt-3 shrink-0">
-          <button onClick={toggleMute} className="flex flex-1 flex-col items-center justify-center gap-1.5 group outline-none">
-            <div className={`flex h-12 w-12 items-center justify-center rounded-full transition-all group-active:scale-95 border ${muted ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-primary-voice/10 text-primary-voice border-primary-voice/20'}`}>
-              <span className="material-symbols-outlined font-bold">{muted ? 'mic_off' : 'mic'}</span>
+          <button 
+            onClick={toggleMute}
+            className="flex flex-1 flex-col items-center justify-center gap-1.5 group outline-none"
+          >
+            <div className={`flex h-12 w-12 items-center justify-center rounded-full transition-all group-active:scale-95 border ${
+              muted ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-primary-voice/10 text-primary-voice border-primary-voice/20'
+            }`}>
+              <span className="material-symbols-outlined font-bold">
+                {muted ? 'mic_off' : 'mic'}
+              </span>
             </div>
             <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">{muted ? 'Unmute' : 'Mute'}</p>
           </button>
-          <button onClick={() => setHandRaised(!handRaised)} className="flex flex-1 flex-col items-center justify-center gap-1.5 group outline-none">
-            <div className={`flex h-12 w-12 items-center justify-center rounded-full transition-all group-active:scale-95 border ${handRaised ? 'bg-accent-purple/20 text-accent-purple border-accent-purple/30' : 'bg-white/5 text-slate-400 border-white/5'}`}>
+
+          <button 
+            onClick={() => setHandRaised(!handRaised)}
+            className="flex flex-1 flex-col items-center justify-center gap-1.5 group outline-none"
+          >
+            <div className={`flex h-12 w-12 items-center justify-center rounded-full transition-all group-active:scale-95 border ${
+              handRaised ? 'bg-accent-purple/20 text-accent-purple border-accent-purple/30' : 'bg-white/5 text-slate-400 border-white/5'
+            }`}>
               <span className={`material-symbols-outlined ${handRaised ? 'fill-1' : ''}`}>front_hand</span>
             </div>
             <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Hand</p>
           </button>
+
           <button className="flex flex-1 flex-col items-center justify-center gap-1.5 group outline-none">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/5 text-slate-400 border border-white/5 transition-all group-active:scale-95">
               <span className="material-symbols-outlined">settings</span>
             </div>
             <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Settings</p>
           </button>
-          <button onClick={leaveRoom} className="flex flex-1 flex-col items-center justify-center gap-1.5 group outline-none">
+
+          <button 
+            onClick={leaveRoom}
+            className="flex flex-1 flex-col items-center justify-center gap-1.5 group outline-none"
+          >
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/10 text-red-500 border border-red-500/20 transition-all group-active:scale-95">
               <span className="material-symbols-outlined">call_end</span>
             </div>
@@ -637,110 +721,185 @@ export default function VoiceRooms() {
     );
   }
 
+  // Otherwise render the Voice Lobby (room list) if we are on the voice route
   if (!isVoiceRoute) return null;
 
   const activeRoomsList = rooms.filter(r => !r.status || r.status === 'active');
   const pastRoomsList = rooms.filter(r => r.status === 'ended');
 
   return (
-    <div className="min-h-screen flex flex-col bg-background-light dark:bg-background-dark font-display overflow-hidden select-none">
-      <header className="flex items-center justify-between px-6 pt-8 pb-4 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="size-10 rounded-full border-2 border-primary overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-            {profile?.avatar_url ? <img src={profile.avatar_url} alt="Profile" className="w-full h-full object-cover" /> : <span className="text-primary font-bold">{profile?.anonymous_username?.slice(0, 1) || 'A'}</span>}
+    <div className="min-h-screen relative overflow-hidden bg-[#07070f]">
+      <div className="ambient-blob w-[500px] h-[500px] bg-violet-600/10 top-[-100px] right-[10%]" />
+
+      <header className="relative z-10 border-b border-white/5 glass sticky top-0">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-4 px-4 py-3.5">
+          <div className="flex items-center gap-4">
+            <Link to="/dashboard"><button className="btn-ghost rounded-xl p-2 text-slate-400">← Back</button></Link>
+            <div>
+              <h1 className="font-semibold text-white text-lg">🎙️ Voice Lounge</h1>
+              <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Anonymous Conversations</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-sm font-medium text-slate-500 dark:text-slate-400">Welcome back,</h1>
-            <p className="text-lg font-bold text-slate-900 dark:text-slate-100 leading-tight">{profile?.display_name || user?.displayName || profile?.anonymous_username || 'Anonymous'}</p>
-          </div>
+          <button onClick={() => setShowCreate(true)} className="btn-primary !w-auto px-5 py-2.5 rounded-2xl text-sm bg-violet-600 hover:bg-violet-500 border-none shadow-lg shadow-violet-600/20 font-bold transition-all">
+            + Open Case
+          </button>
         </div>
-        <button onClick={() => setShowCreate(true)} className="bg-primary/20 hover:bg-primary/30 text-primary px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all active:scale-95">
-          <span className="material-symbols-outlined text-sm">add</span>Create Room
-        </button>
       </header>
 
-      <main className="flex-1 overflow-y-auto no-scrollbar pb-24">
-        {errorMsg && <div className="px-6 mt-4"><div className="bg-red-500/10 border border-red-500/30 text-red-500 text-xs rounded-2xl px-5 py-3 flex items-center gap-3">⚠️ {errorMsg}</div></div>}
-        {joining && <div className="text-center py-12"><div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" /><p className="text-slate-400 text-sm">Entering room...</p></div>}
+      <main className="relative z-10 max-w-4xl mx-auto px-4 py-8">
+        {errorMsg && (
+          <motion.div className="mb-6 bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-2xl px-5 py-4 flex items-center gap-3"
+            initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+            ⚠️ {errorMsg}
+          </motion.div>
+        )}
+
+        {joining && (
+          <div className="text-center py-12">
+            <div className="w-10 h-10 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-slate-400 text-sm">Entering room...</p>
+          </div>
+        )}
+
         {!joining && (
-          <>
-            <section className="mt-4">
-              <div className="px-6 flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Live Hubs</h2>
-                <button className="text-primary text-sm font-medium active:opacity-60">See all</button>
-              </div>
-              <div className="flex gap-4 overflow-x-auto px-6 no-scrollbar pb-4">
-                {activeRoomsList.length === 0 ? (
-                  <div className="w-full bg-slate-100 dark:bg-slate-800/30 rounded-2xl p-8 text-center border border-dashed border-slate-300 dark:border-slate-700"><p className="text-slate-400 text-sm">No live rooms right now</p></div>
-                ) : (
-                  activeRoomsList.map((room) => (
-                    <div key={room.id} onClick={() => joinRoom(room)} className="min-w-[280px] sm:min-w-[320px] bg-slate-100 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-200 dark:border-white/5 flex flex-col gap-4 active:scale-[0.98] transition-all cursor-pointer group">
-                      <div className="relative h-40 w-full rounded-xl overflow-hidden shadow-lg">
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent z-10"></div>
-                        <img alt="Room background" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" src={`https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=600&auto=format&fit=crop`} />
-                        <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider"><span className="size-1.5 bg-white rounded-full animate-pulse"></span>Live</div>
+          <div className="space-y-12">
+            {/* Active Rooms */}
+            <section>
+              <h2 className="text-white/40 text-xs font-black uppercase tracking-widest mb-4 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Live Hubs
+              </h2>
+              {activeRoomsList.length === 0 ? (
+                <div className="bg-white/5 border border-white/5 rounded-3xl py-12 text-center">
+                  <p className="text-slate-500 text-sm">No active discussions. Be the first to start one!</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {activeRoomsList.map((room, i) => (
+                    <motion.div
+                      key={room.id}
+                      onClick={() => joinRoom(room)}
+                      className="glass-hover rounded-3xl p-6 cursor-pointer bg-gradient-to-br from-violet-600/10 to-indigo-600/5 border border-white/5 relative overflow-hidden group"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.1 }}
+                      whileHover={{ scale: 1.02, y: -4 }}>
+                      <div className="absolute top-4 right-4 flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Live</span>
+                        </div>
+                        {profile?.is_admin && (
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                                if (window.confirm('Permanently delete this voice room and all its history?')) {
+                                  try {
+                                    await deleteDoc(doc(db, 'voice_rooms', room.id));
+                                    setRooms(prev => prev.filter(r => r.id !== room.id));
+                                  } catch (error: any) {
+                                    alert('Failed to delete: ' + error.message);
+                                  }
+                                }
+                            }}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                            title="Delete Permanently"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
-                      <div>
-                        <h3 className="font-bold text-base line-clamp-1 text-slate-900 dark:text-white">{room.name}</h3>
-                        <div className="flex items-center justify-between mt-1">
-                          <div className="flex -space-x-1.5">
-                            <div className="size-6 rounded-full border-2 border-slate-100 dark:border-slate-800 bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary shadow-sm shadow-primary/20">{room.creator_name?.slice(0, 1) || 'A'}</div>
-                            <div className="size-6 rounded-full border-2 border-slate-100 dark:border-slate-800 bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-400">+2</div>
-                          </div>
-                          <span className="text-xs text-slate-500 flex items-center gap-1"><span className="material-symbols-outlined text-xs">group</span>{room.participants_count || 0} listening</span>
+                      <div className="relative w-12 h-12 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">
+                        🎙️
+                      </div>
+                      <h3 className="font-bold text-white text-lg mb-1 truncate">{room.name}</h3>
+                      <div className="flex items-center gap-2 mt-3">
+                        <div className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-white/50 border border-white/10">
+                          {room.creator_name?.slice(0, 1) || 'A'}
+                        </div>
+                        <span className="text-[10px] text-white/40 font-bold uppercase tracking-tighter">
+                          Started by {room.creator_name || 'Anonymous'}
+                        </span>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* History Section */}
+            {pastRoomsList.length > 0 && (
+              <section>
+                <h2 className="text-white/20 text-xs font-black uppercase tracking-widest mb-4">
+                  Past Dialogues
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {pastRoomsList.map((room, i) => (
+                    <div key={room.id}
+                      className="rounded-3xl p-5 border border-white/5 bg-white/[0.02] opacity-60">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-2xl grayscale">🎙️</span>
+                        <div className="flex items-center gap-2">
+                           {profile?.is_admin && (
+                            <button 
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (window.confirm('Permanently delete this archived voice room?')) {
+                                  try {
+                                    await deleteDoc(doc(db, 'voice_rooms', room.id));
+                                    setRooms(prev => prev.filter(r => r.id !== room.id));
+                                  } catch (error: any) {
+                                    alert('Failed to delete: ' + error.message);
+                                  }
+                                }
+                              }} 
+                              className="text-white/20 hover:text-red-400 transition-colors p-1"
+                              title="Delete Permanently"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                          <span className="text-[9px] text-white/30 font-bold border border-white/5 px-2 py-0.5 rounded-full">Archive</span>
                         </div>
                       </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
-            <section className="mt-8 px-6 pb-12">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Past Dialogues</h2>
-                <span className="material-symbols-outlined text-slate-400">history</span>
-              </div>
-              <div className="space-y-3">
-                {pastRoomsList.length === 0 ? <p className="text-slate-500 text-sm text-center py-8">No history yet</p> : (
-                  pastRoomsList.map((room) => (
-                    <div key={room.id} className="flex items-center justify-between p-4 bg-white dark:bg-slate-800/30 rounded-2xl border border-slate-200 dark:border-white/5 transition-all group">
-                      <div className="flex items-center gap-4">
-                        <div className="size-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform"><span className="material-symbols-outlined">mic</span></div>
-                        <div>
-                          <h4 className="font-semibold text-sm line-clamp-1 text-slate-900 dark:text-white">{room.name}</h4>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">{new Date(room.ended_at || room.created_at).toLocaleDateString()} • {room.duration || 'Session'}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button className="p-2 text-slate-400 hover:text-primary transition-colors"><span className="material-symbols-outlined text-xl">download</span></button>
-                        <button className="size-10 bg-primary text-white rounded-full flex items-center justify-center shadow-lg shadow-primary/20 active:scale-95 transition-all"><span className="material-symbols-outlined text-2xl leading-none">play_arrow</span></button>
+                      <h3 className="font-semibold text-white/80 text-base mb-1 truncate">{room.name}</h3>
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-white/30 font-medium">
+                          Opened by {room.creator_name || 'Anonymous'}
+                        </p>
+                        <p className="text-[9px] text-white/20">
+                          Ended {new Date(room.ended_at || room.created_at).toLocaleDateString()}
+                        </p>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
-            </section>
-          </>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
         )}
       </main>
 
-      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/80 dark:bg-background-dark/80 backdrop-blur-xl border-t border-slate-200 dark:border-white/5 px-6 pt-3 pb-8 flex justify-between items-center z-50">
-        <a className="flex flex-col items-center gap-1 text-primary" href="/dashboard"><span className="material-symbols-outlined font-variation-fill">grid_view</span><span className="text-[10px] font-bold uppercase tracking-widest">Home</span></a>
-        <a className="flex flex-col items-center gap-1 text-slate-400 hover:text-primary transition-colors" href="#"><span className="material-symbols-outlined">explore</span><span className="text-[10px] font-bold uppercase tracking-widest">Discover</span></a>
-        <a className="flex flex-col items-center gap-1 text-slate-400 hover:text-primary transition-colors" href="#"><span className="material-symbols-outlined">notifications</span><span className="text-[10px] font-bold uppercase tracking-widest">Inbox</span></a>
-        <a className="flex flex-col items-center gap-1 text-slate-400 hover:text-primary transition-colors" href="#"><span className="material-symbols-outlined">person</span><span className="text-[10px] font-bold uppercase tracking-widest">Profile</span></a>
-      </nav>
-
       <AnimatePresence>
         {showCreate && (
-          <motion.div className="fixed inset-0 z-[60] flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={(e) => { if (e.target === e.currentTarget) setShowCreate(false); }}>
-            <motion.div className="bg-white dark:bg-background-dark border border-slate-200 dark:border-white/10 rounded-3xl p-8 w-full max-w-md shadow-2xl" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-2 font-display">Create a Voice Room</h2>
-              <p className="text-sm text-slate-500 mb-6 font-display">Create a new voice lounge topic. Up to 18 people can join.</p>
-              <input type="text" className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white rounded-2xl px-5 py-3 text-sm focus:outline-none focus:border-primary placeholder-slate-400 mb-4" placeholder="Room topic..." value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && createRoom()} autoFocus maxLength={40} />
+          <motion.div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={(e) => { if (e.target === e.currentTarget) setShowCreate(false); }}>
+            <motion.div className="glass border border-white/10 rounded-3xl p-8 w-full max-w-md bg-[#14142b]"
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
+              <h2 className="text-xl font-semibold text-white mb-2">Create a Voice Room</h2>
+              <p className="text-sm text-slate-500 mb-6">Create a new voice lounge topic. Up to 18 people can join.</p>
+              <input type="text" className="input-field mb-4 bg-black/40 placeholder-white/40 focus:border-violet-500" placeholder="Room topic..."
+                value={newName} onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && createRoom()} autoFocus maxLength={40} />
               <div className="flex gap-3">
-                <button onClick={createRoom} className="bg-primary hover:bg-primary/90 text-white rounded-xl flex-1 py-3 font-semibold transition-all active:scale-95" disabled={creating || !newName.trim()}>{creating ? 'Starting...' : '🎙️ Open Room'}</button>
-                <button onClick={() => setShowCreate(false)} className="bg-slate-100 dark:bg-white/5 rounded-xl px-4 py-2 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-white/70 hover:bg-slate-200 dark:hover:bg-white/10">Cancel</button>
+                <button onClick={createRoom} className="btn-primary rounded-xl bg-violet-600 hover:bg-violet-500 flex-1 border-none font-semibold" disabled={creating || !newName.trim()}>
+                  {creating ? 'Starting...' : '🎙️ Open Room'}
+                </button>
+                <button onClick={() => setShowCreate(false)} className="btn-ghost rounded-xl px-4 py-2 border border-white/10 text-white/70 hover:bg-white/5">
+                  Cancel
+                </button>
               </div>
             </motion.div>
           </motion.div>

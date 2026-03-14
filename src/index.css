@@ -332,12 +332,4 @@
     background: rgba(189, 141, 206, 0.2);
     border-radius: 10px;
   }
-
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-  .no-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
 }

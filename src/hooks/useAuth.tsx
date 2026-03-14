@@ -8,8 +8,6 @@ interface UserProfile {
   anonymous_username: string;
   joined_at: string;
   is_admin: boolean;
-  avatar_url?: string;
-  display_name?: string;
 }
 
 interface AuthContextType {
