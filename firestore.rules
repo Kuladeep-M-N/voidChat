@@ -1,0 +1,59 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isOwner(userId);
+    }
+
+    // Chat Rooms
+    match /chat_rooms/{roomId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && (resource.data.created_by == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.is_admin == true);
+    }
+
+    // Room Members
+    match /room_members/{memberId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+    }
+
+    // Messages
+    match /messages/{messageId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated(); // Could be locked down to only room members, but keeping it open for now based on current logic
+    }
+
+    // Confessions
+    match /confessions/{confessionId} {
+      allow read, create: if isAuthenticated();
+      allow update: if isAuthenticated(); // For likes
+      allow delete: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+    }
+
+    // Confession Comments
+    match /confession_comments/{commentId} {
+      allow read, create: if isAuthenticated();
+    }
+    
+    // Other collections (Shoutouts, Polls, QnA, etc.)
+    match /{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated(); 
+    }
+  }
+}
