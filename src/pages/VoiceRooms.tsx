@@ -26,7 +26,8 @@ import {
   update, 
   onDisconnect 
 } from 'firebase/database';
-import { db, rtdb } from '../lib/firebase';
+import { db, rtdb, functions } from '../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 import { useAuth } from '../hooks/useAuth';
 
 interface VoiceRoom {

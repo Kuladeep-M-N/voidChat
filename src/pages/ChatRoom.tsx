@@ -14,7 +14,8 @@ import {
   getDocs,
   serverTimestamp,
   setDoc,
-  deleteDoc
+  deleteDoc,
+  limit
 } from 'firebase/firestore';
 import { 
   ref, 
@@ -127,8 +128,8 @@ export default function ChatRoom() {
       
       setUserRole(finalRole);
 
-      // 2. Fetch All Members
-      const allMembersQuery = query(collection(db, 'room_members'), where('room_id', '==', roomId));
+      // 2. Fetch All Members (limited to prevent massive payload)
+      const allMembersQuery = query(collection(db, 'room_members'), where('room_id', '==', roomId), limit(100));
       const unsubscribeMembers = onSnapshot(allMembersQuery, (snapshot) => {
         const rolesMap = new Map<string, string>();
         const membersList: RoomMember[] = [];
@@ -162,7 +163,8 @@ export default function ChatRoom() {
     const q = query(
       collection(db, 'messages'), 
       where('room_id', '==', roomId), 
-      orderBy('created_at', 'asc')
+      orderBy('created_at', 'desc'),
+      limit(100)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -175,7 +177,7 @@ export default function ChatRoom() {
           anonymous_username: nameCache.current.get(data.user_id) ?? '???'
         } as Message);
       });
-      setMessages(items);
+      setMessages(items.reverse());
     });
 
     return () => unsubscribe();

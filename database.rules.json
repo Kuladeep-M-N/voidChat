@@ -1,6 +1,33 @@
 {
   "rules": {
     ".read": "auth != null",
-    ".write": "auth != null"
+    ".write": "auth != null",
+    "presence": {
+      "global": {
+        "$uid": {
+          ".write": "$uid === auth.uid"
+        }
+      }
+    },
+    "rooms": {
+      "$roomId": {
+        "presence": {
+          "$uid": {
+            ".write": "$uid === auth.uid"
+          }
+        },
+        "typing": {
+          "$uid": {
+            ".write": "$uid === auth.uid"
+          }
+        },
+        "reactions": {
+          "$messageId": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          }
+        }
+      }
+    }
   }
 }

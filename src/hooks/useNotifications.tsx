@@ -69,11 +69,6 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
             ...prev,
             [roomId]: (prev[roomId] || 0) + 1
           }));
-
-          // Show toast notification
-          toast.message(`New message in room`, {
-            description: newMessage.content.substring(0, 50) + (newMessage.content.length > 50 ? '...' : ''),
-          });
         }
       });
     }, (error) => {
