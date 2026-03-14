@@ -43,14 +43,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (firebaseUser) {
         // Listen to profile changes in real-time
         const profileRef = doc(db, 'users', firebaseUser.uid);
-        unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
-          if (docSnap.exists()) {
-            setProfile({ id: docSnap.id, ...docSnap.data() } as UserProfile);
-          } else {
-            setProfile(null);
-          }
+        
+        // Safety timeout to prevent infinite loading if Firebase hangs
+        const timeout = setTimeout(() => {
           setLoading(false);
-        });
+        }, 8000);
+
+        unsubscribeProfile = onSnapshot(profileRef, 
+          (docSnap) => {
+            clearTimeout(timeout);
+            if (docSnap.exists()) {
+              setProfile({ id: docSnap.id, ...docSnap.data() } as UserProfile);
+            } else {
+              setProfile(null);
+            }
+            setLoading(false);
+          },
+          (error) => {
+            console.error("Profile listener error:", error);
+            clearTimeout(timeout);
+            setLoading(false);
+          }
+        );
       } else {
         setProfile(null);
         setLoading(false);

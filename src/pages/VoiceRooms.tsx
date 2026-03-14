@@ -66,9 +66,17 @@ const STUN_FALLBACK = [
 
 async function getIceServers(): Promise<RTCIceServer[]> {
   try {
-    const getIce = httpsCallable(functions, 'getIceServers');
-    const result = await getIce();
-    return result.data as RTCIceServer[];
+    const domain = import.meta.env.VITE_METERED_DOMAIN;
+    const apiKey = import.meta.env.VITE_METERED_API_KEY;
+    
+    if (!domain || !apiKey) {
+      console.warn('Metered credentials missing, falling back to STUN');
+      return STUN_FALLBACK;
+    }
+
+    const response = await fetch(`https://${domain}/api/v1/turn/credentials?apiKey=${apiKey}`);
+    const data = await response.json();
+    return data as RTCIceServer[];
   } catch (error) {
     console.warn('Failed to fetch TURN servers, falling back to STUN:', error);
     return STUN_FALLBACK;
