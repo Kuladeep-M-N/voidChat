@@ -26,7 +26,8 @@ import {
   update, 
   onDisconnect 
 } from 'firebase/database';
-import { db, rtdb } from '../lib/firebase';
+import { db, rtdb, functions } from '../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 import { useAuth } from '../hooks/useAuth';
 
 interface VoiceRoom {
@@ -64,9 +65,14 @@ const STUN_FALLBACK = [
 ];
 
 async function getIceServers(): Promise<RTCIceServer[]> {
-  // Logic for Firebase functions will be added in next phase
-  // Falling back to STUN for now
-  return STUN_FALLBACK;
+  try {
+    const getIce = httpsCallable(functions, 'getIceServers');
+    const result = await getIce();
+    return result.data as RTCIceServer[];
+  } catch (error) {
+    console.warn('Failed to fetch TURN servers, falling back to STUN:', error);
+    return STUN_FALLBACK;
+  }
 }
 
 function useSpeakingDetector(stream: MediaStream | null): boolean {
