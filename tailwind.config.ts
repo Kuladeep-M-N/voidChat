@@ -15,16 +15,20 @@ export default {
     extend: {
       fontFamily: {
         sans: ["Sora", "system-ui", "sans-serif"],
+        display: ["Public Sans", "sans-serif"],
         mono: ["JetBrains Mono", "monospace"],
       },
       colors: {
+        "room-dark": "#221610",
+        "accent-purple": "#bd8dce",
+        "primary-voice": "#ec5b13",
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         primary: {
-          DEFAULT: "hsl(var(--primary))",
+          DEFAULT: "#8b5cf6",
           foreground: "hsl(var(--primary-foreground))",
         },
         secondary: {
@@ -51,6 +55,8 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        "background-light": "#f8f6f6",
+        "background-dark": "#121212",
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",

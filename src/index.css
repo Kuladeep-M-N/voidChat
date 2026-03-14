@@ -319,4 +319,25 @@
       border-radius: 1.2rem;
     }
   }
+
+  .speaking-glow {
+    box-shadow: 0 0 0 4px rgba(189, 141, 206, 0.4), 0 0 20px rgba(189, 141, 206, 0.6);
+  }
+
+  .custom-scrollbar-voice::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  .custom-scrollbar-voice::-webkit-scrollbar-thumb {
+    background: rgba(189, 141, 206, 0.2);
+    border-radius: 10px;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }
