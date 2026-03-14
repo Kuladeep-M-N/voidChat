@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft,
   AtSign,
+  AlertTriangle,
   Copy,
   Megaphone,
   MessageCircle,
@@ -20,6 +21,8 @@ import {
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
+import { containsInappropriateContent } from '../lib/filter';
+import ReportModal from '../components/ReportModal';
 
 interface Shoutout {
   id: string;
@@ -135,6 +138,8 @@ export default function Shoutouts() {
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [presenceCount, setPresenceCount] = useState(1);
+  const [reportingContent, setReportingContent] = useState<{ type: 'shoutout' | 'user'; id: string } | null>(null);
+  const [reportCounts, setReportCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (!loading && !user) {
@@ -169,6 +174,20 @@ export default function Shoutouts() {
 
       if (userData) {
         setUsernameList(Array.from(new Set(userData.map((entry) => entry.anonymous_username).filter(Boolean))));
+      }
+
+      // Load report counts to auto-hide content
+      const { data: reportData } = await supabase
+        .from('reports')
+        .select('target_id')
+        .eq('target_type', 'shoutout');
+      
+      if (reportData) {
+        const counts: Record<string, number> = {};
+        reportData.forEach(r => {
+          counts[r.target_id] = (counts[r.target_id] || 0) + 1;
+        });
+        setReportCounts(counts);
       }
     };
 
@@ -254,6 +273,9 @@ export default function Shoutouts() {
 
   const visibleShoutouts = useMemo(() => {
     const filtered = shoutouts.filter((item) => {
+      // Auto-hide content with high report counts (5+)
+      if (reportCounts[item.id] >= 5) return false;
+
       // Exclude comments from all main tabs
       if (item.parent_id) return false;
       
@@ -456,6 +478,13 @@ export default function Shoutouts() {
     const content = inlineContent ? inlineContent.trim() : message.trim();
 
     if ((!parentId && !target) || !content || !user || posting) return;
+
+    // Safety Check: Content Filtering
+    const filterResult = containsInappropriateContent(content);
+    if (filterResult.matches) {
+      toast.error(`Message contains inappropriate language: "${filterResult.word}". Please keep it clean.`);
+      return;
+    }
 
     setPosting(true);
     const parent = parentId ? shoutouts.find(s => s.id === parentId) : null;
@@ -896,6 +925,16 @@ export default function Shoutouts() {
                                         DELETE POST
                                       </button>
                                     )}
+                                    <button 
+                                      onClick={() => {
+                                        setReportingContent({ type: 'shoutout', id: shoutout.id });
+                                        setActiveMenuId(null);
+                                      }}
+                                      className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-xs font-bold text-amber-400/70 transition hover:bg-amber-500/10 hover:text-amber-400"
+                                    >
+                                      <AlertTriangle className="h-4 w-4" />
+                                      REPORT POST
+                                    </button>
                                   </motion.div>
                                 )}
                               </AnimatePresence>
@@ -1069,6 +1108,13 @@ export default function Shoutouts() {
       >
         <Megaphone className="h-6 w-6" />
       </button>
+
+      <ReportModal 
+        isOpen={!!reportingContent}
+        onClose={() => setReportingContent(null)}
+        targetType={reportingContent?.type || 'shoutout'}
+        targetId={reportingContent?.id || ''}
+      />
     </div>
   );
 }

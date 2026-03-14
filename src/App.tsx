@@ -10,6 +10,7 @@ import Polls from './pages/Polls';
 import VoiceRooms from './pages/VoiceRooms';
 import Shoutouts from './pages/Shoutouts';
 import QnA from './pages/QnA';
+import AdminModeration from './pages/AdminModeration';
 
 
 const Spinner = () => (
@@ -58,6 +59,7 @@ function App() {
             <Route path="/qna" element={<ProtectedRoute><QnA /></ProtectedRoute>} />
             <Route path="/voice" element={<ProtectedRoute><div className="h-0 overflow-hidden" /></ProtectedRoute>} />
             <Route path="/shoutouts" element={<ProtectedRoute><Shoutouts /></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute><AdminModeration /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

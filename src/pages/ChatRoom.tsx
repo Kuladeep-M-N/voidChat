@@ -4,6 +4,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
+import { AlertTriangle } from 'lucide-react';
+import { containsInappropriateContent } from '../lib/filter';
+import ReportModal from '../components/ReportModal';
+import { toast } from 'sonner';
 
 interface Message {
   id: string; content: string; created_at: string;
@@ -39,6 +43,7 @@ export default function ChatRoom() {
   const [picker, setPicker] = useState<string | null>(null);
   const [showMembers, setShowMembers] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [reportingContent, setReportingContent] = useState<{ type: 'message' | 'user'; id: string } | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -374,6 +379,11 @@ export default function ChatRoom() {
     // Check permissions
     if (onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole)) return;
 
+    if (containsInappropriateContent(content)) {
+      toast.error('Your message contains inappropriate content and cannot be sent.');
+      return;
+    }
+
     sending.current = true;
 
     const tempId = `OPT_${Date.now()}_${Math.random()}`;
@@ -561,6 +571,20 @@ export default function ChatRoom() {
                           </motion.div>
                         )}
                       </AnimatePresence>
+
+                      {/* Report button */}
+                      {!isMe && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setReportingContent({ type: 'message', id: msg.id });
+                          }}
+                          className="absolute -right-8 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-1 text-amber-500/40 hover:text-amber-500"
+                          title="Report Message"
+                        >
+                          <AlertTriangle size={14} />
+                        </button>
+                      )}
                     </div>
 
                     {/* Reactions */}
@@ -754,6 +778,13 @@ export default function ChatRoom() {
         </motion.div>
       )}
     </AnimatePresence>
+
+    <ReportModal 
+      isOpen={!!reportingContent}
+      onClose={() => setReportingContent(null)}
+      targetType={reportingContent?.type || 'message'}
+      targetId={reportingContent?.id || ''}
+    />
     </div>
   );
 }

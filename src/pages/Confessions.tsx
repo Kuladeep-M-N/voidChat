@@ -8,6 +8,7 @@ import {
   Compass,
   Flame,
   Lightbulb,
+  AlertTriangle,
   MessageCircle,
   Search,
   Send,
@@ -18,6 +19,9 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { toast } from 'sonner';
+import { containsInappropriateContent } from '../lib/filter';
+import ReportModal from '../components/ReportModal';
 
 interface Confession {
   id: string;
@@ -140,12 +144,14 @@ function CommentPanel({
   user,
   profile,
   onClose,
+  onReport,
 }: {
   confession: Confession;
   user: User | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   profile: any;
   onClose: () => void;
+  onReport: (type: 'confession' | 'user', id: string) => void;
 }) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [text, setText] = useState('');
@@ -239,6 +245,13 @@ function CommentPanel({
   const post = async () => {
     const content = text.trim();
     if (!content || !user || posting) return;
+
+    // Safety Check: Content Filtering
+    const filterResult = containsInappropriateContent(content);
+    if (filterResult.matches) {
+      toast.error(`Comment contains inappropriate language: "${filterResult.word}". Please keep it clean.`);
+      return;
+    }
 
     setPosting(true);
     const optimistic: Comment = {
@@ -345,6 +358,15 @@ function CommentPanel({
                       </span>
                     </div>
                     <p className="text-sm leading-6 text-slate-200">{comment.content}</p>
+                    {(!isMe || profile?.is_admin) && (
+                      <button 
+                        onClick={() => onReport('confession', comment.id)}
+                        className="mt-2 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500 hover:text-amber-400 transition"
+                      >
+                        <AlertTriangle size={10} />
+                        Report
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -404,6 +426,8 @@ export default function Confessions() {
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => readStoredIds(LOCAL_STORAGE_KEYS.dismissed));
   const [onlyBookmarked, setOnlyBookmarked] = useState(false);
   const [search, setSearch] = useState('');
+  const [reportingContent, setReportingContent] = useState<{ type: 'confession' | 'user'; id: string } | null>(null);
+  const [reportCounts, setReportCounts] = useState<Record<string, number>>({});
   const deferredSearch = useDeferredValue(search);
 
   useEffect(() => {
@@ -455,6 +479,19 @@ export default function Confessions() {
           counts[row.confession_id] = (counts[row.confession_id] || 0) + 1;
         });
         setCommentCounts(counts);
+      });
+
+    supabase
+      .from('reports')
+      .select('target_id')
+      .eq('target_type', 'confession')
+      .then(({ data }) => {
+        if (!data) return;
+        const rCounts: Record<string, number> = {};
+        data.forEach((r) => {
+          rCounts[r.target_id] = (rCounts[r.target_id] || 0) + 1;
+        });
+        setReportCounts(rCounts);
       });
 
     const channel = supabase
@@ -521,6 +558,15 @@ export default function Confessions() {
         });
         setCommentCounts(counts);
       }
+
+      const { data: reportData } = await supabase.from('reports').select('target_id').eq('target_type', 'confession');
+      if (reportData) {
+        const counts: Record<string, number> = {};
+        reportData.forEach((row) => {
+          counts[row.target_id] = (counts[row.target_id] || 0) + 1;
+        });
+        setReportCounts(counts);
+      }
     }, 10000);
 
     return () => {
@@ -532,6 +578,13 @@ export default function Confessions() {
   const post = async () => {
     const content = text.trim();
     if (!content || !user || posting) return;
+
+    // Safety Check: Content Filtering
+    const filterResult = containsInappropriateContent(content);
+    if (filterResult.matches) {
+      toast.error(`Confession contains inappropriate language: "${filterResult.word}". Please keep it clean.`);
+      return;
+    }
 
     setPosting(true);
     setPostError('');
@@ -621,6 +674,7 @@ export default function Confessions() {
 
     return confessions
       .filter((entry) => filterCat === 'all' || entry.category === filterCat)
+      .filter((entry) => (reportCounts[entry.id] || 0) < 5)
       .filter((entry) => !onlyBookmarked || bookmarkedIds.has(entry.id))
       .filter((entry) => !dismissedIds.has(entry.id))
       .filter((entry) => !term || entry.content.toLowerCase().includes(term))
@@ -633,7 +687,7 @@ export default function Confessions() {
         }
         return getHeatScore(right, commentCounts[right.id] || 0) - getHeatScore(left, commentCounts[left.id] || 0);
       });
-  }, [bookmarkedIds, commentCounts, confessions, deferredSearch, dismissedIds, filterCat, onlyBookmarked, sortBy]);
+  }, [bookmarkedIds, commentCounts, confessions, deferredSearch, dismissedIds, filterCat, onlyBookmarked, sortBy, reportCounts]);
 
   const spotlight = filteredConfessions[0] ?? confessions[0] ?? null;
   const latestDrop = confessions[0] ?? null;
@@ -1054,6 +1108,13 @@ export default function Confessions() {
                               Delete
                             </button>
                           ) : null}
+                          <button
+                            onClick={() => setReportingContent({ type: 'confession', id: confession.id })}
+                            className="confession-action text-amber-300/80 hover:border-amber-400/30 hover:bg-amber-500/10 hover:text-amber-400 font-bold"
+                          >
+                            <AlertTriangle size={15} />
+                            Report
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1082,9 +1143,17 @@ export default function Confessions() {
             user={user}
             profile={profile}
             onClose={() => setCommentTarget(null)}
+            onReport={(type, id) => setReportingContent({ type, id })}
           />
         ) : null}
       </AnimatePresence>
+
+      <ReportModal 
+        isOpen={!!reportingContent}
+        onClose={() => setReportingContent(null)}
+        targetType={reportingContent?.type || 'confession'}
+        targetId={reportingContent?.id || ''}
+      />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
@@ -165,7 +165,15 @@ export default function Dashboard() {
             <span className="text-slate-400 text-sm flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               {profile?.anonymous_username || 'Anonymous'}
-              {profile?.is_admin && <span className="text-[10px] font-black bg-red-500/10 text-red-500 px-2 py-0.5 rounded-full border border-red-500/20 ml-1">ADMIN</span>}
+              {profile?.is_admin && (
+                <Link 
+                  to="/admin" 
+                  className="ml-2 flex items-center gap-2 px-3 py-1 bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[10px] font-black rounded-full transition hover:bg-amber-500/20"
+                >
+                  <Shield size={12} />
+                  MOD PANEL
+                </Link>
+              )}
             </span>
             <button onClick={signOut} className="text-slate-500 hover:text-slate-300 text-sm transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5">Leave</button>
           </div>
