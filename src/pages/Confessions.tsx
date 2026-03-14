@@ -409,7 +409,8 @@ export default function Confessions() {
     // Load confessions
     const qConfessions = query(
       collection(db, 'confessions'),
-      orderBy('created_at', 'desc')
+      orderBy('created_at', 'desc'),
+      limit(50)
     );
 
     const unsubscribeConfessions = onSnapshot(qConfessions, (snapshot) => {
