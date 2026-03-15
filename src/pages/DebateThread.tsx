@@ -175,14 +175,28 @@ export default function DebateThread() {
   }, [debateId, user, navigate]);
 
   const handleVote = async (side: 'A' | 'B') => {
-    if (!user || !debateId || userVote === side) return;
+    if (!user || !debateId || userVote === side || debate?.status === 'closed') return;
+
+    // Optimistic Update
+    const oldVote = userVote;
+    setUserVote(side);
+    
+    setDebate(prev => {
+      if (!prev) return prev;
+      const newVotes = { ...prev };
+      if (oldVote) {
+        newVotes[`votes_${oldVote.toLowerCase()}` as 'votes_a' | 'votes_b'] -= 1;
+      } else {
+        newVotes.participantCount += 1;
+      }
+      newVotes[`votes_${side.toLowerCase()}` as 'votes_a' | 'votes_b'] += 1;
+      return newVotes;
+    });
 
     try {
       await runTransaction(db, async (transaction) => {
         const voteRef = doc(db, 'debate_votes', `${debateId}_${user.uid}`);
         const debateRef = doc(db, 'debates', debateId);
-        
-        const oldVote = userVote;
         
         transaction.set(voteRef, {
           debate_id: debateId,
@@ -192,24 +206,36 @@ export default function DebateThread() {
         });
 
         if (oldVote) {
-          // Change vote
           transaction.update(debateRef, {
             [`votes_${oldVote.toLowerCase()}`]: increment(-1),
             [`votes_${side.toLowerCase()}`]: increment(1)
           });
         } else {
-          // New vote
           transaction.update(debateRef, {
             [`votes_${side.toLowerCase()}`]: increment(1),
             participantCount: increment(1)
           });
         }
       });
-      setUserVote(side);
-      toast.success(`Voted for ${side === 'A' ? debate?.side_a_label : debate?.side_b_label}`);
+      // Toast on success - no need to update state again as we did it optimistically
+      // and onSnapshot will eventually bring the server truth anyway.
+      toast.success(`Vote cast: ${side === 'A' ? debate?.side_a_label : debate?.side_b_label}`);
     } catch (e) {
       console.error(e);
-      toast.error('Voting failed');
+      // Revert optimistic update on failure
+      setUserVote(oldVote);
+      setDebate(prev => {
+        if (!prev) return prev;
+        const revert = { ...prev };
+        revert[`votes_${side.toLowerCase()}` as 'votes_a' | 'votes_b'] -= 1;
+        if (oldVote) {
+          revert[`votes_${oldVote.toLowerCase()}` as 'votes_a' | 'votes_b'] += 1;
+        } else {
+          revert.participantCount -= 1;
+        }
+        return revert;
+      });
+      toast.error('Voting failed. Please try again.');
     }
   };
 
@@ -368,14 +394,19 @@ export default function DebateThread() {
                 </div>
                 <h2 className="font-black text-blue-400 uppercase tracking-widest text-sm">{debate.side_a_label}</h2>
               </div>
-              <button 
+              <motion.button 
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => handleVote('A')}
-                className={`px-4 py-1.5 rounded-full text-[10px] font-black transition-all ${
-                  userVote === 'A' ? 'bg-blue-500 text-white' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20'
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl text-[11px] font-black transition-all ${
+                  userVote === 'A' 
+                    ? 'bg-blue-500 text-white shadow-[0_0_20px_rgba(59,130,246,0.5)] border-transparent' 
+                    : 'bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500/20'
                 }`}
               >
-                {pctA}% VOTE
-              </button>
+                <div className={`w-2 h-2 rounded-full ${userVote === 'A' ? 'bg-white animate-pulse' : 'bg-blue-500'}`} />
+                {pctA}% VOTE {userVote === 'A' && 'CAST'}
+              </motion.button>
             </div>
             <div className="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar">
               {argumentsA.map((arg) => <ArgumentCard key={arg.id} arg={arg} color="blue" />)}
@@ -393,14 +424,19 @@ export default function DebateThread() {
                 </div>
                 <h2 className="font-black text-red-400 uppercase tracking-widest text-sm">{debate.side_b_label}</h2>
               </div>
-              <button 
+              <motion.button 
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => handleVote('B')}
-                className={`px-4 py-1.5 rounded-full text-[10px] font-black transition-all ${
-                  userVote === 'B' ? 'bg-red-500 text-white' : 'bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20'
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl text-[11px] font-black transition-all ${
+                  userVote === 'B' 
+                    ? 'bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)] border-transparent' 
+                    : 'bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20'
                 }`}
               >
-                {pctB}% VOTE
-              </button>
+                <div className={`w-2 h-2 rounded-full ${userVote === 'B' ? 'bg-white animate-pulse' : 'bg-red-500'}`} />
+                {pctB}% VOTE {userVote === 'B' && 'CAST'}
+              </motion.button>
             </div>
             <div className="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar">
               {argumentsB.map((arg) => <ArgumentCard key={arg.id} arg={arg} color="red" />)}

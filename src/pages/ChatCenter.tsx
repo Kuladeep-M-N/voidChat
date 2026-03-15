@@ -10,7 +10,13 @@ import {
   User,
   Sparkles,
   Zap,
-  ArrowLeft
+  ArrowLeft,
+  Flame,
+  Activity,
+  History,
+  TrendingUp,
+  Clock,
+  Layout
 } from 'lucide-react';
 import { 
   collection, 
@@ -24,6 +30,7 @@ import {
   where,
   getDocs,
   getCountFromServer,
+  limit,
   serverTimestamp 
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -55,9 +62,11 @@ export default function ChatCenter() {
   const navigate = useNavigate();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [memberCounts, setMemberCounts] = useState<Record<string, number>>({});
+  const [pulseIntensity, setPulseIntensity] = useState(0.2); // Real-time pulse state
   const [showCreate, setShowCreate] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
   const [creating, setCreating] = useState(false);
+  const [activityFeed, setActivityFeed] = useState<any[]>([]);
 
   useEffect(() => {
     if (!loading && !user) navigate('/join');
@@ -90,6 +99,86 @@ export default function ChatCenter() {
 
     return () => unsubscribe();
   }, [user]);
+
+  // ── Activity Feed Aggregator ──
+  useEffect(() => {
+    if (!user || rooms.length === 0) return;
+
+    // 1. Listen for new messages globally
+    const msgQ = query(collection(db, 'messages'), orderBy('created_at', 'desc'), limit(5));
+    const unsubMessages = onSnapshot(msgQ, (snap) => {
+      const msgEvents = snap.docs.map(doc => ({
+        id: doc.id,
+        type: 'message',
+        room_id: doc.data().room_id,
+        room_path: `/room/${doc.data().room_id}`,
+        timestamp: doc.data().created_at,
+        text: `New message in "${rooms.find(r => r.id === doc.data().room_id)?.name || 'a room'}"`
+      }));
+      updateFeed(msgEvents, 'message');
+    });
+
+    // 2. Listen for new members (joins) globally
+    const joinQ = query(collection(db, 'room_members'), orderBy('joined_at', 'desc'), limit(5));
+    const unsubJoins = onSnapshot(joinQ, (snap) => {
+      const joinEvents = snap.docs.map(doc => ({
+        id: doc.id,
+        type: 'join',
+        room_id: doc.data().room_id,
+        room_path: `/room/${doc.data().room_id}`,
+        timestamp: doc.data().joined_at,
+        text: `User joined "${rooms.find(r => r.id === doc.data().room_id)?.name || 'a room'}"`
+      }));
+      updateFeed(joinEvents, 'join');
+    });
+
+    // 3. Room creations are already in 'rooms' state, but let's treat them as events
+    const roomEvents = rooms.slice(0, 5).map(room => ({
+      id: room.id,
+      type: 'create',
+      room_id: room.id,
+      room_path: `/room/${room.id}`,
+      timestamp: room.created_at,
+      text: `Room "${room.name}" created`
+    }));
+
+    const updateFeed = (newEvents: any[], type: string) => {
+      setActivityFeed(prev => {
+        const filtered = prev.filter(e => e.type !== type);
+        const combined = [...filtered, ...newEvents].sort((a,b) => {
+          const timeA = a.timestamp?.seconds || 0;
+          const timeB = b.timestamp?.seconds || 0;
+          return timeB - timeA;
+        });
+
+        // Whenever a new message or join arrives, spike the pulse!
+        if (newEvents.length > 0 && (type === 'message' || type === 'join')) {
+          setPulseIntensity(prev => Math.min(prev + 0.4, 1.2));
+        }
+
+        return combined.slice(0, 10);
+      });
+    };
+
+    // Initialize with rooms
+    updateFeed(roomEvents, 'create');
+
+    return () => {
+      unsubMessages();
+      unsubJoins();
+    };
+  }, [user, rooms]);
+
+  // ── Pulse Decay Effect ──
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPulseIntensity(prev => {
+        if (prev <= 0.2) return 0.2; // Base level idle pulse
+        return prev - 0.05;
+      });
+    }, 200);
+    return () => clearInterval(timer);
+  }, []);
 
   const createRoom = async () => {
     const name = newRoomName.trim();
@@ -180,7 +269,7 @@ export default function ChatCenter() {
           <div className="flex flex-col lg:flex-row gap-6">
             {/* Chat Central Module Panel */}
             <motion.div 
-              className="lg:w-1/3 glass border border-white/10 rounded-3xl p-6 relative overflow-hidden group shadow-[0_0_50px_-12px_rgba(139,92,246,0.15)]"
+              className="lg:w-1/3 glass border border-white/10 rounded-3xl p-6 relative overflow-hidden group shadow-[0_0_50px_-12px_rgba(139,92,246,0.15)] h-[320px]"
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
             >
@@ -207,51 +296,156 @@ export default function ChatCenter() {
                   New Chat Room
                 </motion.button>
 
-                {/* Trending Room */}
-                <div className="space-y-3">
-                  <p className="text-[10px] font-black tracking-widest text-slate-500 uppercase">Featured Buzz</p>
-                  {activeRoomsList.length > 0 ? (
-                    (() => {
-                      const trending = [...activeRoomsList].sort((a,b) => (memberCounts[b.id] || 0) - (memberCounts[a.id] || 0))[0];
-                      return (
-                        <motion.div onClick={() => navigate(`/room/${trending.id}`)} className="p-4 rounded-2xl bg-white/5 border border-white/10 cursor-pointer hover:bg-white/10 transition-colors relative" whileHover={{ scale: 1.02 }}>
-                          <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2 py-0.5 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-full text-[9px] font-black">
-                            <Star size={10} fill="currentColor" />
-                            TRENDING
-                          </div>
-                          <h4 className="font-bold text-slate-100 text-sm mb-1 pr-16 truncate">{trending.name}</h4>
-                          <div className="flex items-center gap-3 text-[11px] text-slate-400">
-                            <span className="flex items-center gap-1"><User size={12} className="text-violet-400" />{memberCounts[trending.id] || 0} active</span>
-                            <span className="flex items-center gap-1"><MessageSquare size={12} className="text-cyan-400" />Live</span>
-                          </div>
-                        </motion.div>
-                      );
-                    })()
-                  ) : <div className="p-4 rounded-2xl bg-white/5 border border-white/5 text-slate-600 text-[11px] italic">No rooms active</div>}
+                {/* Message Activity Wave */}
+                <div className="space-y-4 pt-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black tracking-widest text-slate-500 uppercase">Message Activity</p>
+                    <div className="flex items-center gap-1">
+                      <span className="w-1 h-1 rounded-full bg-violet-400 animate-pulse" />
+                      <span className="text-[9px] font-bold text-violet-400/60 uppercase">Live Pulse</span>
+                    </div>
+                  </div>
+                  
+                  <div className="h-16 flex items-end gap-1.5 px-2 bg-white/5 border border-white/5 rounded-2xl overflow-hidden relative group">
+                    <div className="absolute inset-0 bg-gradient-to-t from-violet-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    {[30, 45, 75, 90, 80, 60, 40, 30, 50, 70, 85, 65, 40].map((h, i) => (
+                      <motion.div
+                        key={i}
+                        className="flex-1 bg-gradient-to-t from-violet-600/40 to-violet-400/60 rounded-t-[2px]"
+                        initial={{ height: "20%" }}
+                        animate={{ 
+                          height: [`${(h * pulseIntensity) / 2}%`, `${h * pulseIntensity}%`, `${(h * pulseIntensity) / 2}%`],
+                          opacity: [0.4 * pulseIntensity, 0.7 * pulseIntensity, 0.4 * pulseIntensity]
+                        }}
+                        transition={{ 
+                          duration: (1.5 / pulseIntensity) + (i * 0.1), 
+                          repeat: Infinity, 
+                          ease: "easeInOut",
+                          delay: i * 0.05
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-slate-500 italic text-center">Ripples from the void indicate global chatter</p>
                 </div>
               </div>
             </motion.div>
 
-            {/* Stats/Highlights */}
-            <div className="lg:w-2/3 grid grid-cols-1 sm:grid-cols-2 gap-4">
-               <div className="glass border border-white/5 rounded-3xl p-8 flex flex-col justify-center gap-4 bg-gradient-to-br from-indigo-500/5 to-transparent">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center">
-                    <Sparkles size={24} className="text-indigo-400" />
+            {/* Replacement Stats: Trending & Live Activity */}
+            <div className="lg:w-2/3 grid grid-cols-1 sm:grid-cols-2 gap-6">
+               {/* 1. Trending Chat Room Card */}
+               {(() => {
+                 const trending = [...activeRoomsList].sort((a,b) => (memberCounts[b.id] || 0) - (memberCounts[a.id] || 0))[0];
+                 return trending ? (
+                   <motion.div 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    whileHover={{ y: -5, scale: 1.01 }}
+                    className="glass border border-white/10 rounded-3xl p-6 flex flex-col justify-between bg-gradient-to-br from-orange-500/10 via-transparent to-transparent group cursor-pointer shadow-[0_0_30px_-5px_rgba(249,115,22,0.1)] h-[320px]"
+                    onClick={() => navigate(`/room/${trending.id}`)}
+                   >
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-10 h-10 rounded-2xl bg-orange-500/20 flex items-center justify-center text-orange-400">
+                            <Flame size={20} className="animate-pulse" />
+                          </div>
+                          <span className="text-sm font-bold text-white italic tracking-tight">🔥 Trending Chat Room</span>
+                        </div>
+                        <div className="px-2 py-0.5 bg-orange-500/20 border border-orange-500/30 rounded-full text-[9px] font-black text-orange-400 uppercase tracking-widest animate-pulse">
+                          Active
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        <h3 className="text-xl font-black text-white group-hover:text-orange-400 transition-colors leading-tight">
+                          {trending.name}
+                        </h3>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span className="text-[10px] font-black text-slate-500 bg-white/5 border border-white/5 px-2 py-0.5 rounded uppercase tracking-widest">
+                            {trending.category}
+                          </span>
+                          <div className="flex items-center gap-1.5 text-slate-400 text-xs">
+                            <User size={12} className="text-orange-500/60" />
+                            <span className="font-bold text-slate-300">{memberCounts[trending.id] || 0} active</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/5 rounded-xl">
+                          <TrendingUp size={12} className="text-emerald-400" />
+                          <span className="text-[10px] font-bold text-emerald-400/80 uppercase">High engagement burst detected</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 flex items-center justify-between group-hover:translate-x-1 transition-transform">
+                      <span className="text-xs font-black text-orange-400/80 uppercase tracking-widest flex items-center gap-2">
+                        Join the void <ArrowLeft size={14} className="rotate-180" />
+                      </span>
+                    </div>
+                   </motion.div>
+                 ) : (
+                   <div className="glass border border-white/5 rounded-3xl p-8 flex items-center justify-center text-slate-600 italic text-sm">
+                     Waiting for the first spark...
+                   </div>
+                 );
+               })()}
+
+               {/* 2. Live Chat Activity Card */}
+               <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="glass border border-white/10 rounded-3xl p-6 flex flex-col bg-gradient-to-br from-indigo-500/10 via-transparent to-transparent shadow-[0_0_30px_-5px_rgba(99,102,241,0.1)] h-[320px] overflow-hidden"
+               >
+                  <div className="flex items-center gap-2 mb-6 shrink-0">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 flex items-center justify-center text-indigo-400">
+                      <Zap size={20} />
+                    </div>
+                    <span className="text-sm font-bold text-white italic tracking-tight">⚡ Live Chat Activity</span>
                   </div>
-                  <div>
-                    <h3 className="text-base font-bold text-slate-100 mb-1">Total Rooms</h3>
-                    <p className="text-3xl font-black text-indigo-400">{activeRoomsList.length}</p>
+
+                  <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar relative">
+                    <div className="space-y-4 pb-12">
+                      {activityFeed.length > 0 ? (
+                        activityFeed.map((event, idx) => (
+                          <motion.div 
+                            key={event.id}
+                            initial={{ x: -10, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            transition={{ delay: idx * 0.1 }}
+                            className="flex items-start gap-3 group/item cursor-pointer"
+                            onClick={() => navigate(event.room_path)}
+                          >
+                            <div className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 group-hover:scale-150 transition-transform ${
+                              event.type === 'message' ? 'bg-cyan-400' : 
+                              event.type === 'join' ? 'bg-emerald-400' : 'bg-violet-400'
+                            }`} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[13px] text-slate-300 leading-tight group-hover:text-white transition-colors">
+                                {event.text}
+                              </p>
+                              <div className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500 uppercase mt-1">
+                                <Clock size={10} />
+                                {event.timestamp ? 
+                                  (() => {
+                                    const seconds = Math.floor((Date.now() - event.timestamp.toMillis()) / 1000);
+                                    if (seconds < 60) return `${seconds}s ago`;
+                                    if (seconds < 3600) return `${Math.floor(seconds/60)}m ago`;
+                                    return 'just now';
+                                  })() : 'just now'}
+                              </div>
+                            </div>
+                          </motion.div>
+                        ))
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-40 text-slate-600 italic text-xs gap-3">
+                          <div className="w-8 h-8 rounded-full border border-slate-700/50 border-t-indigo-500/50 animate-spin" />
+                          Calibrating feed...
+                        </div>
+                      )}
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#07070f] to-transparent pointer-events-none" />
                   </div>
-               </div>
-               <div className="glass border border-white/5 rounded-3xl p-8 flex flex-col justify-center gap-4 bg-gradient-to-br from-cyan-500/5 to-transparent">
-                  <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 flex items-center justify-center">
-                    <Zap size={24} className="text-cyan-400" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-slate-100 mb-1">Active Now</h3>
-                    <p className="text-3xl font-black text-cyan-400">{activeRoomsList.reduce((acc, r) => acc + (memberCounts[r.id] || 0), 0)}</p>
-                  </div>
-               </div>
+               </motion.div>
             </div>
           </div>
 
@@ -316,9 +510,22 @@ export default function ChatCenter() {
               <h2 className="text-slate-500 text-sm font-semibold mb-4">📚 History ({pastRoomsList.length})</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {pastRoomsList.map((room) => (
-                  <div key={room.id} onClick={() => navigate(`/room/${room.id}`)} className="rounded-2xl p-5 border border-white/5 bg-white/[0.02] opacity-60 hover:opacity-100 transition-opacity cursor-pointer">
-                    <h3 className="font-semibold text-white/80 text-base truncate">{room.name}</h3>
-                    <p className="text-[10px] text-slate-600 mt-1">Archived</p>
+                  <div key={room.id} onClick={() => navigate(`/room/${room.id}`)} className="rounded-2xl p-5 border border-white/5 bg-white/[0.02] opacity-60 hover:opacity-100 transition-opacity cursor-pointer group/hist relative">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <h3 className="font-semibold text-white/80 text-base truncate">{room.name}</h3>
+                        <p className="text-[10px] text-slate-600 mt-1">Archived</p>
+                      </div>
+                      {profile?.is_admin && (
+                        <button 
+                          onClick={(e) => permanentlyDeleteRoom(room.id, e)} 
+                          className="p-2 text-slate-500 hover:text-red-400 opacity-0 group-hover/hist:opacity-100 transition-all z-20"
+                          title="Permanently Delete"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -350,6 +557,27 @@ export default function ChatCenter() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.02);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(139, 92, 246, 0.2);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(139, 92, 246, 0.4);
+        }
+        .custom-scrollbar {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(139, 92, 246, 0.2) rgba(255, 255, 255, 0.02);
+        }
+      `}</style>
     </div>
   );
 }

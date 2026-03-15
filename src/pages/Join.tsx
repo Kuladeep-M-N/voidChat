@@ -105,8 +105,8 @@ export default function Join() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [realUsername, setRealUsername] = useState('');
-  const [anonymousUsername, setAnonymousUsername] = useState(() => localStorage.getItem('voidchat_anon_user') || '');
-  const [password, setPassword] = useState(() => localStorage.getItem('voidchat_password') || '');
+  const [anonymousUsername, setAnonymousUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
   const [showInviteCode, setShowInviteCode] = useState(false);
@@ -168,10 +168,7 @@ export default function Join() {
         joined_at: new Date().toISOString(),
         is_admin: false
       });
-
-      // Save credentials for future entries
-      localStorage.setItem('voidchat_anon_user', anon);
-      localStorage.setItem('voidchat_password', pw);
+      // Credentials are no longer saved to localStorage to ensure empty fields on return
 
       setStep('success');
       setTimeout(() => navigate('/dashboard'), 1200);
@@ -213,9 +210,7 @@ export default function Join() {
       
       await signInWithEmailAndPassword(auth, virtualEmail, pw);
 
-      // Save credentials for future entries
-      localStorage.setItem('voidchat_anon_user', anon);
-      localStorage.setItem('voidchat_password', pw);
+      // Credentials are no longer saved to localStorage to ensure empty fields on return
 
       setStep('success');
       setTimeout(() => navigate('/dashboard'), 1200);

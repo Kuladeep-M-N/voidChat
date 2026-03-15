@@ -73,7 +73,12 @@ export default function Dashboard() {
                 </Link>
               )}
             </span>
-            <button onClick={signOut} className="text-slate-500 hover:text-slate-300 text-sm transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5">Leave</button>
+            <button 
+              onClick={() => { if (window.confirm('Are you sure you want to leave the void?')) signOut(); }} 
+              className="text-slate-500 hover:text-slate-300 text-sm transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
+            >
+              Leave
+            </button>
           </div>
         </div>
       </header>

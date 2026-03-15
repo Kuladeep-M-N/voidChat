@@ -556,7 +556,11 @@ export default function VoiceRooms() {
             <button onClick={() => navigate('/voice')} className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all">
               <span className="material-symbols-outlined text-[20px]">open_in_full</span>
             </button>
-            <button onClick={leaveRoom} className="w-9 h-9 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center transition-all" title="Leave">
+            <button 
+              onClick={() => { if (window.confirm('Leave this room?')) leaveRoom(); }} 
+              className="w-9 h-9 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center transition-all" 
+              title="Leave"
+            >
               <span className="material-symbols-outlined text-[20px]">close</span>
             </button>
           </div>
@@ -843,7 +847,7 @@ export default function VoiceRooms() {
             </div>
             <div className="hidden sm:block w-[1px] h-8 bg-white/10 shrink-0"></div>
             <button 
-              onClick={leaveRoom}
+              onClick={() => { if (window.confirm('Leave this room?')) leaveRoom(); }}
               className="ml-0 sm:ml-2 px-4 sm:px-6 py-2.5 shrink-0 rounded-full bg-rose-500/80 hover:bg-rose-500 flex items-center gap-2 font-medium text-white shadow-sm transition-all text-sm"
             >
               <span className="material-symbols-outlined text-[18px]">logout</span> Leave
