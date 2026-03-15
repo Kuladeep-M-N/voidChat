@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trash2, Archive } from 'lucide-react';
+import { Trash2, Archive, Users, Mic, Mic2, TrendingUp, Zap, Clock, MessageSquare, History, Plus, Play, Sparkles, ArrowLeft, Dices, Flame } from 'lucide-react';
 import { 
   collection, 
   query, 
@@ -124,6 +125,7 @@ export default function VoiceRooms() {
   // Room list state
   const [rooms, setRooms] = useState<VoiceRoom[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [showNoRoomsOverlay, setShowNoRoomsOverlay] = useState(false);
   const [showChat, setShowChat] = useState(false); // Mobile sidebar toggle
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -143,6 +145,9 @@ export default function VoiceRooms() {
   // Reactions & Interactions
   const [floatingReactions, setFloatingReactions] = useState<{ id: string; emoji: string; userId: string }[]>([]);
   const [showReactionMenu, setShowReactionMenu] = useState(false);
+
+  // Global Presence State (for the entire lounge)
+  const [globalPresence, setGlobalPresence] = useState<Record<string, Record<string, any>>>({});
 
   // WebRTC refs
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -167,6 +172,37 @@ export default function VoiceRooms() {
 
     return () => unsubscribe();
   }, [user]);
+
+  // Global Presence Listener: Syncs total listeners and individual room counts across the lounge
+  useEffect(() => {
+    if (!user) return;
+    const presenceRootRef = ref(rtdb, 'presence');
+    const unsubscribe = onValue(presenceRootRef, (snapshot) => {
+      setGlobalPresence(snapshot.val() || {});
+    });
+    return () => off(presenceRootRef, 'value', unsubscribe);
+  }, [user]);
+
+  // Derived Values
+  const totalListeners = useMemo(() => {
+    return Object.values(globalPresence).reduce((acc, roomParticipants) => {
+      return acc + Object.keys(roomParticipants).length;
+    }, 0);
+  }, [globalPresence]);
+
+  const roomsWithCounts = useMemo(() => {
+    return rooms.map(room => ({
+      ...room,
+      participantCount: globalPresence[room.id] ? Object.keys(globalPresence[room.id]).length : 0
+    }));
+  }, [rooms, globalPresence]);
+
+  const hotTopics = useMemo(() => {
+    return roomsWithCounts
+      .filter(r => r.status === 'active' || !r.status)
+      .sort((a, b) => (b.participantCount || 0) - (a.participantCount || 0))
+      .slice(0, 4);
+  }, [roomsWithCounts]);
 
   // Create Peer Connection
   const createPeer = useCallback(async (remoteUserId: string, isInitiator: boolean) => {
@@ -419,6 +455,29 @@ export default function VoiceRooms() {
     setActiveRoom(null); setParticipants([]); setChatMessages([]); setHandRaised(false);
   }, []);
 
+  const [activityFeed, setActivityFeed] = useState<any[]>([]);
+
+  // Simulation of real-time stats (based on actual Firestore data)
+  const activeRoomsCount = rooms.filter(r => r.status === 'active' || !r.status).length;
+  const trendingRoom = useMemo(() => {
+    return roomsWithCounts
+      .filter(r => r.status === 'active' || !r.status)
+      .sort((a, b) => (b.participantCount || 0) - (a.participantCount || 0))[0];
+  }, [roomsWithCounts]);
+
+  // Aggregate activity from rooms
+  useEffect(() => {
+    if (rooms.length > 0) {
+      const latest = rooms.slice(0, 3).map(r => ({
+        id: `act-${r.id}`,
+        text: `Room "${r.name}" is looking for listeners`,
+        time: 'Just now',
+        icon: <Mic2 size={12} className="text-violet-400" />
+      }));
+      setActivityFeed(latest);
+    }
+  }, [rooms]);
+
   const joinRoom = useCallback(async (room: VoiceRoom) => {
     if (joiningRef.current) return;
     joiningRef.current = true;
@@ -522,11 +581,7 @@ export default function VoiceRooms() {
 
 
 
-  // ─────────────────────────── ACTIVE ROOM UI ───────────────────────────
   // ─────────────────────────── RENDER LOGIC ───────────────────────────
-  if (!user) return null;
-
-  // ─────────────────────────── ACTIVE ROOM UI ───────────────────────────
   if (!user) return null;
 
   const stageUsers = participants.filter(p => !p.muted || p.speaking);
@@ -935,98 +990,326 @@ export default function VoiceRooms() {
   const pastRoomsList = rooms.filter(r => r.status === 'ended');
 
   return (
-    <div className="min-h-screen relative overflow-hidden bg-[#07070f]">
-      <div className="ambient-blob w-[500px] h-[500px] bg-violet-600/10 top-[-100px] right-[10%]" />
+    <div className="min-h-screen relative overflow-hidden bg-[#07070f] text-slate-200 font-sans selection:bg-violet-500/30">
+      {/* Background Elements */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-[-10%] right-[-10%] w-[600px] h-[600px] bg-violet-600/10 blur-[120px] rounded-full animate-pulse" />
+        <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-indigo-600/10 blur-[100px] rounded-full" />
+        <div className="absolute top-[30%] left-[20%] w-[300px] h-[300px] bg-fuchsia-600/5 blur-[80px] rounded-full animate-pulse" />
+      </div>
 
-      <header className="relative z-10 border-b border-white/5 glass sticky top-0">
-        <div className="max-w-4xl mx-auto flex items-center justify-between gap-4 px-4 py-3.5">
-          <div className="flex items-center gap-4">
-            <Link to="/dashboard"><button className="btn-ghost rounded-xl p-2 text-slate-400">← Back</button></Link>
-            <div>
-              <h1 className="font-semibold text-white text-lg">🎙️ Voice Lounge</h1>
-              <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Anonymous Conversations</p>
+      <header className="relative z-50 border-b border-white/5 bg-[#07070f]/80 backdrop-blur-xl sticky top-0 group">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-6 px-6 py-4">
+          <div className="flex items-center gap-6">
+            <Link to="/dashboard" className="transition-transform active:scale-90">
+              <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all group/back">
+                <ArrowLeft size={18} className="group-hover/back:-translate-x-0.5 transition-transform" />
+              </div>
+            </Link>
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-3">
+                <h1 className="font-black text-2xl tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-200 to-slate-400">
+                  Voice Lounge
+                </h1>
+                <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">{activeRoomsCount} Live</span>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500 uppercase tracking-[0.2em] font-bold flex items-center gap-2">
+                <Users size={10} /> {totalListeners} Listeners Connected
+              </p>
             </div>
           </div>
-          <button onClick={() => setShowCreate(true)} className="btn-primary !w-auto px-5 py-2.5 rounded-2xl text-sm bg-violet-600 hover:bg-violet-500 border-none shadow-lg shadow-violet-600/20 font-bold transition-all">
-            + Open Case
-          </button>
+
+          <motion.button 
+            onClick={() => setShowCreate(true)} 
+            className="group relative px-6 py-2.5 rounded-2xl bg-violet-600/10 backdrop-blur-md border border-violet-400/30 text-white font-bold text-sm transition-all flex items-center gap-3 overflow-hidden shadow-[0_0_20px_rgba(139,92,246,0.1)]"
+            whileHover={{ y: -2, boxShadow: "0 0 30px rgba(139,92,246,0.2)" }}
+            whileTap={{ scale: 0.98 }}
+          >
+            {/* Hover Gradient Overlay */}
+            <div className="absolute inset-0 bg-gradient-to-r from-violet-500/10 to-indigo-600/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+            
+            <div className="relative flex items-center gap-2">
+              <div className="relative">
+                <Mic size={18} className="relative z-10" />
+                {/* Animated Soundwave Dots */}
+                <div className="absolute -right-1 -top-1 flex gap-[1px]">
+                  {[1, 2].map((_, i) => (
+                    <motion.div 
+                      key={i}
+                      className="w-[2px] bg-violet-400 rounded-full"
+                      animate={{ height: ["2px", "6px", "2px"] }}
+                      transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.2 }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <span className="tracking-tight">Start Voice Room</span>
+            </div>
+          </motion.button>
         </div>
       </header>
 
-      <main className="relative z-10 max-w-4xl mx-auto px-4 py-8">
-        {errorMsg && (
-          <motion.div className="mb-6 bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-2xl px-5 py-4 flex items-center gap-3"
-            initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-            ⚠️ {errorMsg}
-          </motion.div>
-        )}
+      <main className="relative z-10 max-w-7xl mx-auto px-6 py-10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+          
+          {/* Left Column: Dashboard Content */}
+          <div className="lg:col-span-9 space-y-12">
+            
+            {/* Overview Stats Row */}
+            {/* Interactive Engagement Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {/* Card 1: Start Room */}
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-6 rounded-3xl bg-gradient-to-br from-violet-500/10 to-transparent border border-white/5 glass-hover group relative overflow-hidden"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center border border-violet-500/20 group-hover:scale-110 transition-transform relative">
+                    <Mic2 className="text-violet-400 relative z-10" size={20} />
+                    <div className="absolute inset-0 bg-violet-400/20 blur-lg rounded-full animate-pulse" />
+                  </div>
+                  <Plus size={14} className="text-slate-600 group-hover:text-violet-400 transition-colors" />
+                </div>
+                <h3 className="text-lg font-bold text-white mb-1">Start a Voice Room</h3>
+                <p className="text-[11px] text-slate-500 leading-relaxed mb-6">Host a topic and invite people to join the conversation.</p>
+                <button 
+                  onClick={() => setShowCreate(true)}
+                  className="w-full py-2.5 rounded-xl bg-violet-500/10 hover:bg-violet-500 text-violet-400 hover:text-white border border-violet-500/20 font-bold text-xs transition-all flex items-center justify-center gap-2 group/btn"
+                >
+                  Create Room
+                  <div className="w-1.5 h-1.5 rounded-full bg-violet-400 group-hover/btn:bg-white animate-pulse" />
+                </button>
+              </motion.div>
 
-        {joining && (
-          <div className="text-center py-12">
-            <div className="w-10 h-10 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-slate-400 text-sm">Entering room...</p>
-          </div>
-        )}
+              {/* Card 2: Hot Topics */}
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="p-6 rounded-3xl bg-gradient-to-br from-blue-500/10 to-transparent border border-white/5 glass-hover group"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+                    <Flame className="text-blue-400" size={20} />
+                  </div>
+                  <div className="flex gap-1">
+                    <span className="w-1 h-1 rounded-full bg-blue-400 animate-bounce [animation-delay:-0.3s]" />
+                    <span className="w-1 h-1 rounded-full bg-blue-400 animate-bounce [animation-delay:-0.15s]" />
+                    <span className="w-1 h-1 rounded-full bg-blue-400 animate-bounce" />
+                  </div>
+                </div>
+                <h3 className="text-lg font-bold text-white mb-3">Hot Topics</h3>
+                <div className="flex flex-wrap gap-2">
+                  {hotTopics.length > 0 ? (
+                    hotTopics.map((room, idx) => (
+                      <button 
+                        key={room.id}
+                        onClick={() => joinRoom(room)}
+                        className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-medium text-slate-400 hover:text-blue-300 hover:bg-blue-500/10 hover:border-blue-500/30 transition-all flex items-center gap-1.5 group/topic"
+                      >
+                        <MessageSquare size={10} className="group-hover/topic:text-blue-400 transition-colors" />
+                        {room.name}
+                        {idx === 0 && room.participantCount > 0 && (
+                          <Flame size={10} className="text-orange-400 animate-pulse" />
+                        )}
+                      </button>
+                    ))
+                  ) : (
+                    <p className="text-[10px] text-slate-600 font-medium italic">Scanning for signals...</p>
+                  )}
+                </div>
+              </motion.div>
 
-        {!joining && (
-          <div className="space-y-12">
-            {/* Active Rooms */}
-            <section>
-              <h2 className="text-white/40 text-xs font-black uppercase tracking-widest mb-4 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                Live Hubs
-              </h2>
-              {activeRoomsList.length === 0 ? (
-                <div className="bg-white/5 border border-white/5 rounded-3xl py-12 text-center">
-                  <p className="text-slate-500 text-sm">No active discussions. Be the first to start one!</p>
+              {/* Card 3: Join Random */}
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="p-6 rounded-3xl bg-gradient-to-br from-amber-500/10 to-transparent border border-white/5 glass-hover group"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
+                    <Dices className="text-amber-400" size={20} />
+                  </div>
+                  <Zap size={14} className="text-amber-500/40 animate-pulse" />
+                </div>
+                <h3 className="text-lg font-bold text-white mb-1">Join Random Room</h3>
+                <p className="text-[11px] text-slate-500 leading-relaxed mb-6">Jump into a random live discussion happening now.</p>
+                <button 
+                  onClick={() => {
+                    const activeRooms = rooms.filter(r => !r.status || r.status === 'active');
+                    if (activeRooms.length > 0) {
+                      joinRoom(activeRooms[Math.floor(Math.random() * activeRooms.length)]);
+                    } else {
+                      setShowNoRoomsOverlay(true);
+                    }
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500 text-amber-400 hover:text-white border border-amber-500/20 font-bold text-xs transition-all flex items-center justify-center gap-2 group/dice"
+                >
+                  <Dices size={14} className="group-hover/dice:rotate-180 transition-transform duration-500" />
+                  Random Join
+                </button>
+              </motion.div>
+            </div>
+
+            {/* Trending Room Highlight */}
+            {trendingRoom && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="relative group cursor-pointer"
+                onClick={() => joinRoom(trendingRoom)}
+              >
+                <div className="absolute -inset-1 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-[34px] blur opacity-20 group-hover:opacity-40 transition duration-500" />
+                <div className="relative p-8 rounded-[32px] bg-[#14142b]/80 border border-white/10 flex flex-col md:flex-row items-center gap-8 overflow-hidden backdrop-blur-xl">
+                  {/* Refined Trending Icon */}
+                  <div className="relative w-24 h-24 shrink-0 flex items-center justify-center">
+                    <div className="absolute inset-0 bg-violet-400/5 blur-3xl opacity-50" />
+                    <div className="relative w-full h-full rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center shadow-2xl backdrop-blur-md group-hover:border-violet-500/30 transition-colors">
+                      <Flame size={42} className="text-violet-300 opacity-80" />
+                      <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-violet-400/10 via-transparent to-indigo-400/10" />
+                    </div>
+                  </div>
+
+                  <div className="flex-1 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <span className="px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-[10px] font-black text-violet-400 uppercase tracking-widest">
+                        Trending Now
+                      </span>
+                      <div className="flex -space-x-2">
+                        {[1, 2, 3].map(v => (
+                          <div key={v} className="w-6 h-6 rounded-full border border-slate-800 bg-slate-700 flex items-center justify-center text-[8px] font-bold">
+                            {String.fromCharCode(64 + v)}
+                          </div>
+                        ))}
+                        <div className="w-6 h-6 rounded-full border border-slate-800 bg-violet-600/50 flex items-center justify-center text-[8px] font-bold">
+                          +12
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <h2 className="text-3xl font-black text-white tracking-tighter mb-2 group-hover:text-violet-400 transition-colors">
+                        {trendingRoom.name}
+                      </h2>
+                      <p className="text-slate-400 text-sm font-medium line-clamp-1 max-w-xl">
+                        Hosted by <span className="text-indigo-300">@{trendingRoom.creator_name || 'anonymous'}</span> • Join over {trendingRoom.participantCount || 0} people discussing this topic in real-time.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button className="px-8 py-4 rounded-2xl bg-white text-black font-black text-sm hover:bg-slate-100 active:scale-95 transition-all shadow-xl shadow-white/10 flex items-center gap-3">
+                    <Play fill="currentColor" size={16} />
+                    QUICK JOIN
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Live Hubs Section */}
+            <section className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                    <Sparkles size={16} className="text-emerald-400" />
+                  </div>
+                  <h2 className="text-lg font-black text-white tracking-tight uppercase">Live Hubs</h2>
+                </div>
+                <div className="h-px flex-1 bg-white/5 mx-6" />
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Real-time signal</span>
+              </div>
+
+              {roomsWithCounts.filter(r => r.status === 'active' || !r.status).length === 0 ? (
+                <div className="relative group overflow-hidden rounded-[32px] p-12 text-center border border-white/5 bg-white/[0.02]">
+                  <div className="absolute inset-0 bg-gradient-to-b from-white/[0.03] to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="w-20 h-20 rounded-full bg-slate-800/50 border border-white/5 flex items-center justify-center mx-auto mb-6">
+                    <Mic2 size={32} className="text-slate-600" />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-300 mb-2">The Void is Quiet...</h3>
+                  <p className="text-slate-500 max-w-sm mx-auto text-sm leading-relaxed">
+                    No active discussions found. Start a new voice lounge topic and invite others to join the whisper.
+                  </p>
+                  <button 
+                    onClick={() => setShowCreate(true)}
+                    className="mt-8 px-8 py-3 rounded-2xl bg-white/5 border border-white/10 text-white font-bold text-sm hover:bg-white/10 transition-all"
+                  >
+                    Host a Room
+                  </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {activeRoomsList.map((room, i) => (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {roomsWithCounts.filter(r => r.status === 'active' || !r.status).map((room, i) => (
                     <motion.div
                       key={room.id}
                       onClick={() => joinRoom(room)}
-                      className="glass-hover rounded-3xl p-6 cursor-pointer bg-gradient-to-br from-violet-600/10 to-indigo-600/5 border border-white/5 relative overflow-hidden group"
+                      className="group relative p-6 rounded-[32px] bg-[#14142b]/40 border border-white/5 cursor-pointer overflow-hidden backdrop-blur-sm transition-all hover:bg-[#1c1c3d]/60"
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.1 }}
-                      whileHover={{ scale: 1.02, y: -4 }}>
-                      <div className="absolute top-4 right-4 flex items-center gap-2">
-                        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Live</span>
-                        </div>
-                        {profile?.is_admin && (
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                                if (window.confirm('Permanently delete this voice room and all its history?')) {
-                                  try {
-                                    await deleteDoc(doc(db, 'voice_rooms', room.id));
-                                    setRooms(prev => prev.filter(r => r.id !== room.id));
-                                  } catch (error: any) {
-                                    alert('Failed to delete: ' + error.message);
+                      transition={{ delay: i * 0.05 }}
+                      whileHover={{ y: -8 }}>
+                      
+                      {/* Hover Glow */}
+                      <div className="absolute -inset-[2px] bg-gradient-to-r from-violet-600/50 to-indigo-600/50 rounded-[34px] opacity-0 group-hover:opacity-100 blur-[2px] transition-opacity duration-500" />
+                      <div className="absolute inset-0 bg-[#0c0c14] rounded-[32px]" />
+
+                      <div className="relative z-10 space-y-5">
+                        <div className="flex items-start justify-between">
+                          <div className="w-12 h-12 rounded-2xl bg-violet-600/10 border border-violet-500/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-500 overflow-hidden">
+                            <div className="absolute inset-0 bg-violet-500/5 animate-[pulse_3s_infinite]" />
+                            <Mic2 size={24} className="text-violet-400 relative z-10" />
+                          </div>
+                          <div className="flex items-center gap-2">
+                             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_#10b981]" />
+                              <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">Live</span>
+                            </div>
+                            {profile?.is_admin && (
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm('Delete this voice room permanently?')) {
+                                    try {
+                                      await deleteDoc(doc(db, 'voice_rooms', room.id));
+                                      setRooms(prev => prev.filter(r => r.id !== room.id));
+                                    } catch (error: any) { alert('Failed: ' + error.message); }
                                   }
-                                }
-                            }}
-                            className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-all opacity-0 group-hover:opacity-100"
-                            title="Delete Permanently"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </div>
-                      <div className="relative w-12 h-12 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">
-                        🎙️
-                      </div>
-                      <h3 className="font-bold text-white text-lg mb-1 truncate">{room.name}</h3>
-                      <div className="flex items-center gap-2 mt-3">
-                        <div className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center text-[10px] text-white/50 border border-white/10">
-                          {room.creator_name?.slice(0, 1) || 'A'}
+                                }}
+                                className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white transition-all shadow-lg"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <span className="text-[10px] text-white/40 font-bold uppercase tracking-tighter">
-                          Started by {room.creator_name || 'Anonymous'}
-                        </span>
+
+                        <div className="space-y-1">
+                          <h3 className="font-black text-xl text-white tracking-tight line-clamp-1 group-hover:text-violet-400 transition-colors">
+                            {room.name}
+                          </h3>
+                          <div className="flex items-center gap-2 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+                            <Users size={12} />
+                            <span>{room.participantCount || 0} LISTENERS</span>
+                            <span className="mx-1 opacity-20">•</span>
+                            <span>Live Now</span>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 flex items-center justify-between border-t border-white/5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-slate-700 to-slate-800 border border-white/10 flex items-center justify-center text-[10px] font-bold text-slate-300">
+                              {room.creator_name?.slice(0, 1).toUpperCase() || 'V'}
+                            </div>
+                            <span className="text-[11px] font-bold text-slate-400">@{room.creator_name || 'host'}</span>
+                          </div>
+                          <div className="flex -space-x-1.5">
+                            {[1,2,3].map(v => (
+                              <div key={v} className="w-5 h-5 rounded-full border-2 border-[#0c0c14] bg-slate-800" />
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </motion.div>
                   ))}
@@ -1036,47 +1319,49 @@ export default function VoiceRooms() {
 
             {/* History Section */}
             {pastRoomsList.length > 0 && (
-              <section>
-                <h2 className="text-white/20 text-xs font-black uppercase tracking-widest mb-4">
-                  Past Dialogues
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {pastRoomsList.map((room, i) => (
+              <section className="space-y-6 pt-4">
+                <div className="flex items-center justify-between opacity-50">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-slate-500/10 border border-slate-500/20 flex items-center justify-center">
+                      <History size={16} className="text-slate-400" />
+                    </div>
+                    <h2 className="text-lg font-black text-white tracking-tight uppercase">Past Dialogues</h2>
+                  </div>
+                  <div className="h-px flex-1 bg-white/5 mx-6" />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {pastRoomsList.sort((a,b) => (b.ended_at?.seconds || 0) - (a.ended_at?.seconds || 0)).slice(0, 6).map((room, i) => (
                     <div key={room.id}
-                      className="rounded-3xl p-5 border border-white/5 bg-white/[0.02] opacity-60">
+                      className="group relative p-5 rounded-3xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-all opacity-40 hover:opacity-100">
                       <div className="flex items-center justify-between mb-4">
-                        <span className="text-2xl grayscale">🎙️</span>
+                        <div className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center grayscale opacity-50 group-hover:grayscale-0 group-hover:opacity-100 transition-all">
+                          <Mic2 size={18} className="text-slate-400" />
+                        </div>
                         <div className="flex items-center gap-2">
                            {profile?.is_admin && (
                             <button 
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                if (window.confirm('Permanently delete this archived voice room?')) {
+                                if (window.confirm('Delete archive?')) {
                                   try {
                                     await deleteDoc(doc(db, 'voice_rooms', room.id));
                                     setRooms(prev => prev.filter(r => r.id !== room.id));
-                                  } catch (error: any) {
-                                    alert('Failed to delete: ' + error.message);
-                                  }
+                                  } catch (error: any) { alert(error.message); }
                                 }
                               }} 
-                              className="text-white/20 hover:text-red-400 transition-colors p-1"
-                              title="Delete Permanently"
+                              className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white transition-all opacity-0 group-hover:opacity-100"
                             >
-                              <Trash2 size={14} />
+                              <Trash2 size={12} />
                             </button>
                           )}
-                          <span className="text-[9px] text-white/30 font-bold border border-white/5 px-2 py-0.5 rounded-full">Archive</span>
+                          <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest border border-white/10 px-2.5 py-1 rounded-full">Archived</span>
                         </div>
                       </div>
-                      <h3 className="font-semibold text-white/80 text-base mb-1 truncate">{room.name}</h3>
+                      <h3 className="font-bold text-slate-300 text-sm mb-2 truncate group-hover:text-white transition-colors">{room.name}</h3>
                       <div className="space-y-1">
-                        <p className="text-[10px] text-white/30 font-medium">
-                          Opened by {room.creator_name || 'Anonymous'}
-                        </p>
-                        <p className="text-[9px] text-white/20">
-                          Ended {new Date(room.ended_at || room.created_at).toLocaleDateString()}
-                        </p>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Started: {new Date(room.created_at?.seconds * 1000).toLocaleDateString()}</p>
+                        <p className="text-[9px] text-slate-600 font-medium">Topic host: @{room.creator_name || 'void'}</p>
                       </div>
                     </div>
                   ))}
@@ -1084,29 +1369,199 @@ export default function VoiceRooms() {
               </section>
             )}
           </div>
-        )}
+
+          {/* Right Column: Activity Panel */}
+          <div className="lg:col-span-3 space-y-8">
+             <div className="sticky top-24 space-y-8">
+                {/* Voice Pulse Panel */}
+                <div className="p-6 rounded-[32px] bg-[#14142b]/60 border border-white/5 backdrop-blur-md">
+                  <div className="flex items-center gap-2 mb-6">
+                    <div className="w-6 h-6 rounded bg-violet-500/20 flex items-center justify-center">
+                      <Zap size={12} className="text-violet-400" />
+                    </div>
+                    <h3 className="text-xs font-black text-white tracking-widest uppercase">Voice Pulse</h3>
+                  </div>
+                  
+                  <div className="space-y-6">
+                    {activityFeed.map((act, i) => (
+                      <motion.div 
+                        key={act.id}
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.1 }}
+                        className="flex gap-4 group cursor-pointer"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-white/5 border border-white/5 flex items-center justify-center shrink-0 group-hover:border-violet-500/50 transition-colors">
+                          {act.icon}
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-[11px] font-bold text-slate-300 leading-tight group-hover:text-white transition-colors">
+                            {act.text}
+                          </p>
+                          <span className="text-[9px] text-slate-600 font-bold uppercase tracking-wider">{act.time}</span>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  <button className="w-full mt-8 py-3 rounded-2xl bg-white/5 border border-white/10 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:bg-white/10 hover:text-white transition-all">
+                    View Live Events
+                  </button>
+                </div>
+
+                {/* Info Card */}
+                <div className="p-6 rounded-[32px] bg-gradient-to-br from-blue-600/10 to-violet-600/10 border border-white/5">
+                  <h4 className="text-xs font-black text-white uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <Sparkles size={14} className="text-blue-400" />
+                    Pro Tip
+                  </h4>
+                  <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
+                    Open discussions with specific topics tend to attract 40% more listeners in the first 10 minutes. 
+                  </p>
+                </div>
+             </div>
+          </div>
+        </div>
       </main>
 
       <AnimatePresence>
         {showCreate && (
-          <motion.div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm"
+          <motion.div className="fixed inset-0 z-[100] flex items-center justify-center px-4 bg-black/80 backdrop-blur-md"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={(e) => { if (e.target === e.currentTarget) setShowCreate(false); }}>
-            <motion.div className="glass border border-white/10 rounded-3xl p-8 w-full max-w-md bg-[#14142b]"
-              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
-              <h2 className="text-xl font-semibold text-white mb-2">Create a Voice Room</h2>
-              <p className="text-sm text-slate-500 mb-6">Create a new voice lounge topic. Up to 18 people can join.</p>
-              <input type="text" className="input-field mb-4 bg-black/40 placeholder-white/40 focus:border-violet-500" placeholder="Room topic..."
-                value={newName} onChange={e => setNewName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && createRoom()} autoFocus maxLength={40} />
-              <div className="flex gap-3">
-                <button onClick={createRoom} className="btn-primary rounded-xl bg-violet-600 hover:bg-violet-500 flex-1 border-none font-semibold" disabled={creating || !newName.trim()}>
-                  {creating ? 'Starting...' : '🎙️ Open Room'}
-                </button>
-                <button onClick={() => setShowCreate(false)} className="btn-ghost rounded-xl px-4 py-2 border border-white/10 text-white/70 hover:bg-white/5">
-                  Cancel
-                </button>
+            <motion.div className="relative border border-white/10 rounded-[40px] p-10 w-full max-w-md bg-[#14142b] overflow-hidden"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }}>
+              
+              <div className="absolute top-0 right-0 w-32 h-32 bg-violet-600/20 blur-3xl -translate-y-1/2 translate-x-1/2" />
+              
+              <div className="relative z-10">
+                <motion.div 
+                  className="relative w-20 h-20 rounded-[28px] bg-slate-900/40 backdrop-blur-xl border border-violet-500/30 flex items-center justify-center shadow-[0_0_30px_rgba(139,92,246,0.2)] mb-8 mx-auto group"
+                  animate={{ y: [0, -8, 0] }}
+                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                >
+                  {/* Outer Glow Ring */}
+                  <div className="absolute inset-0 rounded-[28px] bg-gradient-to-br from-violet-500/20 to-indigo-600/20 opacity-50 transition-opacity" />
+                  
+                  {/* Soundwave Bars Left */}
+                  <div className="absolute left-1 flex items-end gap-[2px] h-6">
+                    {[0.4, 0.7, 0.5].map((h, i) => (
+                      <motion.div 
+                        key={`left-${i}`}
+                        className="w-[3px] bg-violet-400 rounded-full"
+                        animate={{ height: ["4px", `${h * 20}px`, "4px"] }}
+                        transition={{ duration: 1, repeat: Infinity, delay: i * 0.1, ease: "easeInOut" }}
+                      />
+                    ))}
+                  </div>
+
+                  <Mic size={32} className="text-white relative z-10 drop-shadow-[0_0_8px_rgba(167,139,250,0.5)]" />
+
+                  {/* Soundwave Bars Right */}
+                  <div className="absolute right-1 flex items-end gap-[2px] h-6">
+                    {[0.6, 0.8, 0.4].map((h, i) => (
+                      <motion.div 
+                        key={`right-${i}`}
+                        className="w-[3px] bg-violet-400 rounded-full"
+                        animate={{ height: ["4px", `${h * 20}px`, "4px"] }}
+                        transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.15, ease: "easeInOut" }}
+                      />
+                    ))}
+                  </div>
+                </motion.div>
+                
+                <div className="text-center mb-8">
+                  <h2 className="text-2xl font-black text-white tracking-tighter mb-2">Initialize Voice Field</h2>
+                  <p className="text-slate-400 text-sm font-medium">
+                    Enter a frequency topic for your anonymous lounge.
+                  </p>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="relative group">
+                    <input 
+                      type="text" 
+                      className="w-full bg-black/40 border-2 border-white/5 rounded-2xl py-4 flex items-center justify-center text-center font-bold text-white placeholder-slate-700 focus:outline-none focus:border-violet-500/50 transition-all"
+                      placeholder="e.g. Late Night Philosophies"
+                      value={newName} 
+                      onChange={e => setNewName(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && createRoom()} 
+                      autoFocus 
+                      maxLength={40} 
+                    />
+                  </div>
+
+                  <div className="flex gap-4 mt-8">
+                     <button 
+                      onClick={() => setShowCreate(false)} 
+                      className="flex-1 py-4 rounded-2xl bg-slate-800 text-slate-400 font-black text-xs uppercase tracking-widest hover:bg-slate-700 transition-all border border-white/5"
+                    >
+                      Abort
+                    </button>
+                    <button 
+                      onClick={createRoom} 
+                      className="flex-[2] py-4 rounded-2xl bg-white text-black font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all shadow-xl shadow-white/5 disabled:opacity-50"
+                      disabled={creating || !newName.trim()}
+                    >
+                      {creating ? 'SYNCHRONIZING...' : 'START BROADCAST'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showNoRoomsOverlay && (
+          <motion.div 
+            className="fixed inset-0 z-[110] flex items-center justify-center px-4 bg-black/80 backdrop-blur-xl"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={(e) => { if (e.target === e.currentTarget) setShowNoRoomsOverlay(false); }}
+          >
+            <motion.div 
+              className="relative border border-white/10 rounded-[40px] p-10 w-full max-w-lg bg-[#14142b]/90 overflow-hidden text-center"
+              initial={{ scale: 0.9, opacity: 0, y: 30 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 30 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            >
+              {/* Background Glows */}
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 blur-3xl -translate-y-1/2 translate-x-1/2" />
+              <div className="absolute bottom-0 left-0 w-32 h-32 bg-amber-500/5 blur-3xl translate-y-1/2 -translate-x-1/2" />
+
+              <div className="relative z-10 space-y-8">
+                <div className="w-20 h-20 rounded-[28px] bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-2xl shadow-amber-500/20 mx-auto">
+                  <Dices size={40} className="text-white" />
+                </div>
+
+                <div className="space-y-3">
+                  <h2 className="text-3xl font-black text-white tracking-tighter">The Void is Quiet...</h2>
+                  <p className="text-slate-400 text-base font-medium max-w-sm mx-auto">
+                    No active voice rooms were found. Be the first to break the silence and start a conversation.
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                  <button 
+                    onClick={() => setShowNoRoomsOverlay(false)} 
+                    className="flex-1 py-4 rounded-2xl bg-white/5 text-slate-400 font-black text-xs uppercase tracking-widest hover:bg-white/10 transition-all border border-white/5 active:scale-95"
+                  >
+                    Maybe Later
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setShowNoRoomsOverlay(false);
+                      setShowCreate(true);
+                    }} 
+                    className="flex-[2] py-4 rounded-2xl bg-amber-500 text-black font-black text-xs uppercase tracking-widest hover:bg-amber-400 transition-all shadow-xl shadow-amber-500/20 active:scale-95"
+                  >
+                    Initialize Voice Field
+                  </button>
+                </div>
               </div>
             </motion.div>
           </motion.div>

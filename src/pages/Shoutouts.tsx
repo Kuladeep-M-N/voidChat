@@ -548,64 +548,74 @@ export default function Shoutouts() {
       </header>
 
       <main className="relative z-10 mx-auto flex max-w-6xl flex-col gap-8 px-5 py-8 sm:px-8 lg:py-10">
-        <section className="grid gap-4 md:grid-cols-3">
-          {[
-            {
-              id: 'live',
-              icon: Users,
-              label: 'Live Now',
-              value: `${liveMembers}`,
-              note: 'Members currently vibing in this space',
-              accent: 'from-emerald-500/20 via-cyan-400/5 to-transparent',
-              iconClass: 'text-emerald-300',
-            },
-            {
-              id: 'for-you',
-              icon: AtSign,
-              label: 'For You',
-              value: `${receivedCount}`,
-              note: receivedCount > 0 ? 'Posts aimed at your username' : 'No one has tagged you yet',
-              accent: 'from-violet-500/20 via-fuchsia-400/5 to-transparent',
-              iconClass: 'text-violet-300',
-            },
-            {
-              id: 'rush',
-              icon: Zap,
-              label: 'Fresh Rush',
-              value: `${recentBurst}`,
-              note: recentBurst > 0 ? 'Posts dropped in the last hour' : 'Quiet hour, clean slate',
-              accent: 'from-pink-500/20 via-rose-400/5 to-transparent',
-              iconClass: 'text-pink-300',
-            },
-          ].map((card) => {
-            const Icon = card.icon;
+        <section className="relative">
+          <div className="grid grid-cols-3 gap-2 md:gap-4 lg:gap-6">
+            {[
+              {
+                id: 'live',
+                icon: Users,
+                label: 'Live Now',
+                mobileLabel: 'Live',
+                value: `${liveMembers}`,
+                note: 'Members currently vibing in this space',
+                mobileNote: 'Live now',
+                accent: 'from-emerald-500/20 via-cyan-400/5 to-transparent',
+                iconClass: 'text-emerald-300',
+              },
+              {
+                id: 'for-you',
+                icon: AtSign,
+                label: 'For You',
+                mobileLabel: 'For You',
+                value: `${receivedCount}`,
+                note: receivedCount > 0 ? 'Posts aimed at your username' : 'No one has tagged you yet',
+                mobileNote: 'Tagged',
+                accent: 'from-violet-500/20 via-fuchsia-400/5 to-transparent',
+                iconClass: 'text-violet-300',
+              },
+              {
+                id: 'rush',
+                icon: Zap,
+                label: 'Fresh Rush',
+                mobileLabel: 'Fresh',
+                value: `${recentBurst}`,
+                note: recentBurst > 0 ? 'Posts dropped in the last hour' : 'Quiet hour, clean slate',
+                mobileNote: 'Last hour',
+                accent: 'from-pink-500/20 via-rose-400/5 to-transparent',
+                iconClass: 'text-pink-300',
+              },
+            ].map((card) => {
+              const Icon = card.icon;
 
-            return (
-              <motion.article
-                key={card.id}
-                className="relative overflow-hidden rounded-[1.6rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.02))] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.25)] backdrop-blur-xl"
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${card.accent}`} />
-                <div className="relative flex items-start justify-between gap-4">
-                  <div>
-                    <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-white/38">{card.label}</p>
-                    <p className="mt-3 text-3xl font-extrabold text-white">{card.value}</p>
-                    <p className="mt-2 text-sm text-white/55">{card.note}</p>
+              return (
+                <motion.article
+                  key={card.id}
+                  className="relative overflow-hidden rounded-[1.2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.02))] p-3 shadow-lg backdrop-blur-xl md:rounded-[1.6rem] md:p-5"
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${card.accent}`} />
+                  <div className="relative flex flex-col items-center text-center gap-1 md:flex-row md:items-start md:justify-between md:text-left md:gap-4">
+                    <div className="order-2 md:order-1">
+                      <p className="font-mono text-[8px] uppercase tracking-wider text-white/38 md:hidden">{card.mobileLabel}</p>
+                      <p className="hidden font-mono text-[11px] uppercase tracking-[0.26em] text-white/38 md:block">{card.label}</p>
+                      <p className="mt-0.5 text-xl font-extrabold text-white md:mt-3 md:text-3xl">{card.value}</p>
+                      <p className="mt-1 text-xs text-white/55 md:hidden">{card.mobileNote}</p>
+                      <p className="hidden mt-2 text-sm text-white/55 md:block">{card.note}</p>
+                    </div>
+                    <div className={`order-1 mb-1 rounded-lg border border-white/10 bg-white/5 p-2 md:order-2 md:mb-0 md:rounded-2xl md:p-3 ${card.iconClass}`}>
+                      <Icon className="h-3.5 w-3.5 md:h-5 md:w-5" />
+                    </div>
                   </div>
-                  <div className={`rounded-2xl border border-white/10 bg-white/5 p-3 ${card.iconClass}`}>
-                    <Icon className="h-5 w-5" />
-                  </div>
-                </div>
-              </motion.article>
-            );
-          })}
+                </motion.article>
+              );
+            })}
+          </div>
         </section>
 
         <motion.section
           id="composer"
-          className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(124,58,237,0.12),rgba(255,255,255,0.02)_34%,rgba(255,255,255,0.02)_68%,rgba(0,245,212,0.07))] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl sm:p-8"
+          className="relative overflow-hidden rounded-[1.6rem] border border-white/10 bg-[linear-gradient(135deg,rgba(124,58,237,0.12),rgba(255,255,255,0.02)_34%,rgba(255,255,255,0.02)_68%,rgba(0,245,212,0.07))] p-5 shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl sm:rounded-[2rem] sm:p-8"
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
         >
@@ -613,14 +623,14 @@ export default function Shoutouts() {
           <div className="pointer-events-none absolute -bottom-20 right-20 h-32 w-32 rounded-full bg-cyan-500/10 blur-3xl" />
 
           <div className="relative">
-            <div className="mb-7 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div className="mb-6 flex flex-col gap-4 md:mb-7 md:flex-row md:items-start md:justify-between">
               <div className="flex items-center gap-3">
-                <div className="rounded-xl bg-violet-500/20 p-3 text-violet-300">
-                  <Megaphone className="h-6 w-6" />
+                <div className="rounded-xl bg-violet-500/20 p-2.5 text-violet-300 md:p-3">
+                  <Megaphone className="h-5 w-5 md:h-6 md:w-6" />
                 </div>
                 <div>
-                  <h2 className="text-3xl font-extrabold tracking-tight text-white">Cast a Shoutout</h2>
-                  <p className="mt-1 text-sm text-white/50">Posts now show who sent them, so love notes feel a little more real.</p>
+                  <h2 className="text-2xl font-extrabold tracking-tight text-white md:text-3xl">Cast a Shoutout</h2>
+                  <p className="mt-1 text-xs text-white/50 md:text-sm">Posts now show who sent them, so love notes feel a little more real.</p>
                 </div>
               </div>
 
@@ -712,29 +722,33 @@ export default function Shoutouts() {
             <h3 className="text-sm font-extrabold uppercase tracking-[0.28em] text-pink-400">Trending Now</h3>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            {trendingCards.map((card) => (
+          <div className="grid grid-cols-3 gap-2 md:gap-4 lg:gap-6">
+            {trendingCards.map((card, idx) => (
               <motion.article
-                key={card.id}
-                className={`group relative overflow-hidden rounded-[1.6rem] border ${card.border} bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015))] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.22)]`}
+                key={card.id || idx}
+                className={`group relative overflow-hidden rounded-[1.2rem] border ${card.border} bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015))] p-3 shadow-lg md:rounded-[1.6rem] md:p-5`}
                 whileHover={{ y: -4 }}
               >
                 <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${card.accent} opacity-40 transition group-hover:opacity-60`} />
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={`${card.id}-${pulseTick}-${card.body}`}
-                    className="relative space-y-3"
+                    className="relative space-y-1 md:space-y-3"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.28 }}
                   >
-                    <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-white/42">{card.label}</p>
-                    <h4 className={`text-lg font-bold ${card.titleClass}`}>{card.title}</h4>
-                    <p className="text-[1.02rem] leading-7 text-white/88">{card.body}</p>
-                    <div className="flex items-center gap-2 text-xs text-white/42">
-                      <Sparkles className="h-3.5 w-3.5" />
-                      <span>{card.meta}</span>
+                    <p className="font-mono text-[8px] uppercase tracking-wider text-white/42 md:hidden">{card.label.split(' ')[0]}</p>
+                    <p className="hidden font-mono text-[11px] uppercase tracking-[0.26em] text-white/42 md:block">{card.label}</p>
+                    
+                    <h4 className={`text-[10px] font-bold leading-tight line-clamp-2 md:text-lg md:line-clamp-none ${card.titleClass}`}>{card.title}</h4>
+                    
+                    <p className="hidden text-[1.02rem] leading-7 text-white/88 md:block">{card.body}</p>
+                    
+                    <div className="flex items-center gap-1 text-[7px] text-white/42 md:text-xs md:gap-2">
+                      <Sparkles className="h-2 w-2 md:h-3.5 md:w-3.5" />
+                      <span className="truncate">{card.meta}</span>
                     </div>
                   </motion.div>
                 </AnimatePresence>
@@ -743,7 +757,7 @@ export default function Shoutouts() {
           </div>
         </section>
 
-        <section className="flex flex-wrap items-center gap-3">
+        <section className="flex flex-row items-center gap-3 overflow-x-auto whitespace-nowrap pb-2 md:flex-wrap md:overflow-visible md:pb-0 scrollbar-hide [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {[
             { id: 'all' as const, label: 'Global', extra: shoutouts.filter(s => !s.parent_id).length },
             { id: 'for_me' as const, label: 'For You', extra: receivedCount },
