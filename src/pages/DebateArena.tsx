@@ -25,7 +25,9 @@ import {
   addDoc, 
   serverTimestamp,
   where,
-  limit
+  limit,
+  deleteDoc,
+  doc
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
@@ -169,6 +171,19 @@ export default function DebateArena() {
       console.error('Error creating debate:', error);
     } finally {
       setCreating(false);
+    }
+  };
+
+  const deleteDebate = async (e: React.MouseEvent, debateId: string) => {
+    e.stopPropagation();
+    if (!window.confirm('Wipe this debate from existence? This cannot be undone.')) return;
+    
+    try {
+      await deleteDoc(doc(db, 'debates', debateId));
+      toast.success('Debate erased from the void.');
+    } catch (error: any) {
+      console.error('Error deleting debate:', error);
+      toast.error('Failed to erase debate: ' + error.message);
     }
   };
 
@@ -332,10 +347,20 @@ export default function DebateArena() {
                     >
                       <div className="flex items-start justify-between mb-4">
                         <span className="px-2 py-0.5 bg-slate-500/10 text-slate-400 border border-slate-500/20 rounded-md text-[10px] font-black uppercase tracking-wider">
-                          {debate.status}
                         </span>
-                        {debate.status === 'closed' && <Lock size={14} className="text-purple-400" />}
-                        {debate.status === 'hot' && <Zap size={14} className="text-amber-500 fill-amber-500" />}
+                        <div className="flex items-center gap-2">
+                          {profile?.is_admin && (
+                            <button 
+                              onClick={(e) => deleteDebate(e, debate.id)}
+                              className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all"
+                              title="Delete Debate"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                          {debate.status === 'closed' && <Lock size={14} className="text-purple-400" />}
+                          {debate.status === 'hot' && <Zap size={14} className="text-amber-500 fill-amber-500" />}
+                        </div>
                       </div>
                       <h3 className="font-bold text-white text-lg mb-2 line-clamp-2 group-hover:text-blue-400 transition-colors">
                         {debate.title}

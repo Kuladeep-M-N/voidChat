@@ -323,15 +323,34 @@ function CommentPanel({
                       </span>
                     </div>
                     <p className="text-sm leading-6 text-slate-200">{comment.content}</p>
-                    {(!isMe || profile?.is_admin) && (
-                      <button 
-                        onClick={() => onReport('confession', comment.id)}
-                        className="mt-2 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500 hover:text-amber-400 transition"
-                      >
-                        <AlertTriangle size={10} />
-                        Report
-                      </button>
-                    )}
+                    <div className="mt-2 flex items-center gap-3">
+                      {(!isMe || profile?.is_admin) && (
+                        <button 
+                          onClick={() => onReport('confession', comment.id)}
+                          className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500 hover:text-amber-400 transition"
+                        >
+                          <AlertTriangle size={10} />
+                          Report
+                        </button>
+                      )}
+                      {profile?.is_admin && (
+                        <button 
+                          onClick={async () => {
+                            if (!window.confirm('Erase this anonymous reply?')) return;
+                            try {
+                              await deleteDoc(doc(db, 'confession_comments', comment.id));
+                              toast.success('Reply erased.');
+                            } catch (err) {
+                              toast.error('Failed to delete.');
+                            }
+                          }}
+                          className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-red-500/70 hover:text-red-400 transition"
+                        >
+                          <Trash2 size={10} />
+                          Delete
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -999,7 +1018,16 @@ export default function Confessions() {
                             <X size={15} />
                             Hide
                           </button>
-                          {(confession.user_id === user?.uid || profile?.is_admin) ? (
+                          {profile?.is_admin && (
+                            <button
+                              onClick={() => deleteOwn(confession.id)}
+                              className="confession-action text-red-400 hover:border-red-400/30 hover:bg-red-500/10"
+                            >
+                              <Trash2 size={15} />
+                              Delete
+                            </button>
+                          )}
+                          {(confession.user_id === user?.uid) ? (
                             <button
                               onClick={() => deleteOwn(confession.id)}
                               className="confession-action text-red-300 hover:border-red-400/30 hover:bg-red-500/10"

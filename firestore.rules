@@ -2,11 +2,15 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-<<<<<<< HEAD
     
     // Helper functions
     function isAuthenticated() {
       return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.is_admin == true;
     }
     
     function isOwner(userId) {
@@ -15,8 +19,8 @@ service cloud.firestore {
 
     // Users collection
     match /users/{userId} {
-      allow read: if true; // Allow unauthenticated reads to resolve anonymous usernames
-      allow write: if isOwner(userId);
+      allow read: if true; 
+      allow write: if isOwner(userId) || isAdmin();
     }
 
     // Chat Rooms
@@ -24,38 +28,67 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update: if isAuthenticated();
-      allow delete: if isAuthenticated() && (resource.data.created_by == request.auth.uid || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.is_admin == true);
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.created_by == request.auth.uid);
     }
 
     // Room Members
     match /room_members/{memberId} {
       allow read, create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
     }
 
     // Messages
     match /messages/{messageId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
+      allow delete: if isAdmin();
     }
 
     // Confessions
     match /confessions/{confessionId} {
       allow read, create: if isAuthenticated();
       allow update: if isAuthenticated(); // For likes
-      allow delete: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
     }
 
     // Confession Comments
     match /confession_comments/{commentId} {
       allow read, create: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    // Shoutouts
+    match /shoutouts/{shoutoutId} {
+      allow read, create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
+    }
+
+    // Debates
+    match /debates/{debateId} {
+      allow read, create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
+    }
+
+    // Debate Arguments
+    match /debate_arguments/{argId} {
+      allow read, create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
+    }
+
+    // Reports
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
     }
     
     // Default catch-all
     match /{document=**} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated(); 
-    }
+      allow write: if isAdmin(); 
     }
   }
 }
