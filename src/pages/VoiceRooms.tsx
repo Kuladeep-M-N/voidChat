@@ -140,6 +140,10 @@ export default function VoiceRooms() {
   const [chatInput, setChatInput] = useState('');
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
+  // Reactions & Interactions
+  const [floatingReactions, setFloatingReactions] = useState<{ id: string; emoji: string; userId: string }[]>([]);
+  const [showReactionMenu, setShowReactionMenu] = useState(false);
+
   // WebRTC refs
   const localStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
@@ -250,6 +254,37 @@ export default function VoiceRooms() {
       remove(presenceRef);
     };
   }, [user, activeRoom, profile, muted, myRole, handRaised, isSpeaking]);
+
+  // Hand Raise Timeout
+  useEffect(() => {
+    if (handRaised) {
+      const timer = setTimeout(() => setHandRaised(false), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [handRaised]);
+
+  // Reactions Listener
+  useEffect(() => {
+    if (!user || !activeRoom) return;
+
+    const roomId = activeRoom.id;
+    const reactionsRef = ref(rtdb, `reactions/${roomId}`);
+
+    const unsubscribe = onChildAdded(reactionsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data && Date.now() - data.timestamp < 10000) {
+        const id = snapshot.key || Math.random().toString();
+        setFloatingReactions(prev => [...prev, { id, emoji: data.emoji, userId: data.userId }]);
+        setTimeout(() => {
+          setFloatingReactions(prev => prev.filter(r => r.id !== id));
+        }, 4000);
+      }
+      // Cleanup old reactions periodically
+      remove(snapshot.ref);
+    });
+
+    return () => off(reactionsRef);
+  }, [user, activeRoom]);
 
   // 2. Signaling Listener Effect: Handles incoming WebRTC signals
   useEffect(() => {
@@ -452,8 +487,9 @@ export default function VoiceRooms() {
 
   const sendChat = () => {
     if (!chatInput.trim() || !activeRoom) return;
+    const newId = Date.now().toString();
     const msg: ChatMessage = { 
-      id: `local-${Date.now()}`, 
+      id: newId, 
       userId: user!.uid, 
       username: profile?.anonymous_username ?? 'Anon', 
       text: chatInput.trim() 
@@ -464,7 +500,7 @@ export default function VoiceRooms() {
     setChatInput('');
 
     const chatRef = ref(rtdb, `chat/${activeRoom.id}`);
-    push(chatRef, { ...msg, id: Date.now().toString() }); // Push with server-assigned ID
+    push(chatRef, msg); // Push with the same ID used locally
   };
 
   const toggleMute = useCallback(() => {
@@ -472,6 +508,17 @@ export default function VoiceRooms() {
     if (track) track.enabled = muted;
     setMuted(m => !m);
   }, [muted]);
+
+  const sendReaction = (emoji: string) => {
+    if (!user || !activeRoom) return;
+    const reactionsRef = ref(rtdb, `reactions/${activeRoom.id}`);
+    push(reactionsRef, {
+      emoji,
+      userId: user.uid,
+      timestamp: Date.now()
+    });
+    setShowReactionMenu(false);
+  };
 
 
 
@@ -528,9 +575,6 @@ export default function VoiceRooms() {
         {/* Header */}
         <header className="px-6 py-4 flex justify-between items-center z-20 relative bg-[#1c1c24]/80 backdrop-blur-lg border-b border-white/5 shrink-0">
           <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-indigo-400 flex items-center justify-center shadow-[0_4px_10px_rgba(99,102,241,0.2)]">
-              <span className="material-symbols-outlined text-white font-bold text-[22px]">graphic_eq</span>
-            </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-white">{activeRoom.name}</h1>
               <div className="flex items-center gap-2 text-sm text-slate-400">
@@ -545,9 +589,6 @@ export default function VoiceRooms() {
               className="lg:hidden w-10 h-10 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 flex items-center justify-center text-slate-200 shadow-sm transition-all active:scale-95"
             >
               <span className="material-symbols-outlined text-lg">group</span>
-            </button>
-            <button className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 transition-colors text-sm font-semibold text-slate-200 shadow-sm">
-              <span className="material-symbols-outlined text-lg">share</span> Share
             </button>
             <button 
               onClick={() => navigate('/dashboard')}
@@ -602,6 +643,15 @@ export default function VoiceRooms() {
                              {p.muted ? 'mic_off' : 'mic'}
                            </span>
                         </div>
+                        {p.handRaised && (
+                          <motion.div 
+                            initial={{ scale: 0, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            className="absolute -top-1 -right-1 w-8 h-8 rounded-full bg-amber-400 flex items-center justify-center border-2 border-[#0f1115] z-10"
+                          >
+                            <span className="material-symbols-outlined text-black text-[16px] font-bold">back_hand</span>
+                          </motion.div>
+                        )}
                       </div>
                       <span className={`${active ? 'font-semibold text-sm text-sky-100' : 'font-medium text-sm text-slate-400'}`}>
                         {isMe ? 'You' : p.username} {isHost && !isMe ? '★' : ''}
@@ -622,17 +672,33 @@ export default function VoiceRooms() {
                     <span className="text-xs text-slate-500 whitespace-nowrap font-medium">{listenerUsers.length} people listening</span>
                   </div>
                 </div>
-                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-6">
-                  {listenerUsers.map((p) => (
-                    <div key={p.userId} className="flex flex-col items-center gap-2">
-                       <div className="w-12 h-12 rounded-full bg-slate-800/80 flex items-center justify-center opacity-60 hover:opacity-100 transition-opacity cursor-pointer text-xs font-bold text-slate-300 border border-slate-700/50">
-                          {p.username.slice(0, 2).toUpperCase()}
-                       </div>
-                       <span className="text-[11px] text-slate-400 truncate w-full text-center">
-                         {p.userId === user?.uid ? 'You' : p.username}
-                       </span>
-                    </div>
-                  ))}
+                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-x-4 gap-y-8">
+                  {listenerUsers.map((p) => {
+                    const isMe = p.userId === user?.uid;
+                    return (
+                      <div key={p.userId} className="flex flex-col items-center gap-2 group">
+                        <div className="relative">
+                          <div className="w-14 h-14 rounded-2xl bg-slate-800/80 flex items-center justify-center text-sm font-bold text-slate-300 border border-white/5 group-hover:border-indigo-500/50 group-hover:bg-slate-700/80 transition-all duration-300 shadow-sm relative overflow-hidden">
+                             {p.username.slice(0, 2).toUpperCase()}
+                             <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </div>
+                          
+                          {p.handRaised && (
+                            <motion.div 
+                              initial={{ scale: 0, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-amber-400 flex items-center justify-center border-2 border-[#0f1115] z-10 shadow-lg"
+                            >
+                              <span className="material-symbols-outlined text-black text-[12px] font-bold">back_hand</span>
+                            </motion.div>
+                          )}
+                        </div>
+                        <span className="text-[11px] font-medium text-slate-400 truncate w-full text-center group-hover:text-slate-200 transition-colors">
+                          {isMe ? 'You' : p.username}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -729,12 +795,52 @@ export default function VoiceRooms() {
             >
               <span className={`material-symbols-outlined transition-colors text-[22px] ${handRaised && 'text-amber-300'}`}>back_hand</span>
             </button>
-            <button className="w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all group">
-              <span className="material-symbols-outlined text-slate-300 group-hover:text-amber-300 transition-colors text-[22px]">add_reaction</span>
-            </button>
-            <button className="w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all group mr-0 sm:mr-2">
-              <span className="material-symbols-outlined text-slate-300 transition-colors text-[22px]">settings</span>
-            </button>
+            <div className="relative">
+              <button 
+                onClick={() => setShowReactionMenu(!showReactionMenu)}
+                className={`w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all group ${showReactionMenu ? 'bg-indigo-500/20 text-indigo-300' : ''}`}
+              >
+                <span className="material-symbols-outlined text-slate-300 group-hover:text-amber-300 transition-colors text-[22px]">add_reaction</span>
+              </button>
+              
+              <AnimatePresence>
+                {showReactionMenu && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.9 }}
+                    className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 bg-[#1c1c24] border border-white/10 rounded-2xl p-2 flex gap-2 shadow-2xl z-50"
+                  >
+                    {['❤️', '🔥', '👏', '😂', '😮', '🙌'].map(emoji => (
+                      <button 
+                        key={emoji}
+                        onClick={() => sendReaction(emoji)}
+                        className="w-10 h-10 flex items-center justify-center text-xl hover:bg-white/5 rounded-xl transition-colors"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 pointer-events-none z-40 mb-2">
+                <AnimatePresence>
+                  {floatingReactions.map(r => (
+                    <motion.div
+                      key={r.id}
+                      initial={{ y: 0, opacity: 1, scale: 0.5, x: (Math.random() - 0.5) * 40 }}
+                      animate={{ y: -150 - Math.random() * 50, opacity: 0, scale: 1.5 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 2 + Math.random(), ease: "easeOut" }}
+                      className="absolute bottom-0 text-3xl drop-shadow-md"
+                    >
+                      {r.emoji}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            </div>
             <div className="hidden sm:block w-[1px] h-8 bg-white/10 shrink-0"></div>
             <button 
               onClick={leaveRoom}
