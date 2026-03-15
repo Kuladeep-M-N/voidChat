@@ -169,7 +169,7 @@ const calculateTrendScore = (confession: Confession, replies: number) => {
   return reactions + (replies * 3) + recencyWeight;
 };
 
-const getVibeInfo = (confession: Confession) => {
+const getVibeInfo = (confession: Confession, commentCount: number = 0) => {
   const vibes: Record<string, { label: string; emoji: string; color: string; level: number }> = {
     random: { label: 'Spicy', emoji: '🔥', color: 'from-orange-500 to-rose-500', level: 8 },
     crush: { label: 'Romantic', emoji: '❤️', color: 'from-rose-500 to-pink-500', level: 7 },
@@ -177,7 +177,14 @@ const getVibeInfo = (confession: Confession) => {
     academic: { label: 'Awkward', emoji: '😳', color: 'from-sky-500 to-indigo-600', level: 5 },
     default: { label: 'Sad', emoji: '💔', color: 'from-indigo-600 to-slate-700', level: 4 }
   };
-  return vibes[confession.category] || vibes.random;
+  
+  const baseVibe = vibes[confession.category] || vibes.random;
+  
+  // Dynamic intensity logic: +5% (+0.5) per like, +10% (+1.0) per comment
+  const interactionBonus = (confession.likes || 0) * 0.5 + (commentCount || 0) * 1.0;
+  const dynamicLevel = Math.min(10, baseVibe.level + interactionBonus);
+  
+  return { ...baseVibe, level: dynamicLevel };
 };
 
 function CommentPanel({
@@ -798,9 +805,9 @@ export default function Confessions() {
                     <div className="relative z-10">
                       <div className="flex items-center justify-between">
                         <div className="text-[11px] font-black uppercase tracking-[0.15em] text-slate-500">Vibe Check</div>
-                        <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r ${spotlight ? getVibeInfo(spotlight).color : 'from-slate-500 to-slate-700'} text-[9px] font-black text-white uppercase tracking-widest`}>
-                          <span>{spotlight ? getVibeInfo(spotlight).emoji : '✨'}</span>
-                          <span>{spotlight ? getVibeInfo(spotlight).label : 'Calm'}</span>
+                        <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r ${spotlight ? getVibeInfo(spotlight, commentCounts[spotlight.id] || 0).color : 'from-slate-500 to-slate-700'} text-[9px] font-black text-white uppercase tracking-widest`}>
+                          <span>{spotlight ? getVibeInfo(spotlight, commentCounts[spotlight.id] || 0).emoji : '✨'}</span>
+                          <span>{spotlight ? getVibeInfo(spotlight, commentCounts[spotlight.id] || 0).label : 'Calm'}</span>
                         </div>
                       </div>
                       
@@ -808,9 +815,9 @@ export default function Confessions() {
                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
                           <motion.div
                             initial={{ width: 0 }}
-                            animate={{ width: spotlight ? `${getVibeInfo(spotlight).level * 10}%` : '0%' }}
+                            animate={{ width: spotlight ? `${getVibeInfo(spotlight, commentCounts[spotlight.id] || 0).level * 10}%` : '0%' }}
                             transition={{ duration: 1.2, ease: "easeOut" }}
-                            className={`h-full bg-gradient-to-r ${spotlight ? getVibeInfo(spotlight).color : 'from-slate-500 to-slate-700'}`}
+                            className={`h-full bg-gradient-to-r ${spotlight ? getVibeInfo(spotlight, commentCounts[spotlight.id] || 0).color : 'from-slate-500 to-slate-700'}`}
                           />
                         </div>
                         <div className="mt-2 flex justify-between text-[9px] font-bold uppercase tracking-widest text-slate-600">
