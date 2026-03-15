@@ -18,6 +18,8 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
+import { AlertTriangle } from 'lucide-react';
+import ReportModal from '../components/ReportModal';
 
 interface QnaQuestion {
   id: string;
@@ -101,6 +103,7 @@ export default function QnA() {
   const [questionVotes, setQuestionVotes] = useState<Set<string>>(new Set());
   const [answerVotes, setAnswerVotes] = useState<Set<string>>(new Set());
   const [viewedQuestionIds, setViewedQuestionIds] = useState<Set<string>>(new Set());
+  const [reportingContent, setReportingContent] = useState<{ id: string; type: 'question' | 'answer' } | null>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate('/join');
@@ -553,8 +556,15 @@ export default function QnA() {
                       >
                         + {question.upvotes}
                       </button>
-                      <button
-                        onClick={() => openQuestion(question)}
+                        <button
+                          onClick={() => setReportingContent({ id: question.id, type: 'question' })}
+                          className="text-xs px-3 py-1.5 rounded-xl border border-white/10 text-slate-500 hover:border-amber-500/40 hover:text-amber-400 transition-all"
+                          title="Report Question"
+                        >
+                          <AlertTriangle size={14} />
+                        </button>
+                        <button
+                          onClick={() => openQuestion(question)}
                         className="text-xs px-3 py-1.5 rounded-xl border border-white/10 text-slate-300 hover:border-teal-400/40 hover:text-teal-200"
                       >
                         {answerCount} answers | {question.views} views
@@ -668,6 +678,13 @@ export default function QnA() {
                         >
                           + {answer.upvotes}
                         </button>
+                        <button
+                          onClick={() => setReportingContent({ id: answer.id, type: 'answer' })}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-white/10 text-slate-500 hover:border-amber-500/40 hover:text-amber-400 transition-all"
+                          title="Report Answer"
+                        >
+                          <AlertTriangle size={14} />
+                        </button>
                       </div>
                     </div>
                   );
@@ -712,6 +729,12 @@ export default function QnA() {
           </motion.div>
         )}
       </AnimatePresence>
+      <ReportModal 
+        isOpen={!!reportingContent}
+        onClose={() => setReportingContent(null)}
+        targetType={reportingContent?.type || 'question'}
+        targetId={reportingContent?.id || ''}
+      />
     </div>
   );
 }

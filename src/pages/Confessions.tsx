@@ -199,7 +199,7 @@ function CommentPanel({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   profile: any;
   onClose: () => void;
-  onReport: (type: 'confession' | 'user', id: string) => void;
+  onReport: (type: 'confession' | 'user' | 'confession_comment', id: string) => void;
 }) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [text, setText] = useState('');
@@ -359,7 +359,7 @@ function CommentPanel({
                     <div className="mt-2 flex items-center gap-3">
                       {(!isMe || profile?.is_admin) && (
                         <button 
-                          onClick={() => onReport('confession', comment.id)}
+                          onClick={() => onReport('confession_comment', comment.id)}
                           className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500 hover:text-amber-400 transition"
                         >
                           <AlertTriangle size={10} />
@@ -443,7 +443,7 @@ export default function Confessions() {
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => readStoredIds(LOCAL_STORAGE_KEYS.dismissed));
   const [onlyBookmarked, setOnlyBookmarked] = useState(false);
   const [search, setSearch] = useState('');
-  const [reportingContent, setReportingContent] = useState<{ type: 'confession' | 'user'; id: string } | null>(null);
+  const [reportingContent, setReportingContent] = useState<{ type: 'confession' | 'user' | 'confession_comment'; id: string } | null>(null);
   const [reportCounts, setReportCounts] = useState<Record<string, number>>({});
   const deferredSearch = useDeferredValue(search);
   const trendingPost = useMemo(() => {

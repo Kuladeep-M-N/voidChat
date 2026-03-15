@@ -10,6 +10,7 @@ import {
   Vote as VoteIcon,
   Waves,
   X,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   collection, 
@@ -27,6 +28,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
+import ReportModal from '../components/ReportModal';
 
 interface Poll {
   id: string;
@@ -100,6 +102,7 @@ export default function Polls() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [actionError, setActionError] = useState('');
+  const [reportingPollId, setReportingPollId] = useState<string | null>(null);
 
   const [sortBy, setSortBy] = useState<'new' | 'popular'>('new');
   const [filterTag, setFilterTag] = useState('all');
@@ -173,6 +176,14 @@ export default function Polls() {
 
     return bucket;
   }, [allVotes, polls]);
+
+  const totalVotes = useMemo(() => {
+    let total = 0;
+    voteBuckets.forEach((bucket) => {
+      total += bucket.total;
+    });
+    return total;
+  }, [voteBuckets]);
 
   const topPoll = useMemo(() => {
     return polls.reduce<Poll | null>((current, poll) => {
@@ -330,7 +341,7 @@ export default function Polls() {
             <div className="grid grid-cols-2 gap-2 min-w-[220px]">
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                 <div className="text-xs text-slate-400">Total votes</div>
-                <div className="mt-1 text-2xl font-semibold text-white">{allVotes.length}</div>
+                <div className="mt-1 text-2xl font-semibold text-white">{totalVotes}</div>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                 <div className="text-xs text-slate-400">Open polls</div>
@@ -466,6 +477,13 @@ export default function Polls() {
                             Delete
                           </button>
                         )}
+                        <button
+                          onClick={() => setReportingPollId(poll.id)}
+                          className="p-1 text-slate-500 hover:text-amber-400 transition-colors"
+                          title="Report Poll"
+                        >
+                          <AlertTriangle size={14} />
+                        </button>
                       </div>
                     </div>
 
@@ -688,6 +706,12 @@ export default function Polls() {
         <Clock3 className="h-3.5 w-3.5 text-cyan-300" />
         Realtime sync enabled
       </div>
+      <ReportModal 
+        isOpen={!!reportingPollId}
+        onClose={() => setReportingPollId(null)}
+        targetType="poll"
+        targetId={reportingPollId || ''}
+      />
     </div>
   );
 }

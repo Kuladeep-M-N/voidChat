@@ -15,7 +15,8 @@ import {
   MoreVertical,
   ChevronDown,
   Lock,
-  Trash2
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   collection, 
@@ -37,6 +38,7 @@ import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
 import { toast } from 'sonner';
+import ReportModal from '../components/ReportModal';
 
 interface Debate {
   id: string;
@@ -77,6 +79,7 @@ export default function DebateThread() {
   const [text, setText] = useState('');
   const [selectedSide, setSelectedSide] = useState<'A' | 'B' | null>(null);
   const [sending, setSending] = useState(false);
+  const [reportingArg, setReportingArg] = useState<string | null>(null);
 
   const bottomRefA = useRef<HTMLDivElement>(null);
   const bottomRefB = useRef<HTMLDivElement>(null);
@@ -409,7 +412,7 @@ export default function DebateThread() {
               </motion.button>
             </div>
             <div className="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar">
-              {argumentsA.map((arg) => <ArgumentCard key={arg.id} arg={arg} color="blue" />)}
+              {argumentsA.map((arg) => <ArgumentCard key={arg.id} arg={arg} color="blue" onReport={setReportingArg} />)}
               {argumentsA.length === 0 && <EmptySide side="A" />}
               <div ref={bottomRefA} />
             </div>
@@ -439,7 +442,7 @@ export default function DebateThread() {
               </motion.button>
             </div>
             <div className="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar">
-              {argumentsB.map((arg) => <ArgumentCard key={arg.id} arg={arg} color="red" />)}
+              {argumentsB.map((arg) => <ArgumentCard key={arg.id} arg={arg} color="red" onReport={setReportingArg} />)}
               {argumentsB.length === 0 && <EmptySide side="B" />}
               <div ref={bottomRefB} />
             </div>
@@ -504,11 +507,18 @@ export default function DebateThread() {
           </div>
         </div>
       )}
+
+      <ReportModal 
+        isOpen={!!reportingArg}
+        onClose={() => setReportingArg(null)}
+        targetType="debate_argument"
+        targetId={reportingArg || ''}
+      />
     </div>
   );
 }
 
-function ArgumentCard({ arg, color }: { arg: Argument, color: 'blue' | 'red' }) {
+function ArgumentCard({ arg, color, onReport }: { arg: Argument, color: 'blue' | 'red', onReport: (id: string) => void }) {
   const isMe = arg.user_id === 'me'; // Just for visual demo
   return (
     <motion.div 
@@ -521,15 +531,20 @@ function ArgumentCard({ arg, color }: { arg: Argument, color: 'blue' | 'red' }) 
           <div className={`w-1.5 h-1.5 rounded-full ${color === 'blue' ? 'bg-blue-400' : 'bg-red-400'}`} />
           <span className="text-[10px] font-black text-slate-500">{arg.anonymous_username}</span>
         </div>
-        <span className="text-[9px] text-slate-600">
-          {arg.created_at?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || '...'}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] text-slate-600">
+            {arg.created_at?.toDate ? arg.created_at.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}
+          </span>
+          <button 
+            onClick={() => onReport(arg.id)}
+            className="p-1 text-slate-600 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition-all"
+            title="Report Argument"
+          >
+            <AlertTriangle size={12} />
+          </button>
+        </div>
       </div>
       <p className="text-sm text-slate-200 leading-relaxed">{arg.content}</p>
-      
-      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button className="p-1 hover:text-white transition-colors"><MoreVertical size={14} /></button>
-      </div>
     </motion.div>
   );
 }

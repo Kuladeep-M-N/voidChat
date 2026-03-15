@@ -16,7 +16,8 @@ import {
   History,
   TrendingUp,
   Clock,
-  Layout
+  Layout,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   collection, 
@@ -41,6 +42,7 @@ import {
 } from 'firebase/database';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
+import ReportModal from '../components/ReportModal';
 
 interface Room { 
   id: string; 
@@ -72,6 +74,7 @@ export default function ChatCenter() {
   const [newRoomName, setNewRoomName] = useState('');
   const [creating, setCreating] = useState(false);
   const [activityFeed, setActivityFeed] = useState<any[]>([]);
+  const [reportingRoom, setReportingRoom] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate('/join');
@@ -488,34 +491,49 @@ export default function ChatCenter() {
                   {activeRoomsList.map((room, i) => {
                     const theme = roomThemes[room.category as keyof typeof roomThemes] || roomThemes.general;
                     return (
-                      <motion.div key={room.id} onClick={() => navigate(`/room/${room.id}`)}
+                      <motion.div key={room.id}
                         className={`glass-hover rounded-2xl p-5 cursor-pointer ${theme.bg} border ${theme.border} relative overflow-hidden group shadow-lg`}
                         initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.9 }}
                         transition={{ duration: 0.25, delay: i * 0.04 }}
                         layout
                         whileHover={{ scale: 1.02, y: -4 }}>
-                        <div className="absolute inset-0 bg-white/[0.04] opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center pointer-events-none z-10 backdrop-blur-[2px]">
+                        <div 
+                          className="absolute inset-x-0 top-0 bottom-12 bg-white/[0.04] opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center pointer-events-none z-10 backdrop-blur-[2px]"
+                          onClick={() => navigate(`/room/${room.id}`)}
+                        >
                           <div className="bg-indigo-600 border border-white/20 px-6 py-2 rounded-full text-xs font-black text-white shadow-[0_0_20px_rgba(79,70,229,0.4)]">JOIN VOID</div>
                         </div>
-                        <div className="flex items-center gap-4 mb-4">
+                        <div className="flex items-center gap-4 mb-4" onClick={() => navigate(`/room/${room.id}`)}>
                           <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-xl">{theme.icon}</div>
                           <div className="min-w-0">
                             <h3 className="font-bold text-white text-base truncate">{room.name}</h3>
                             <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">{room.category}</span>
                           </div>
                         </div>
-                        <div className="flex items-center justify-between mt-2 pt-4 border-t border-white/5 text-slate-400 text-xs text-xs">
+                        <div className="flex items-center justify-between mt-2 pt-4 border-t border-white/5 text-slate-400 text-xs">
                           <div className="flex items-center gap-2">
                             <User size={14} className="text-violet-400" />
                             {memberCounts[room.id] || 0} online
                           </div>
-                          {profile?.is_admin && (
-                            <button onClick={(e) => permanentlyDeleteRoom(room.id, e)} className="p-1 hover:text-red-400 transition-colors z-20">
-                              <Trash2 size={14} />
+                          <div className="flex items-center gap-2 z-20">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setReportingRoom(room.id);
+                              }}
+                              className="p-1 hover:text-amber-400 transition-colors"
+                              title="Report Room"
+                            >
+                              <AlertTriangle size={14} />
                             </button>
-                          )}
+                            {profile?.is_admin && (
+                              <button onClick={(e) => permanentlyDeleteRoom(room.id, e)} className="p-1 hover:text-red-400 transition-colors">
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </motion.div>
                     );
@@ -578,6 +596,13 @@ export default function ChatCenter() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ReportModal 
+        isOpen={!!reportingRoom}
+        onClose={() => setReportingRoom(null)}
+        targetType="chat_room"
+        targetId={reportingRoom || ''}
+      />
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {

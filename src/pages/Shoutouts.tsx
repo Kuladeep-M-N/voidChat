@@ -155,7 +155,7 @@ export default function Shoutouts() {
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [presenceCount, setPresenceCount] = useState(1);
-  const [reportingContent, setReportingContent] = useState<{ type: 'shoutout' | 'user'; id: string } | null>(null);
+  const [reportingContent, setReportingContent] = useState<{ type: 'shoutout' | 'user' | 'shoutout_comment'; id: string } | null>(null);
   const [reportCounts, setReportCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
@@ -1033,9 +1033,17 @@ export default function Shoutouts() {
                                       <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">@{child.from_alias}</span>
                                       <span className="text-[10px] text-white/20 font-mono">{timeAgo(child.created_at)}</span>
                                     </div>
-                                    {profile?.is_admin && (
-                                      <button onClick={() => deleteShoutout(child.id)} className="text-white/10 hover:text-red-400/60 transition"><Trash2 className="h-3 w-3" /></button>
-                                    )}
+                                     <div className="flex items-center gap-2">
+                                      {profile?.is_admin && (
+                                        <button onClick={() => deleteShoutout(child.id)} className="text-white/10 hover:text-red-400/60 transition"><Trash2 className="h-3 w-3" /></button>
+                                      )}
+                                      <button 
+                                        onClick={() => setReportingContent({ type: 'shoutout_comment', id: child.id })}
+                                        className="text-white/10 hover:text-amber-400/60 transition"
+                                      >
+                                        <AlertTriangle className="h-3 w-3" />
+                                      </button>
+                                    </div>
                                   </div>
                                   <p className="text-sm text-white/80 leading-relaxed font-light">{child.message}</p>
                                 </motion.div>

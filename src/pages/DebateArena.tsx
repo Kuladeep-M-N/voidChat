@@ -15,7 +15,8 @@ import {
   Scale,
   Lock,
   Trash2,
-  History
+  History,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   collection, 
@@ -34,6 +35,7 @@ import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
 import { toast } from 'sonner';
+import ReportModal from '../components/ReportModal';
 
 interface Debate {
   id: string;
@@ -71,6 +73,7 @@ export default function DebateArena() {
   const [sideA, setSideA] = useState('Support');
   const [sideB, setSideB] = useState('Oppose');
   const [creating, setCreating] = useState(false);
+  const [reportingDebate, setReportingDebate] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate('/join');
@@ -320,6 +323,18 @@ export default function DebateArena() {
                   No active debates to spotlight
                 </div>
               )}
+              {trendingDebate && (
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setReportingDebate(trendingDebate.id);
+                  }}
+                  className="absolute bottom-6 right-8 z-20 flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[10px] font-black tracking-widest uppercase text-amber-400 transition-all"
+                >
+                  <AlertTriangle size={12} />
+                  Report Debate
+                </button>
+              )}
             </div>
           </div>
 
@@ -392,6 +407,16 @@ export default function DebateArena() {
                           )}
                           {debate.status === 'closed' && <Lock size={14} className="text-purple-400" />}
                           {debate.status === 'hot' && <Zap size={14} className="text-amber-500 fill-amber-500" />}
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReportingDebate(debate.id);
+                            }}
+                            className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 transition-all ml-1"
+                            title="Report Debate"
+                          >
+                            <AlertTriangle size={14} />
+                          </button>
                         </div>
                       </div>
                       <h3 className="font-bold text-white text-lg mb-2 line-clamp-2 group-hover:text-blue-400 transition-colors">
@@ -523,6 +548,12 @@ export default function DebateArena() {
           </motion.div>
         )}
       </AnimatePresence>
+      <ReportModal 
+        isOpen={!!reportingDebate}
+        onClose={() => setReportingDebate(null)}
+        targetType="debate"
+        targetId={reportingDebate || ''}
+      />
     </div>
   );
 }

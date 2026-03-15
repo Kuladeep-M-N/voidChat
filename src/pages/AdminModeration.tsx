@@ -35,13 +35,14 @@ import { toast } from 'sonner';
 interface Report {
   id: string;
   reporter_id: string;
-  target_type: 'shoutout' | 'message' | 'confession' | 'user';
+  target_type: 'shoutout' | 'shoutout_comment' | 'message' | 'confession' | 'confession_comment' | 'chat_room' | 'debate' | 'debate_argument' | 'question' | 'answer' | 'poll' | 'user';
   target_id: string;
   reason: string;
   description: string;
   status: 'pending' | 'reviewed' | 'resolved' | 'ignored';
   created_at: any;
   reporter_name?: string;
+  target_preview?: string;
 }
 
 export default function AdminModeration() {
@@ -85,10 +86,42 @@ export default function AdminModeration() {
         }
       }
 
-      setReports(reportsData.map(r => ({
-        ...r,
-        reporter_name: nameCache.get(r.reporter_id) || 'Anonymous'
-      })));
+      const hydratedReports = await Promise.all(reportsData.map(async (r) => {
+        let preview = 'Content unavailable';
+        try {
+          let col = '';
+          switch (r.target_type) {
+            case 'shoutout': case 'shoutout_comment': col = 'shoutouts'; break;
+            case 'confession': col = 'confessions'; break;
+            case 'confession_comment': col = 'confession_comments'; break;
+            case 'message': col = 'messages'; break;
+            case 'chat_room': col = 'chat_rooms'; break;
+            case 'debate': col = 'debates'; break;
+            case 'debate_argument': col = 'debate_arguments'; break;
+            case 'question': col = 'qna_questions'; break;
+            case 'answer': col = 'qna_answers'; break;
+            case 'poll': col = 'polls'; break;
+          }
+
+          if (col) {
+            const docSnap = await getDoc(doc(db, col, r.target_id));
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              preview = data.message || data.content || data.question || data.title || data.text || 'Document exists but no common content field found';
+            }
+          }
+        } catch (e) {
+          console.error('Preview error:', e);
+        }
+
+        return {
+          ...r,
+          reporter_name: nameCache.get(r.reporter_id) || 'Anonymous',
+          target_preview: preview
+        };
+      }));
+
+      setReports(hydratedReports);
       setFetching(false);
     }, (error) => {
       console.error('Fetch reports error:', error);
@@ -116,9 +149,17 @@ export default function AdminModeration() {
 
     let collectionName = '';
     switch (report.target_type) {
-      case 'shoutout': collectionName = 'shoutouts'; break;
+      case 'shoutout': 
+      case 'shoutout_comment': collectionName = 'shoutouts'; break;
       case 'confession': collectionName = 'confessions'; break;
+      case 'confession_comment': collectionName = 'confession_comments'; break;
       case 'message': collectionName = 'messages'; break;
+      case 'chat_room': collectionName = 'chat_rooms'; break;
+      case 'debate': collectionName = 'debates'; break;
+      case 'debate_argument': collectionName = 'debate_arguments'; break;
+      case 'question': collectionName = 'qna_questions'; break;
+      case 'answer': collectionName = 'qna_answers'; break;
+      case 'poll': collectionName = 'polls'; break;
       case 'user': 
         toast.error('Cannot delete users directly through this panel yet. Use Firebase dashboard.');
         return;
@@ -261,7 +302,13 @@ export default function AdminModeration() {
                         <AlertTriangle size={18} className="text-amber-500" />
                         {report.reason}
                       </h3>
-                      <p className="mt-2 text-sm text-slate-300 leading-relaxed">
+                      {report.target_preview && (
+                        <div className="mt-4 rounded-2xl bg-white/5 border border-white/5 p-4 text-sm text-slate-400 font-serif italic">
+                          "{report.target_preview}"
+                        </div>
+                      )}
+                      <p className="mt-4 text-sm text-slate-300 leading-relaxed border-l-2 border-amber-500/30 pl-4">
+                        <span className="text-[10px] uppercase tracking-wider text-slate-500 block mb-1">Reporter's Description:</span>
                         {report.description || <span className="italic text-white/20">No additional details provided.</span>}
                       </p>
                     </div>
