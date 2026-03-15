@@ -30,6 +30,7 @@ import {
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
+import { toast } from 'sonner';
 
 interface Debate {
   id: string;
@@ -80,7 +81,7 @@ export default function DebateArena() {
     
     if (filter === 'Closed') {
       q = query(collection(db, 'debates'), where('status', '==', 'closed'), orderBy('created_at', 'desc'));
-    } else if (filter === 'New') {
+    } else if (filter === 'New' || filter === 'Hot') {
       q = query(collection(db, 'debates'), where('status', '!=', 'closed'), orderBy('created_at', 'desc'));
     } else if (filter === 'Most Participants') {
       q = query(collection(db, 'debates'), where('status', '!=', 'closed'), orderBy('participantCount', 'desc'));
@@ -88,15 +89,59 @@ export default function DebateArena() {
       q = query(collection(db, 'debates'), where('status', '!=', 'closed'), orderBy('created_at', 'desc'));
     }
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items: Debate[] = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Debate));
-      setDebates(items);
+    let unsubFunction = () => {};
+
+    const setupFallback = () => {
+      console.warn("Falling back to un-ordered query due to missing index...");
+      const fallbackQ = query(collection(db, 'debates'));
+      return onSnapshot(fallbackQ, (snapshot) => {
+        let items: Debate[] = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Debate));
+
+        // Re-apply filter and sort in memory
+        if (filter === 'Closed') {
+          items = items.filter(d => d.status === 'closed');
+        } else {
+          items = items.filter(d => d.status !== 'closed');
+        }
+
+        items.sort((a, b) => {
+          if (filter === 'Most Participants') {
+            return (b.participantCount || 0) - (a.participantCount || 0);
+          }
+          const timeA = a.created_at?.seconds || 0;
+          const timeB = b.created_at?.seconds || 0;
+          return timeB - timeA;
+        });
+
+        setDebates(items);
+      });
+    };
+
+    const unsubscribe = onSnapshot(q, {
+      next: (snapshot) => {
+        const items: Debate[] = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Debate));
+        setDebates(items);
+      },
+      error: (err) => {
+        console.error("Debates Snapshot Error:", err);
+        if (err.code === 'failed-precondition') {
+          unsubFunction(); // Cleanup initial attempt
+          unsubFunction = setupFallback();
+        } else {
+          toast.error("Failed to connect to the arena");
+        }
+      }
     });
 
-    return () => unsubscribe();
+    unsubFunction = unsubscribe;
+
+    return () => unsubFunction();
   }, [user, filter]);
 
   const createDebate = async () => {

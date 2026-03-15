@@ -111,8 +111,12 @@ export default function DebateThread() {
       orderBy('created_at', 'asc')
     );
     
-    const unsubArgs = onSnapshot(argQ, {
-      next: (snap) => {
+    let unsubArgsFunction = () => {};
+
+    const setupArgumentsFallback = () => {
+      console.warn("Falling back to un-ordered query due to missing index...");
+      const fallbackQ = query(collection(db, 'debate_arguments'), where('debate_id', '==', debateId));
+      return onSnapshot(fallbackQ, (snap) => {
         const a: Argument[] = [];
         const b: Argument[] = [];
         snap.forEach(doc => {
@@ -129,38 +133,44 @@ export default function DebateThread() {
 
         setArgumentsA(a.sort(sortFn));
         setArgumentsB(b.sort(sortFn));
+      });
+    };
+
+    const unsubArgs = onSnapshot(argQ, {
+      next: (snap) => {
+        const a: Argument[] = [];
+        const b: Argument[] = [];
+        snap.forEach(doc => {
+          const data = { id: doc.id, ...doc.data() } as Argument;
+          if (data.side === 'A') a.push(data);
+          else b.push(data);
+        });
+        
+        const sortFn = (x: Argument, y: Argument) => {
+          const timeX = x.created_at?.toMillis?.() || (x.created_at?.seconds || 0) * 1000 || Date.now();
+          const timeY = y.created_at?.toMillis?.() || (y.created_at?.seconds || 0) * 1000 || Date.now();
+          return timeX - timeY;
+        };
+
+        setArgumentsA(a.sort(sortFn));
+        setArgumentsB(b.sort(sortFn));
       },
       error: (err) => {
         console.error("Arguments Snapshot Error:", err);
-        // If index is missing, try falling back to un-ordered query
         if (err.code === 'failed-precondition') {
-          console.warn("Falling back to un-ordered query due to missing index...");
-          const fallbackQ = query(collection(db, 'debate_arguments'), where('debate_id', '==', debateId));
-          onSnapshot(fallbackQ, (snap) => {
-            const a: Argument[] = [];
-            const b: Argument[] = [];
-            snap.forEach(doc => {
-              const data = { id: doc.id, ...doc.data() } as Argument;
-              if (data.side === 'A') a.push(data);
-              else b.push(data);
-            });
-            
-            const sortFn = (x: Argument, y: Argument) => {
-              const timeX = x.created_at?.toMillis?.() || x.created_at?.seconds * 1000 || Date.now();
-              const timeY = y.created_at?.toMillis?.() || y.created_at?.seconds * 1000 || Date.now();
-              return timeX - timeY;
-            };
-
-            setArgumentsA(a.sort(sortFn));
-            setArgumentsB(b.sort(sortFn));
-          });
+          unsubArgsFunction(); // Cleanup initial attempt
+          unsubArgsFunction = setupArgumentsFallback();
+        } else {
+          toast.error("Failed to load arguments");
         }
       }
     });
 
+    unsubArgsFunction = unsubArgs;
+
     return () => {
       unsubDebate();
-      unsubArgs();
+      unsubArgsFunction();
     };
   }, [debateId, user, navigate]);
 
