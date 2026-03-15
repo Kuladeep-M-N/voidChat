@@ -33,7 +33,12 @@ import {
   limit,
   serverTimestamp 
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, rtdb } from '../lib/firebase';
+import { 
+  ref, 
+  onValue, 
+  off 
+} from 'firebase/database';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
 
@@ -84,21 +89,37 @@ export default function ChatCenter() {
       } as Room));
       
       setRooms(items);
-      
-      // Enrichment: Fetch member counts in background to avoid blocking initial render
-      snapshot.docs.forEach((roomDoc) => {
-        const memQ = query(collection(db, 'room_members'), where('room_id', '==', roomDoc.id));
-        getCountFromServer(memQ).then(countSnap => {
-          const count = countSnap.data().count;
-          setMemberCounts(prev => ({ ...prev, [roomDoc.id]: count }));
-        }).catch(err => console.error("Enrichment error for room:", roomDoc.id, err));
-      });
     }, (error) => {
       console.error("ChatCenter rooms listener error:", error);
     });
 
     return () => unsubscribe();
   }, [user]);
+
+  // ── Real-Time Presence Listeners ──
+  useEffect(() => {
+    if (!user || rooms.length === 0) return;
+
+    const listeners: Record<string, any> = {};
+
+    rooms.forEach((room) => {
+      const presenceRef = ref(rtdb, `rooms/${room.id}/presence`);
+      listeners[room.id] = onValue(presenceRef, (snapshot) => {
+        const data = snapshot.val() || {};
+        const count = Object.keys(data).length;
+        setMemberCounts(prev => ({ ...prev, [room.id]: count }));
+      });
+    });
+
+    return () => {
+      rooms.forEach((room) => {
+        const presenceRef = ref(rtdb, `rooms/${room.id}/presence`);
+        if (listeners[room.id]) {
+          off(presenceRef);
+        }
+      });
+    };
+  }, [user, rooms]);
 
   // ── Activity Feed Aggregator ──
   useEffect(() => {
@@ -367,7 +388,7 @@ export default function ChatCenter() {
                           </span>
                           <div className="flex items-center gap-1.5 text-slate-400 text-xs">
                             <User size={12} className="text-orange-500/60" />
-                            <span className="font-bold text-slate-300">{memberCounts[trending.id] || 0} active</span>
+                            <span className="font-bold text-slate-300">{memberCounts[trending.id] || 0} online</span>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/5 rounded-xl">
@@ -488,7 +509,7 @@ export default function ChatCenter() {
                         <div className="flex items-center justify-between mt-2 pt-4 border-t border-white/5 text-slate-400 text-xs text-xs">
                           <div className="flex items-center gap-2">
                             <User size={14} className="text-violet-400" />
-                            {memberCounts[room.id] || 0} active
+                            {memberCounts[room.id] || 0} online
                           </div>
                           {profile?.is_admin && (
                             <button onClick={(e) => permanentlyDeleteRoom(room.id, e)} className="p-1 hover:text-red-400 transition-colors z-20">
