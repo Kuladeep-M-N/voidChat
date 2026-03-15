@@ -701,61 +701,80 @@ export default function VoiceRooms() {
               </div>
             )}
             {/* Inline Chat for Mobile */}
-            <div className="lg:hidden mt-12 pt-12 border-t border-white/10">
-              <div className="flex items-center gap-2 mb-6">
-                <span className="material-symbols-outlined text-indigo-400">forum</span>
-                <h3 className="font-bold text-lg text-slate-100 uppercase tracking-widest text-sm">Live Comments</h3>
+            <div className="lg:hidden mt-8 p-6 rounded-3xl bg-[#1c1c24]/50 border border-white/5 shadow-2xl overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-indigo-400">forum</span>
+                  <h3 className="font-bold text-slate-100 uppercase tracking-widest text-[11px]">Live Comments</h3>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Live Pulse</span>
+                </div>
               </div>
-              <div className="flex flex-col gap-6 mb-8">
-                {chatMessages.map(msg => {
-                  if (msg.isSystem) {
+
+              {/* Scrollable Message Area */}
+              <div 
+                className="flex-1 overflow-y-auto pr-2 mb-4 flex flex-col gap-5 custom-scrollbar-voice max-h-[380px]" 
+                ref={chatScrollRef}
+              >
+                {chatMessages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-slate-600 gap-3">
+                    <span className="material-symbols-outlined text-4xl opacity-20">bubble_chart</span>
+                    <p className="text-[11px] font-medium uppercase tracking-widest">Quiet in the void...</p>
+                  </div>
+                ) : (
+                  chatMessages.map(msg => {
+                    if (msg.isSystem) {
+                      return (
+                        <div key={msg.id} className="flex justify-center my-1">
+                          <span className="text-[10px] font-semibold px-3 py-1 rounded-full bg-white/5 text-slate-500 border border-white/5 uppercase tracking-tighter">
+                            {msg.text}
+                          </span>
+                        </div>
+                      );
+                    }
+                    
+                    const isMe = msg.userId === user?.uid;
                     return (
-                      <div key={msg.id} className="flex justify-center">
-                        <span className="text-[10px] font-semibold px-4 py-1.5 rounded-full bg-white/5 text-slate-400 border border-white/5">
-                          {msg.text.toUpperCase()}
-                        </span>
+                      <div key={msg.id} className={`flex gap-3 max-w-full ${isMe ? 'flex-row-reverse' : ''}`}>
+                        <div className={`w-8 h-8 rounded-full flex shrink-0 items-center justify-center text-xs font-bold text-white shadow-sm ${
+                          isMe ? 'bg-indigo-500 border border-indigo-400/50' : 'bg-slate-700/80 border border-slate-600'
+                        }`}>
+                          {(msg.username || "??").slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className={`flex flex-col min-w-0 flex-1 ${isMe ? 'items-end' : ''}`}>
+                          <div className={`flex items-baseline gap-2 mb-1 ${isMe ? 'flex-row-reverse' : ''}`}>
+                            <span className={`font-semibold text-[11px] ${isMe ? 'text-indigo-300' : 'text-slate-400'}`}>{isMe ? 'You' : msg.username}</span>
+                            <span className="text-[9px] text-slate-600 shrink-0 font-bold">12:00</span>
+                          </div>
+                          <div className={isMe 
+                               ? 'bg-indigo-600/30 border border-indigo-500/20 px-4 py-2 rounded-2xl rounded-tr-none text-slate-200 text-[13px] break-words whitespace-pre-wrap shadow-sm' 
+                               : 'text-[13px] text-slate-300 bg-white/[0.03] px-4 py-2 rounded-2xl rounded-tl-none border border-white/5 break-words whitespace-pre-wrap shadow-sm'}>
+                            {msg.text}
+                          </div>
+                        </div>
                       </div>
                     );
-                  }
-                  
-                  const isMe = msg.userId === user?.uid;
-                  return (
-                    <div key={msg.id} className={`flex gap-3 max-w-full ${isMe ? 'flex-row-reverse' : ''}`}>
-                      <div className={`w-8 h-8 rounded-full flex shrink-0 items-center justify-center text-xs font-bold text-white shadow-sm ${
-                        isMe ? 'bg-indigo-500 border border-indigo-400/50' : 'bg-slate-600 border border-slate-500'
-                      }`}>
-                        {(msg.username || "??").slice(0, 2).toUpperCase()}
-                      </div>
-                      <div className={`flex flex-col min-w-0 flex-1 ${isMe ? 'items-end' : ''}`}>
-                        <div className={`flex items-baseline gap-2 mb-1 ${isMe ? 'flex-row-reverse' : ''}`}>
-                          <span className={`font-semibold text-sm ${isMe ? 'text-indigo-300' : 'text-slate-300'}`}>{isMe ? 'You' : msg.username}</span>
-                          <span className="text-[10px] text-slate-500 shrink-0">Live</span>
-                        </div>
-                        <div className={isMe 
-                             ? 'bg-indigo-500/20 border border-indigo-400/30 px-4 py-2 rounded-2xl rounded-tr-none text-slate-100 text-[13px] break-words whitespace-pre-wrap inline-block [word-break:break-word] shadow-sm' 
-                             : 'text-[13px] text-slate-200 bg-white/5 px-4 py-2 rounded-2xl rounded-tl-none border border-white/5 break-words whitespace-pre-wrap inline-block [word-break:break-word] shadow-sm'}>
-                          {msg.text}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                  })
+                )}
               </div>
               
-              <div className="relative flex items-center bg-[#1c1c24] rounded-full p-1 border border-white/10">
+              {/* Still Input Bar */}
+              <div className="relative flex items-center bg-black/40 rounded-2xl p-1 border border-white/5 shadow-inner">
                 <input 
                   type="text"
                   value={chatInput}
                   onChange={e => setChatInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && sendChat()}
-                  placeholder="Message..."
-                  className="w-full bg-transparent py-3.5 pl-5 pr-12 text-sm text-slate-100 placeholder-slate-500 focus:outline-none transition-all"
+                  placeholder="Enter the void..."
+                  className="w-full bg-transparent py-3 pl-4 pr-12 text-sm text-slate-100 placeholder-slate-600 focus:outline-none transition-all"
                 />
                 <button 
                   onClick={sendChat}
-                  className="absolute right-2 w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white hover:bg-indigo-400 transition-colors shadow-md"
+                  className="absolute right-1 w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white hover:bg-indigo-500 transition-colors shadow-lg active:scale-95"
                 >
-                  <span className="material-symbols-outlined text-[18px]">send</span>
+                  <span className="material-symbols-outlined text-[20px]">send</span>
                 </button>
               </div>
             </div>
