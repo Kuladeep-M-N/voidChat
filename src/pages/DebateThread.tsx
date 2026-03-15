@@ -214,7 +214,7 @@ export default function DebateThread() {
   };
 
   const closeDebate = async () => {
-    if (!debate || debate.created_by !== user.uid) return;
+    if (!debate || (debate.created_by !== user?.uid && !profile?.is_admin)) return;
     
     const confirm = window.confirm('Are you sure you want to close this debate? This will determine the winner and lock further arguments forever.');
     if (!confirm) return;
@@ -234,7 +234,7 @@ export default function DebateThread() {
   };
 
   const deleteDebate = async () => {
-    if (!debate || debate.created_by !== user.uid) return;
+    if (!debate || (debate.created_by !== user?.uid && !profile?.is_admin)) return;
     if (!window.confirm('Are you sure you want to delete this debate?')) return;
 
     try {
@@ -301,7 +301,7 @@ export default function DebateThread() {
             </div>
           </div>
           <div className="flex items-center gap-6 text-slate-400">
-            {debate.created_by === user.uid && debate.status !== 'closed' && (
+            {((debate.created_by === user?.uid) || profile?.is_admin) && debate.status !== 'closed' && (
               <div className="flex items-center gap-2 mr-4 border-r border-white/10 pr-4">
                 <button 
                   onClick={closeDebate}

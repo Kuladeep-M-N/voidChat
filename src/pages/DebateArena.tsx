@@ -25,7 +25,10 @@ import {
   addDoc, 
   serverTimestamp,
   where,
-  limit
+  limit,
+  deleteDoc,
+  doc,
+  updateDoc
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
@@ -169,6 +172,38 @@ export default function DebateArena() {
       console.error('Error creating debate:', error);
     } finally {
       setCreating(false);
+    }
+  };
+
+  const deleteDebate = async (e: React.MouseEvent, debateId: string) => {
+    e.stopPropagation();
+    if (!window.confirm('Wipe this debate from existence? This cannot be undone.')) return;
+    
+    try {
+      await deleteDoc(doc(db, 'debates', debateId));
+      toast.success('Debate erased from the void.');
+    } catch (error: any) {
+      console.error('Error deleting debate:', error);
+      toast.error('Failed to erase debate: ' + error.message);
+    }
+  };
+
+  const closeDebate = async (e: React.MouseEvent, debate: Debate) => {
+    e.stopPropagation();
+    const confirm = window.confirm('Are you sure you want to close this debate? This will determine the winner and lock further arguments.');
+    if (!confirm) return;
+
+    const winner = debate.votes_a > debate.votes_b ? 'A' : 
+                   debate.votes_b > debate.votes_a ? 'B' : 'Draw';
+    
+    try {
+      await updateDoc(doc(db, 'debates', debate.id), {
+        status: 'closed',
+        winner
+      });
+      toast.success('Debate has been closed');
+    } catch (e: any) {
+      toast.error('Failed to close debate: ' + e.message);
     }
   };
 
@@ -332,10 +367,32 @@ export default function DebateArena() {
                     >
                       <div className="flex items-start justify-between mb-4">
                         <span className="px-2 py-0.5 bg-slate-500/10 text-slate-400 border border-slate-500/20 rounded-md text-[10px] font-black uppercase tracking-wider">
-                          {debate.status}
+                          {debate.category}
                         </span>
-                        {debate.status === 'closed' && <Lock size={14} className="text-purple-400" />}
-                        {debate.status === 'hot' && <Zap size={14} className="text-amber-500 fill-amber-500" />}
+                        <div className="flex items-center gap-2">
+                          {profile?.is_admin && (
+                            <div className="flex items-center gap-1.5">
+                              {debate.status !== 'closed' && (
+                                <button 
+                                  onClick={(e) => closeDebate(e, debate)}
+                                  className="p-1.5 rounded-lg bg-orange-500/10 text-orange-500 hover:bg-orange-500/20 transition-all"
+                                  title="Close Debate"
+                                >
+                                  <Lock size={14} />
+                                </button>
+                              )}
+                              <button 
+                                onClick={(e) => deleteDebate(e, debate.id)}
+                                className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all"
+                                title="Delete Debate"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          )}
+                          {debate.status === 'closed' && <Lock size={14} className="text-purple-400" />}
+                          {debate.status === 'hot' && <Zap size={14} className="text-amber-500 fill-amber-500" />}
+                        </div>
                       </div>
                       <h3 className="font-bold text-white text-lg mb-2 line-clamp-2 group-hover:text-blue-400 transition-colors">
                         {debate.title}
