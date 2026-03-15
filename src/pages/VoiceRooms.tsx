@@ -701,8 +701,8 @@ export default function VoiceRooms() {
               </div>
             )}
             {/* Inline Chat for Mobile */}
-            <div className="lg:hidden mt-8 p-6 rounded-3xl bg-[#1c1c24]/50 border border-white/5 shadow-2xl overflow-hidden flex flex-col">
-              <div className="flex items-center justify-between mb-6">
+            <div className="lg:hidden mt-8 px-6 py-4 rounded-3xl bg-[#1c1c24]/50 border border-white/5 shadow-2xl overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-indigo-400">forum</span>
                   <h3 className="font-bold text-slate-100 uppercase tracking-widest text-[11px]">Live Comments</h3>
