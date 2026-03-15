@@ -42,7 +42,7 @@ interface Confession {
   id: string;
   content: string;
   likes: number;
-  created_at: string;
+  created_at: any; // Handle string or Timestamp
   user_id: string;
   category: string;
 }
@@ -139,8 +139,11 @@ const getDraft = () => {
 const getColor = (seed: string) => COLORS[seed.charCodeAt(0) % COLORS.length];
 const getInitials = (seed: string) => seed.slice(0, 2).toUpperCase();
 
-const timeAgo = (date: string) => {
-  const diff = (Date.now() - new Date(date).getTime()) / 1000;
+const timeAgo = (date: any) => {
+  if (!date) return 'just now';
+  const d = date?.toDate ? date.toDate() : new Date(date);
+  const diff = (Date.now() - d.getTime()) / 1000;
+  if (isNaN(diff)) return 'just now';
   if (diff < 60) return 'just now';
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -150,8 +153,31 @@ const timeAgo = (date: string) => {
 const getCategoryMeta = (key: string) => CATEGORIES.find((item) => item.key === key) ?? CATEGORIES[CATEGORIES.length - 1];
 
 const getHeatScore = (confession: Confession, commentCount: number) => {
-  const ageInHours = Math.max((Date.now() - new Date(confession.created_at).getTime()) / 36e5, 1);
-  return confession.likes * 3 + commentCount * 4 + 18 / ageInHours;
+  const createdDate = confession.created_at?.toDate ? confession.created_at.toDate() : new Date(confession.created_at);
+  const ageInHours = Math.max((Date.now() - createdDate.getTime()) / 36e5, 1);
+  if (isNaN(ageInHours)) return 0;
+  return (confession.likes || 0) * 3 + (commentCount || 0) * 4 + 18 / ageInHours;
+};
+
+const calculateTrendScore = (confession: Confession, replies: number) => {
+  const reactions = confession.likes || 0;
+  const createdDate = confession.created_at?.toDate ? confession.created_at.toDate() : new Date(confession.created_at);
+  const ageInMinutes = (Date.now() - createdDate.getTime()) / (1000 * 60);
+  if (isNaN(ageInMinutes)) return 0;
+  // Weight recent activity (higher for newer posts)
+  const recencyWeight = Math.max(0, 100 - (ageInMinutes / 10));
+  return reactions + (replies * 3) + recencyWeight;
+};
+
+const getVibeInfo = (confession: Confession) => {
+  const vibes: Record<string, { label: string; emoji: string; color: string; level: number }> = {
+    random: { label: 'Spicy', emoji: '🔥', color: 'from-orange-500 to-rose-500', level: 8 },
+    crush: { label: 'Romantic', emoji: '❤️', color: 'from-rose-500 to-pink-500', level: 7 },
+    funny: { label: 'Funny', emoji: '😂', color: 'from-yellow-400 to-amber-500', level: 9 },
+    academic: { label: 'Awkward', emoji: '😳', color: 'from-sky-500 to-indigo-600', level: 5 },
+    default: { label: 'Sad', emoji: '💔', color: 'from-indigo-600 to-slate-700', level: 4 }
+  };
+  return vibes[confession.category] || vibes.random;
 };
 
 function CommentPanel({
@@ -413,6 +439,12 @@ export default function Confessions() {
   const [reportingContent, setReportingContent] = useState<{ type: 'confession' | 'user'; id: string } | null>(null);
   const [reportCounts, setReportCounts] = useState<Record<string, number>>({});
   const deferredSearch = useDeferredValue(search);
+  const trendingPost = useMemo(() => {
+    if (confessions.length === 0) return null;
+    return [...confessions].sort((a, b) => 
+      calculateTrendScore(b, commentCounts[b.id] || 0) - calculateTrendScore(a, commentCounts[a.id] || 0)
+    )[0];
+  }, [confessions, commentCounts]);
 
   useEffect(() => {
     if (!loading && !user) navigate('/join');
@@ -713,6 +745,82 @@ export default function Confessions() {
                     {trendingCategory?.label ?? 'Random'} active
                   </div>
                 </div>
+
+                <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {/* Trending Box */}
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md transition-all hover:border-orange-500/30"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+                    <div className="relative z-10">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-orange-500/20 text-orange-400">
+                          <Flame size={16} className="animate-pulse" />
+                        </div>
+                        <h4 className="text-[11px] font-black uppercase tracking-[0.15em] text-white">Trending</h4>
+                      </div>
+                      
+                      {trendingPost ? (
+                        <div className="mt-3">
+                          <p className="line-clamp-2 text-xs italic leading-relaxed text-slate-300">
+                            "{trendingPost.content}"
+                          </p>
+                          <div className="mt-3 flex items-center justify-between text-[10px]">
+                            <span className="font-bold text-orange-400/80 uppercase tracking-widest">
+                              {trendingPost.category}
+                            </span>
+                            <div className="flex items-center gap-2 text-slate-500">
+                              <span className="flex items-center gap-1">
+                                <Flame size={10} /> {trendingPost.likes}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <MessageCircle size={10} /> {commentCounts[trendingPost.id] || 0}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-4 text-xs text-slate-500">Finding trends...</p>
+                      )}
+                    </div>
+                  </motion.div>
+
+                  {/* Vibe Box */}
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.1 }}
+                    className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md transition-all hover:border-purple-500/30"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+                    <div className="relative z-10">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[11px] font-black uppercase tracking-[0.15em] text-slate-500">Vibe Check</div>
+                        <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r ${spotlight ? getVibeInfo(spotlight).color : 'from-slate-500 to-slate-700'} text-[9px] font-black text-white uppercase tracking-widest`}>
+                          <span>{spotlight ? getVibeInfo(spotlight).emoji : '✨'}</span>
+                          <span>{spotlight ? getVibeInfo(spotlight).label : 'Calm'}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-8">
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: spotlight ? `${getVibeInfo(spotlight).level * 10}%` : '0%' }}
+                            transition={{ duration: 1.2, ease: "easeOut" }}
+                            className={`h-full bg-gradient-to-r ${spotlight ? getVibeInfo(spotlight).color : 'from-slate-500 to-slate-700'}`}
+                          />
+                        </div>
+                        <div className="mt-2 flex justify-between text-[9px] font-bold uppercase tracking-widest text-slate-600">
+                          <span>Mellow</span>
+                          <span>Intense</span>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                </div>
               </div>
 
               <div className="flex flex-col gap-4">
@@ -785,7 +893,7 @@ export default function Confessions() {
               </div>
             </div>
 
-            <div className="mb-4 flex flex-wrap gap-2">
+            <div className="mb-4 flex flex-row gap-2 overflow-x-auto pb-2 scrollbar-hide sm:flex-wrap sm:pb-0">
               {CATEGORIES.slice(1).map((item) => (
                 <button
                   key={item.key}
@@ -925,9 +1033,9 @@ export default function Confessions() {
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="flex flex-row flex-nowrap gap-3 overflow-x-auto pb-4 scrollbar-hide sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:pb-0">
               {activeCategories.map((item) => (
-                <div key={item.key} className="confession-mini-panel">
+                <div key={item.key} className="confession-mini-panel min-w-[240px] shrink-0 sm:min-w-0">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-white">{item.label}</span>
                     <span className="rounded-full px-2 py-1 text-[11px]" style={{ backgroundColor: `${item.accent}20`, color: item.accent }}>

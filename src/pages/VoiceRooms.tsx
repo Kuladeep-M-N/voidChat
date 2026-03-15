@@ -141,6 +141,7 @@ export default function VoiceRooms() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const liveHubsRef = useRef<HTMLDivElement>(null);
 
   // Reactions & Interactions
   const [floatingReactions, setFloatingReactions] = useState<{ id: string; emoji: string; userId: string }[]>([]);
@@ -468,13 +469,24 @@ export default function VoiceRooms() {
   // Aggregate activity from rooms
   useEffect(() => {
     if (rooms.length > 0) {
-      const latest = rooms.slice(0, 3).map(r => ({
-        id: `act-${r.id}`,
-        text: `Room "${r.name}" is looking for listeners`,
-        time: 'Just now',
-        icon: <Mic2 size={12} className="text-violet-400" />
-      }));
+      const activeOnly = rooms.filter(r => r.status === 'active' || !r.status);
+      const latest = activeOnly.slice(0, 3).map(r => {
+        let timeStr = 'Just now';
+        if (r.created_at) {
+          const date = r.created_at.toDate ? r.created_at.toDate() : new Date(r.created_at?.seconds * 1000);
+          timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+        }
+        
+        return {
+          id: `act-${r.id}`,
+          text: `Room "${r.name}" is looking for listeners`,
+          time: timeStr,
+          icon: <Mic2 size={12} className="text-violet-400" />
+        };
+      });
       setActivityFeed(latest);
+    } else {
+      setActivityFeed([]);
     }
   }, [rooms]);
 
@@ -581,7 +593,7 @@ export default function VoiceRooms() {
 
 
 
-  // ─────────────────────────── RENDER LOGIC ───────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ RENDER LOGIC â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (!user) return null;
 
   const stageUsers = participants.filter(p => !p.muted || p.speaking);
@@ -593,7 +605,7 @@ export default function VoiceRooms() {
       <div className="fixed bottom-6 right-6 z-50 font-display">
         <div className="bg-room-dark/95 backdrop-blur-xl border border-white/10 p-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-4 w-72">
           <div className={`w-12 h-12 rounded-full flex items-center justify-center relative overflow-hidden shrink-0 border-2 ${isSpeaking && !muted ? 'border-accent-purple speaking-glow' : 'border-white/10'}`}>
-            <span className="text-xl relative z-10">🎙️</span>
+            <span className="text-xl relative z-10">ðŸŽ™ï¸</span>
           </div>
 
           <div className="flex-1 min-w-0">
@@ -638,7 +650,7 @@ export default function VoiceRooms() {
               <h1 className="text-xl font-bold tracking-tight text-white">{activeRoom.name}</h1>
               <div className="flex items-center gap-2 text-sm text-slate-400">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"></span>
-                <span>Live • {participants.length} participants</span>
+                <span>Live â€¢ {participants.length} participants</span>
               </div>
             </div>
           </div>
@@ -707,7 +719,7 @@ export default function VoiceRooms() {
                         )}
                       </div>
                       <span className={`${active ? 'font-semibold text-sm text-sky-100' : 'font-medium text-sm text-slate-400'}`}>
-                        {isMe ? 'You' : p.username} {isHost && !isMe ? '★' : ''}
+                        {isMe ? 'You' : p.username} {isHost && !isMe ? 'â˜…' : ''}
                       </span>
                     </div>
                   );
@@ -932,7 +944,7 @@ export default function VoiceRooms() {
                     exit={{ opacity: 0, y: 10, scale: 0.9 }}
                     className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 bg-[#1c1c24] border border-white/10 rounded-2xl p-2 flex gap-2 shadow-2xl z-50"
                   >
-                    {['❤️', '🔥', '👏', '😂', '😮', '🙌'].map(emoji => (
+                    {['â¤ï¸', 'ðŸ”¥', 'ðŸ‘', 'ðŸ˜‚', 'ðŸ˜®', 'ðŸ™Œ'].map(emoji => (
                       <button 
                         key={emoji}
                         onClick={() => sendReaction(emoji)}
@@ -1060,29 +1072,35 @@ export default function VoiceRooms() {
             
             {/* Overview Stats Row */}
             {/* Interactive Engagement Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div className="grid grid-cols-3 gap-2 md:gap-4 lg:gap-6">
               {/* Card 1: Start Room */}
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="p-6 rounded-3xl bg-gradient-to-br from-violet-500/10 to-transparent border border-white/5 glass-hover group relative overflow-hidden"
+                className="relative overflow-hidden group rounded-[1.2rem] border border-white/5 bg-gradient-to-br from-violet-500/10 to-transparent p-3 shadow-lg backdrop-blur-xl transition-all md:rounded-[1.6rem] md:p-6 glass-hover"
               >
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center border border-violet-500/20 group-hover:scale-110 transition-transform relative">
-                    <Mic2 className="text-violet-400 relative z-10" size={20} />
-                    <div className="absolute inset-0 bg-violet-400/20 blur-lg rounded-full animate-pulse" />
+                <div className="relative flex flex-col items-center text-center gap-1 md:flex-row md:items-start md:justify-between md:text-left md:gap-4">
+                  <div className="order-2 md:order-1">
+                    <p className="font-mono text-[8px] uppercase tracking-wider text-white/38 md:hidden">Start</p>
+                    <p className="hidden font-mono text-[11px] uppercase tracking-[0.26em] text-white/38 md:block">Host</p>
+                    <h3 className="mt-0.5 text-[10px] font-bold text-white md:mt-3 md:text-lg">Start a Voice Room</h3>
+                    <p className="hidden mt-2 text-sm text-slate-500 leading-relaxed md:block">Host a topic and invite people to join the conversation.</p>
+                    <p className="mt-1 text-[8px] text-slate-500 md:hidden">Host a topic</p>
+                    
+                    <button 
+                      onClick={() => setShowCreate(true)}
+                      className="mt-2 w-full py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500 text-violet-400 hover:text-white border border-violet-500/20 font-bold text-[8px] transition-all flex items-center justify-center gap-1.5 group/btn md:mt-6 md:py-2.5 md:rounded-xl md:text-xs"
+                    >
+                      <span>Create</span>
+                      <div className="w-1 h-1 rounded-full bg-violet-400 group-hover/btn:bg-white animate-pulse md:w-1.5 md:h-1.5" />
+                    </button>
                   </div>
-                  <Plus size={14} className="text-slate-600 group-hover:text-violet-400 transition-colors" />
+                  
+                  <div className="order-1 mb-1 rounded-lg border border-violet-500/20 bg-violet-500/10 p-2 md:order-2 md:mb-0 md:rounded-2xl md:p-3">
+                    <Mic2 className="h-3.5 w-3.5 text-violet-400 md:h-5 md:w-5" />
+                    <div className="absolute inset-0 bg-violet-400/20 blur-lg rounded-full animate-pulse opacity-50" />
+                  </div>
                 </div>
-                <h3 className="text-lg font-bold text-white mb-1">Start a Voice Room</h3>
-                <p className="text-[11px] text-slate-500 leading-relaxed mb-6">Host a topic and invite people to join the conversation.</p>
-                <button 
-                  onClick={() => setShowCreate(true)}
-                  className="w-full py-2.5 rounded-xl bg-violet-500/10 hover:bg-violet-500 text-violet-400 hover:text-white border border-violet-500/20 font-bold text-xs transition-all flex items-center justify-center gap-2 group/btn"
-                >
-                  Create Room
-                  <div className="w-1.5 h-1.5 rounded-full bg-violet-400 group-hover/btn:bg-white animate-pulse" />
-                </button>
               </motion.div>
 
               {/* Card 2: Hot Topics */}
@@ -1090,37 +1108,35 @@ export default function VoiceRooms() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="p-6 rounded-3xl bg-gradient-to-br from-blue-500/10 to-transparent border border-white/5 glass-hover group"
+                className="relative overflow-hidden group rounded-[1.2rem] border border-white/5 bg-gradient-to-br from-blue-500/10 to-transparent p-3 shadow-lg backdrop-blur-xl transition-all md:rounded-[1.6rem] md:p-6 glass-hover"
               >
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
-                    <Flame className="text-blue-400" size={20} />
+                <div className="relative flex flex-col items-center text-center gap-1 md:flex-row md:items-start md:justify-between md:text-left md:gap-4">
+                  <div className="order-2 md:order-1 w-full">
+                    <p className="font-mono text-[8px] uppercase tracking-wider text-white/38 md:hidden">Live</p>
+                    <p className="hidden font-mono text-[11px] uppercase tracking-[0.26em] text-white/38 md:block">Trending</p>
+                    <h3 className="mt-0.5 text-[10px] font-bold text-white md:mt-3 md:text-lg">Hot Topics</h3>
+                    
+                    <div className="mt-2 flex flex-wrap justify-center gap-1 md:mt-4 md:justify-start md:gap-2">
+                      {hotTopics.length > 0 ? (
+                        hotTopics.slice(0, 2).map((room, idx) => (
+                          <button 
+                            key={room.id}
+                            onClick={() => joinRoom(room)}
+                            className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/5 text-[7px] font-medium text-slate-400 hover:text-blue-300 hover:bg-blue-500/10 hover:border-blue-500/30 transition-all flex items-center gap-1 group/topic md:px-3 md:py-1.5 md:rounded-lg md:text-[10px]"
+                          >
+                            <MessageSquare size={8} className="group-hover/topic:text-blue-400 transition-colors md:size-10" />
+                            <span className="truncate max-w-[40px] md:max-w-none">{room.name}</span>
+                          </button>
+                        ))
+                      ) : (
+                        <p className="text-[7px] text-slate-600 font-medium italic md:text-[10px]">Scanning...</p>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex gap-1">
-                    <span className="w-1 h-1 rounded-full bg-blue-400 animate-bounce [animation-delay:-0.3s]" />
-                    <span className="w-1 h-1 rounded-full bg-blue-400 animate-bounce [animation-delay:-0.15s]" />
-                    <span className="w-1 h-1 rounded-full bg-blue-400 animate-bounce" />
+                  
+                  <div className="order-1 mb-1 rounded-lg border border-blue-500/20 bg-blue-500/10 p-2 md:order-2 md:mb-0 md:rounded-2xl md:p-3">
+                    <Flame className="h-3.5 w-3.5 text-blue-400 md:h-5 md:w-5" />
                   </div>
-                </div>
-                <h3 className="text-lg font-bold text-white mb-3">Hot Topics</h3>
-                <div className="flex flex-wrap gap-2">
-                  {hotTopics.length > 0 ? (
-                    hotTopics.map((room, idx) => (
-                      <button 
-                        key={room.id}
-                        onClick={() => joinRoom(room)}
-                        className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-medium text-slate-400 hover:text-blue-300 hover:bg-blue-500/10 hover:border-blue-500/30 transition-all flex items-center gap-1.5 group/topic"
-                      >
-                        <MessageSquare size={10} className="group-hover/topic:text-blue-400 transition-colors" />
-                        {room.name}
-                        {idx === 0 && room.participantCount > 0 && (
-                          <Flame size={10} className="text-orange-400 animate-pulse" />
-                        )}
-                      </button>
-                    ))
-                  ) : (
-                    <p className="text-[10px] text-slate-600 font-medium italic">Scanning for signals...</p>
-                  )}
                 </div>
               </motion.div>
 
@@ -1129,30 +1145,36 @@ export default function VoiceRooms() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="p-6 rounded-3xl bg-gradient-to-br from-amber-500/10 to-transparent border border-white/5 glass-hover group"
+                className="relative overflow-hidden group rounded-[1.2rem] border border-white/5 bg-gradient-to-br from-amber-500/10 to-transparent p-3 shadow-lg backdrop-blur-xl transition-all md:rounded-[1.6rem] md:p-6 glass-hover"
               >
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-                    <Dices className="text-amber-400" size={20} />
+                <div className="relative flex flex-col items-center text-center gap-1 md:flex-row md:items-start md:justify-between md:text-left md:gap-4">
+                  <div className="order-2 md:order-1">
+                    <p className="font-mono text-[8px] uppercase tracking-wider text-white/38 md:hidden">Random</p>
+                    <p className="hidden font-mono text-[11px] uppercase tracking-[0.26em] text-white/38 md:block">Shuffle</p>
+                    <h3 className="mt-0.5 text-[10px] font-bold text-white md:mt-3 md:text-lg">Join Random</h3>
+                    <p className="hidden mt-2 text-sm text-slate-500 leading-relaxed md:block">Jump into a random live discussion happening now.</p>
+                    <p className="mt-1 text-[8px] text-slate-500 md:hidden">Jump in</p>
+                    
+                    <button 
+                      onClick={() => {
+                        const activeRooms = rooms.filter(r => !r.status || r.status === 'active');
+                        if (activeRooms.length > 0) {
+                          joinRoom(activeRooms[Math.floor(Math.random() * activeRooms.length)]);
+                        } else {
+                          setShowNoRoomsOverlay(true);
+                        }
+                      }}
+                      className="mt-2 w-full py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500 text-amber-400 hover:text-white border border-amber-500/20 font-bold text-[8px] transition-all flex items-center justify-center gap-1.5 group/dice md:mt-6 md:py-2.5 md:rounded-xl md:text-xs"
+                    >
+                      <Dices size={10} className="group-hover/dice:rotate-180 transition-transform duration-500 md:size-14" />
+                      <span>Shuffle</span>
+                    </button>
                   </div>
-                  <Zap size={14} className="text-amber-500/40 animate-pulse" />
+                  
+                  <div className="order-1 mb-1 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 md:order-2 md:mb-0 md:rounded-2xl md:p-3">
+                    <Dices className="h-3.5 w-3.5 text-amber-400 md:h-5 md:w-5" />
+                  </div>
                 </div>
-                <h3 className="text-lg font-bold text-white mb-1">Join Random Room</h3>
-                <p className="text-[11px] text-slate-500 leading-relaxed mb-6">Jump into a random live discussion happening now.</p>
-                <button 
-                  onClick={() => {
-                    const activeRooms = rooms.filter(r => !r.status || r.status === 'active');
-                    if (activeRooms.length > 0) {
-                      joinRoom(activeRooms[Math.floor(Math.random() * activeRooms.length)]);
-                    } else {
-                      setShowNoRoomsOverlay(true);
-                    }
-                  }}
-                  className="w-full py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500 text-amber-400 hover:text-white border border-amber-500/20 font-bold text-xs transition-all flex items-center justify-center gap-2 group/dice"
-                >
-                  <Dices size={14} className="group-hover/dice:rotate-180 transition-transform duration-500" />
-                  Random Join
-                </button>
               </motion.div>
             </div>
 
@@ -1196,7 +1218,7 @@ export default function VoiceRooms() {
                         {trendingRoom.name}
                       </h2>
                       <p className="text-slate-400 text-sm font-medium line-clamp-1 max-w-xl">
-                        Hosted by <span className="text-indigo-300">@{trendingRoom.creator_name || 'anonymous'}</span> • Join over {trendingRoom.participantCount || 0} people discussing this topic in real-time.
+                        Hosted by <span className="text-indigo-300">@{trendingRoom.creator_name || 'anonymous'}</span> â€¢ Join over {trendingRoom.participantCount || 0} people discussing this topic in real-time.
                       </p>
                     </div>
                   </div>
@@ -1210,7 +1232,7 @@ export default function VoiceRooms() {
             )}
 
             {/* Live Hubs Section */}
-            <section className="space-y-6">
+            <section ref={liveHubsRef} className="space-y-6 scroll-mt-24">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
@@ -1292,7 +1314,7 @@ export default function VoiceRooms() {
                           <div className="flex items-center gap-2 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
                             <Users size={12} />
                             <span>{room.participantCount || 0} LISTENERS</span>
-                            <span className="mx-1 opacity-20">•</span>
+                            <span className="mx-1 opacity-20">â€¢</span>
                             <span>Live Now</span>
                           </div>
                         </div>
@@ -1316,58 +1338,6 @@ export default function VoiceRooms() {
                 </div>
               )}
             </section>
-
-            {/* History Section */}
-            {pastRoomsList.length > 0 && (
-              <section className="space-y-6 pt-4">
-                <div className="flex items-center justify-between opacity-50">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-slate-500/10 border border-slate-500/20 flex items-center justify-center">
-                      <History size={16} className="text-slate-400" />
-                    </div>
-                    <h2 className="text-lg font-black text-white tracking-tight uppercase">Past Dialogues</h2>
-                  </div>
-                  <div className="h-px flex-1 bg-white/5 mx-6" />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {pastRoomsList.sort((a,b) => (b.ended_at?.seconds || 0) - (a.ended_at?.seconds || 0)).slice(0, 6).map((room, i) => (
-                    <div key={room.id}
-                      className="group relative p-5 rounded-3xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-all opacity-40 hover:opacity-100">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center grayscale opacity-50 group-hover:grayscale-0 group-hover:opacity-100 transition-all">
-                          <Mic2 size={18} className="text-slate-400" />
-                        </div>
-                        <div className="flex items-center gap-2">
-                           {profile?.is_admin && (
-                            <button 
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                if (window.confirm('Delete archive?')) {
-                                  try {
-                                    await deleteDoc(doc(db, 'voice_rooms', room.id));
-                                    setRooms(prev => prev.filter(r => r.id !== room.id));
-                                  } catch (error: any) { alert(error.message); }
-                                }
-                              }} 
-                              className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white transition-all opacity-0 group-hover:opacity-100"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          )}
-                          <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest border border-white/10 px-2.5 py-1 rounded-full">Archived</span>
-                        </div>
-                      </div>
-                      <h3 className="font-bold text-slate-300 text-sm mb-2 truncate group-hover:text-white transition-colors">{room.name}</h3>
-                      <div className="space-y-1">
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Started: {new Date(room.created_at?.seconds * 1000).toLocaleDateString()}</p>
-                        <p className="text-[9px] text-slate-600 font-medium">Topic host: @{room.creator_name || 'void'}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
           </div>
 
           {/* Right Column: Activity Panel */}
@@ -1404,7 +1374,10 @@ export default function VoiceRooms() {
                     ))}
                   </div>
 
-                  <button className="w-full mt-8 py-3 rounded-2xl bg-white/5 border border-white/10 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:bg-white/10 hover:text-white transition-all">
+                  <button 
+                    onClick={() => liveHubsRef.current?.scrollIntoView({ behavior: 'smooth' })}
+                    className="w-full mt-8 py-3 rounded-2xl bg-white/5 border border-white/10 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:bg-white/10 hover:text-white transition-all"
+                  >
                     View Live Events
                   </button>
                 </div>
@@ -1422,6 +1395,61 @@ export default function VoiceRooms() {
              </div>
           </div>
         </div>
+
+        {/* Universal History Section (Absolute Bottom) */}
+        {pastRoomsList.length > 0 && (
+          <section className="mt-20 pt-12 border-t border-white/5 space-y-10">
+            <div className="flex items-center justify-between opacity-50">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-slate-500/10 border border-slate-500/20 flex items-center justify-center">
+                  <History size={20} className="text-slate-400" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-white tracking-tight uppercase">Past Dialogues</h2>
+                  <p className="text-[10px] text-slate-500 font-bold tracking-widest uppercase mt-1">Recently closed sessions</p>
+                </div>
+              </div>
+              <div className="h-px flex-1 bg-gradient-to-r from-white/5 to-transparent mx-8 hidden md:block" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {pastRoomsList.sort((a,b) => (b.ended_at?.seconds || 0) - (a.ended_at?.seconds || 0)).slice(0, 8).map((room, i) => (
+                <div key={room.id}
+                  className="group relative p-6 rounded-[2rem] border border-white/5 bg-[#14142b]/40 hover:bg-[#1c1c3d]/60 transition-all opacity-60 hover:opacity-100 glass-hover">
+                  <div className="flex items-center justify-between mb-5">
+                    <div className="w-10 h-10 rounded-2xl bg-slate-800 flex items-center justify-center grayscale opacity-50 group-hover:grayscale-0 group-hover:opacity-100 transition-all shadow-inner">
+                      <Mic2 size={20} className="text-slate-400" />
+                    </div>
+                    <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest border border-white/10 px-3 py-1.5 rounded-full bg-black/20">Archived</span>
+                  </div>
+                  <h3 className="font-bold text-slate-200 text-sm mb-3 truncate group-hover:text-white transition-colors">{room.name}</h3>
+                  <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold uppercase tracking-tight pt-4 border-t border-white/5">
+                    <div className="flex items-center gap-2">
+                       <Clock size={10} className="text-slate-600" />
+                       <span>{new Date(room.created_at?.seconds * 1000).toLocaleDateString()}</span>
+                    </div>
+                    {profile?.is_admin && (
+                      <button 
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (window.confirm('Delete archive?')) {
+                            try {
+                              await deleteDoc(doc(db, 'voice_rooms', room.id));
+                              setRooms(prev => prev.filter(r => r.id !== room.id));
+                            } catch (error: any) { alert(error.message); }
+                          }
+                        }} 
+                        className="w-8 h-8 flex items-center justify-center rounded-xl bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
 
       <AnimatePresence>
@@ -1441,10 +1469,8 @@ export default function VoiceRooms() {
                   animate={{ y: [0, -8, 0] }}
                   transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
                 >
-                  {/* Outer Glow Ring */}
                   <div className="absolute inset-0 rounded-[28px] bg-gradient-to-br from-violet-500/20 to-indigo-600/20 opacity-50 transition-opacity" />
                   
-                  {/* Soundwave Bars Left */}
                   <div className="absolute left-1 flex items-end gap-[2px] h-6">
                     {[0.4, 0.7, 0.5].map((h, i) => (
                       <motion.div 
@@ -1458,7 +1484,6 @@ export default function VoiceRooms() {
 
                   <Mic size={32} className="text-white relative z-10 drop-shadow-[0_0_8px_rgba(167,139,250,0.5)]" />
 
-                  {/* Soundwave Bars Right */}
                   <div className="absolute right-1 flex items-end gap-[2px] h-6">
                     {[0.6, 0.8, 0.4].map((h, i) => (
                       <motion.div 
@@ -1513,13 +1538,12 @@ export default function VoiceRooms() {
           </motion.div>
         )}
       </AnimatePresence>
+
       <AnimatePresence>
         {showNoRoomsOverlay && (
           <motion.div 
             className="fixed inset-0 z-[110] flex items-center justify-center px-4 bg-black/80 backdrop-blur-xl"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={(e) => { if (e.target === e.currentTarget) setShowNoRoomsOverlay(false); }}
           >
             <motion.div 
@@ -1529,7 +1553,6 @@ export default function VoiceRooms() {
               exit={{ scale: 0.9, opacity: 0, y: 30 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             >
-              {/* Background Glows */}
               <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 blur-3xl -translate-y-1/2 translate-x-1/2" />
               <div className="absolute bottom-0 left-0 w-32 h-32 bg-amber-500/5 blur-3xl translate-y-1/2 -translate-x-1/2" />
 
@@ -1570,3 +1593,4 @@ export default function VoiceRooms() {
     </div>
   );
 }
+
