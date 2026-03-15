@@ -589,12 +589,6 @@ export default function VoiceRooms() {
           </div>
           <div className="flex items-center gap-3">
             <button 
-              onClick={() => setShowChat(!showChat)}
-              className="lg:hidden w-10 h-10 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 flex items-center justify-center text-slate-200 shadow-sm transition-all active:scale-95"
-            >
-              <span className="material-symbols-outlined text-lg">group</span>
-            </button>
-            <button 
               onClick={() => navigate('/dashboard')}
               className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 transition-colors text-sm font-semibold text-slate-200 shadow-sm"
             >
@@ -706,20 +700,69 @@ export default function VoiceRooms() {
                 </div>
               </div>
             )}
+            {/* Inline Chat for Mobile */}
+            <div className="lg:hidden mt-12 pt-12 border-t border-white/10">
+              <div className="flex items-center gap-2 mb-6">
+                <span className="material-symbols-outlined text-indigo-400">forum</span>
+                <h3 className="font-bold text-lg text-slate-100 uppercase tracking-widest text-sm">Live Comments</h3>
+              </div>
+              <div className="flex flex-col gap-6 mb-8">
+                {chatMessages.map(msg => {
+                  if (msg.isSystem) {
+                    return (
+                      <div key={msg.id} className="flex justify-center">
+                        <span className="text-[10px] font-semibold px-4 py-1.5 rounded-full bg-white/5 text-slate-400 border border-white/5">
+                          {msg.text.toUpperCase()}
+                        </span>
+                      </div>
+                    );
+                  }
+                  
+                  const isMe = msg.userId === user?.uid;
+                  return (
+                    <div key={msg.id} className={`flex gap-3 max-w-full ${isMe ? 'flex-row-reverse' : ''}`}>
+                      <div className={`w-8 h-8 rounded-full flex shrink-0 items-center justify-center text-xs font-bold text-white shadow-sm ${
+                        isMe ? 'bg-indigo-500 border border-indigo-400/50' : 'bg-slate-600 border border-slate-500'
+                      }`}>
+                        {(msg.username || "??").slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className={`flex flex-col min-w-0 flex-1 ${isMe ? 'items-end' : ''}`}>
+                        <div className={`flex items-baseline gap-2 mb-1 ${isMe ? 'flex-row-reverse' : ''}`}>
+                          <span className={`font-semibold text-sm ${isMe ? 'text-indigo-300' : 'text-slate-300'}`}>{isMe ? 'You' : msg.username}</span>
+                          <span className="text-[10px] text-slate-500 shrink-0">Live</span>
+                        </div>
+                        <div className={isMe 
+                             ? 'bg-indigo-500/20 border border-indigo-400/30 px-4 py-2 rounded-2xl rounded-tr-none text-slate-100 text-[13px] break-words whitespace-pre-wrap inline-block [word-break:break-word] shadow-sm' 
+                             : 'text-[13px] text-slate-200 bg-white/5 px-4 py-2 rounded-2xl rounded-tl-none border border-white/5 break-words whitespace-pre-wrap inline-block [word-break:break-word] shadow-sm'}>
+                          {msg.text}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              <div className="relative flex items-center bg-[#1c1c24] rounded-full p-1 border border-white/10">
+                <input 
+                  type="text"
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && sendChat()}
+                  placeholder="Message..."
+                  className="w-full bg-transparent py-3.5 pl-5 pr-12 text-sm text-slate-100 placeholder-slate-500 focus:outline-none transition-all"
+                />
+                <button 
+                  onClick={sendChat}
+                  className="absolute right-2 w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white hover:bg-indigo-400 transition-colors shadow-md"
+                >
+                  <span className="material-symbols-outlined text-[18px]">send</span>
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* Sidebar Chat */}
-          <aside className={`${showChat ? 'flex fixed inset-0 z-[100]' : 'hidden'} lg:flex lg:relative lg:inset-auto w-full lg:w-96 bg-[#181820]/70 backdrop-blur-xl border-l border-white/5 flex-col relative z-10 shadow-[-10px_0_30px_rgba(0,0,0,0.2)]`}>
-            {/* Header for mobile sidebar */}
-            <div className="lg:hidden flex items-center justify-between p-6 border-b border-white/5">
-              <h3 className="text-white font-bold">Room Management</h3>
-              <button 
-                onClick={() => setShowChat(false)}
-                className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white/70"
-              >
-                <span className="material-symbols-outlined">close</span>
-              </button>
-            </div>
+          {/* Sidebar Chat (Desktop Only) */}
+          <aside className="hidden lg:flex w-96 bg-[#181820]/70 backdrop-blur-xl border-l border-white/5 flex-col relative z-10 shadow-[-10px_0_30px_rgba(0,0,0,0.2)]">
             <div className="p-6 border-b border-white/5">
               <h3 className="font-bold flex items-center gap-2 text-lg text-slate-100">
                 <span className="material-symbols-outlined text-indigo-400">forum</span> Live Comments
