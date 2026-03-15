@@ -74,8 +74,10 @@ const getAlias = (userId: string, isMe: boolean) => {
   return `${adjective} ${noun} ${(hash % 900) + 100}`;
 };
 
-const timeAgo = (date: string) => {
-  const diff = (Date.now() - new Date(date).getTime()) / 1000;
+const timeAgo = (date: any) => {
+  if (!date) return 'just now';
+  const d = date?.toDate ? date.toDate() : new Date(date);
+  const diff = (Date.now() - d.getTime()) / 1000;
   if (diff < 10) return 'live now';
   if (diff < 60) return `${Math.floor(diff)}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
