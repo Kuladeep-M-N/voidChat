@@ -40,6 +40,7 @@ export default function ReportModal({ isOpen, onClose, targetType, targetId }: R
         target_id: targetId,
         reason,
         description,
+        status: 'pending',
         created_at: serverTimestamp()
       });
       setSubmitted(true);

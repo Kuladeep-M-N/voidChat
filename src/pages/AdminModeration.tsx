@@ -14,7 +14,10 @@ import {
   Filter,
   Search,
   MoreVertical,
-  Flag
+  Flag,
+  Bomb,
+  AlertOctagon,
+  Loader2
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { 
@@ -27,7 +30,8 @@ import {
   deleteDoc,
   getDoc,
   getDocs,
-  where
+  where,
+  writeBatch
 } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
@@ -53,6 +57,15 @@ export default function AdminModeration() {
   const [search, setSearch] = useState('');
   const [fetching, setFetching] = useState(true);
   const [nameCache] = useState<Map<string, string>>(new Map());
+  
+  // Nuclear Option State
+  const [showNuclearModal, setShowNuclearModal] = useState(false);
+  const [nuclearConfirmText, setNuclearConfirmText] = useState('');
+  const [isErasing, setIsErasing] = useState(false);
+  const [erasureProgress, setErasureProgress] = useState(0);
+  const [erasureTotal, setErasureTotal] = useState(0);
+
+  const CONFIRMATION_PHRASE = "ERASE ALL PLATFORM DATA";
 
   useEffect(() => {
     if (!loading && (!user || !profile?.is_admin)) {
@@ -175,8 +188,69 @@ export default function AdminModeration() {
     }
   };
 
+  const executeNuclearOption = async () => {
+    if (nuclearConfirmText !== CONFIRMATION_PHRASE) return;
+    
+    setIsErasing(true);
+    setErasureProgress(0);
+    
+    const collectionsToErase = [
+      'reports',
+      'shoutouts',
+      'confessions',
+      'confession_comments',
+      'messages',
+      'chat_rooms',
+      'debates',
+      'debate_arguments',
+      'qna_questions',
+      'qna_answers',
+      'polls',
+      'poll_votes',
+      'voice_rooms',
+      'notifications',
+      'online_users'
+    ];
+
+    setErasureTotal(collectionsToErase.length);
+    let successCount = 0;
+
+    try {
+      for (const colName of collectionsToErase) {
+        setErasureProgress(prev => prev + 1);
+        const colRef = collection(db, colName);
+        const snapshot = await getDocs(colRef);
+        
+        if (snapshot.empty) {
+          successCount++;
+          continue;
+        }
+
+        // Firestore batch limit is 500. For nuclear option, we'll process in chunks if needed.
+        const docs = snapshot.docs;
+        for (let i = 0; i < docs.length; i += 500) {
+          const batch = writeBatch(db);
+          const chunk = docs.slice(i, i + 500);
+          chunk.forEach(doc => batch.delete(doc.ref));
+          await batch.commit();
+        }
+        successCount++;
+      }
+
+      toast.success(`Platform wiped clean. ${successCount} collections erased.`);
+      setShowNuclearModal(false);
+      setNuclearConfirmText('');
+      window.location.reload();
+    } catch (error: any) {
+      console.error('Erasure error:', error);
+      toast.error(`Erasure failed: ${error.message}`);
+    } finally {
+      setIsErasing(false);
+    }
+  };
+
   const filteredReports = reports.filter(r => {
-    const matchesFilter = filter === 'all' || r.status === filter;
+    const matchesFilter = filter === 'all' || r.status === filter || (filter === 'pending' && !r.status);
     const matchesSearch = r.target_id.toLowerCase().includes(search.toLowerCase()) || 
                          r.reason.toLowerCase().includes(search.toLowerCase()) ||
                          r.description?.toLowerCase().includes(search.toLowerCase());
@@ -235,7 +309,7 @@ export default function AdminModeration() {
         {/* Stats Row */}
         <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
           {[
-            { label: 'Pending', count: reports.filter(r => r.status === 'pending').length, color: 'text-amber-400', bg: 'bg-amber-400/10' },
+            { label: 'Pending', count: reports.filter(r => r.status === 'pending' || !r.status).length, color: 'text-amber-400', bg: 'bg-amber-400/10' },
             { label: 'Resolved', count: reports.filter(r => r.status === 'resolved').length, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
             { label: 'Reviewed', count: reports.filter(r => r.status === 'reviewed').length, color: 'text-sky-400', bg: 'bg-sky-400/10' },
             { label: 'Total', count: reports.length, color: 'text-slate-400', bg: 'bg-white/5' }
@@ -285,11 +359,11 @@ export default function AdminModeration() {
                         {report.target_type}
                       </span>
                       <span className={`rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-[0.15em] ${
-                        report.status === 'pending' ? 'bg-amber-500/20 text-amber-400' :
+                        (report.status === 'pending' || !report.status) ? 'bg-amber-500/20 text-amber-400' :
                         report.status === 'resolved' ? 'bg-emerald-500/20 text-emerald-400' :
                         'bg-white/10 text-white/40'
                       }`}>
-                        {report.status}
+                        {report.status || 'pending'}
                       </span>
                       <div className="flex items-center gap-2 text-[10px] font-bold text-white/30">
                         <Clock size={12} />
@@ -365,6 +439,113 @@ export default function AdminModeration() {
             </div>
           )}
         </div>
+
+        {/* Danger Zone */}
+        <div className="mt-20 rounded-[2.5rem] border border-red-500/20 bg-red-500/5 p-8 md:p-12 overflow-hidden relative">
+          <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+            <Bomb size={120} className="text-red-500" />
+          </div>
+          <div className="relative z-10 max-w-2xl">
+            <div className="flex items-center gap-3 text-red-500 mb-4">
+              <AlertOctagon size={24} />
+              <h2 className="text-2xl font-black uppercase tracking-tight">Danger Zone</h2>
+            </div>
+            <p className="text-slate-300 mb-8 leading-relaxed">
+              The <span className="text-red-400 font-bold">Nuclear Option</span> will permanently erase every single piece of content on this platform—including messages, polls, shouts, and reports. User profiles will be preserved, but all their history will vanish forever.
+            </p>
+            <button 
+              onClick={() => setShowNuclearModal(true)}
+              className="group relative flex h-14 items-center gap-4 rounded-2xl bg-red-500 px-8 text-sm font-black uppercase tracking-widest text-white transition hover:bg-red-600 shadow-xl shadow-red-500/20 active:scale-[0.98]"
+            >
+              <Bomb size={18} className="animate-pulse" />
+              INITIATE GLOBAL ERASURE
+            </button>
+          </div>
+        </div>
+
+        {/* Nuclear Confirmation Modal */}
+        <AnimatePresence>
+          {showNuclearModal && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/90 backdrop-blur-2xl">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="w-full max-w-xl rounded-[2.5rem] border border-red-500/30 bg-[#0d0e12] p-8 md:p-12 shadow-[0_0_100px_rgba(239,68,68,0.2)]"
+              >
+                <div className="flex flex-col items-center text-center">
+                  <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-red-500/10 text-red-500 border border-red-500/20">
+                    <Bomb size={40} />
+                  </div>
+                  <h3 className="text-3xl font-black uppercase tracking-tight text-white mb-4">Are you absolutely sure?</h3>
+                  <p className="text-slate-400 mb-8 max-w-md">
+                    This action is <span className="text-red-400 font-bold">irreversible</span>. Once initiated, all platform data will be scrubbed from existance.
+                  </p>
+
+                  <div className="w-full space-y-6">
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-red-500/60 ml-1">
+                        Type <span className="text-red-500">{CONFIRMATION_PHRASE}</span> to confirm
+                      </label>
+                      <input 
+                        type="text" 
+                        placeholder="Type confirm phrase..."
+                        className="w-full h-16 rounded-2xl border border-white/10 bg-white/5 px-6 text-center text-lg font-bold text-white outline-none focus:border-red-500/50 transition caret-red-500"
+                        value={nuclearConfirmText}
+                        onChange={(e) => setNuclearConfirmText(e.target.value)}
+                        disabled={isErasing}
+                      />
+                    </div>
+
+                    {isErasing && (
+                      <div className="space-y-4">
+                        <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
+                          <motion.div 
+                            className="h-full bg-red-500"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(erasureProgress / erasureTotal) * 100}%` }}
+                          />
+                        </div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-red-400 animate-pulse">
+                          Wiping platform data... {erasureProgress}/{erasureTotal} regions cleaned
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                      <button
+                        onClick={() => {
+                          if (!isErasing) {
+                            setShowNuclearModal(false);
+                            setNuclearConfirmText('');
+                          }
+                        }}
+                        className="flex-1 h-14 rounded-2xl border border-white/10 text-sm font-bold text-white/40 hover:bg-white/5 hover:text-white transition disabled:opacity-30"
+                        disabled={isErasing}
+                      >
+                        ABORT
+                      </button>
+                      <button
+                        disabled={nuclearConfirmText !== CONFIRMATION_PHRASE || isErasing}
+                        onClick={executeNuclearOption}
+                        className="flex-1 h-14 rounded-2xl bg-red-500 flex items-center justify-center gap-3 text-sm font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-20 disabled:hover:bg-red-500 transition shadow-lg shadow-red-500/20"
+                      >
+                        {isErasing ? (
+                          <Loader2 className="animate-spin" size={18} />
+                        ) : (
+                          <>
+                            <Bomb size={18} />
+                            ERASE EVERYTHING
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
