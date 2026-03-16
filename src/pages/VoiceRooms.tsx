@@ -154,6 +154,7 @@ export default function VoiceRooms() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const remoteAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const pendingCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const joiningRef = useRef<boolean>(false);
 
   const isSpeaking = useSpeakingDetector(localStreamRef.current);
@@ -211,6 +212,7 @@ export default function VoiceRooms() {
     const existing = peersRef.current.get(remoteUserId);
     if (existing) return existing;
 
+    console.log(`[WebRTC] Creating peer for ${remoteUserId}, initiator: ${isInitiator}`);
     const iceServers = await getIceServers();
     const pc = new RTCPeerConnection({ iceServers });
 
@@ -221,14 +223,22 @@ export default function VoiceRooms() {
     }
 
     pc.ontrack = ({ streams }) => {
+      console.log(`[WebRTC] Receiving remote track from ${remoteUserId}`);
       let audio = remoteAudiosRef.current.get(remoteUserId);
       if (!audio) {
         audio = new Audio();
+        audio.id = `audio-${remoteUserId}`;
         audio.autoplay = true;
+        // Keep it hidden but in DOM
+        audio.style.display = 'none';
+        document.getElementById('remote-audio-container')?.appendChild(audio);
         remoteAudiosRef.current.set(remoteUserId, audio);
       }
+      
       if (audio.srcObject !== streams[0]) {
         audio.srcObject = streams[0];
+        // Explicit play call as some browsers block autoplay
+        audio.play().catch(e => console.warn(`[WebRTC] Autoplay blocked for ${remoteUserId}:`, e));
       }
     };
 
@@ -239,11 +249,17 @@ export default function VoiceRooms() {
       }
     };
 
+    pc.oniceconnectionstatechange = () => {
+      console.log(`[WebRTC] ICE state with ${remoteUserId}: ${pc.iceConnectionState}`);
+    };
+
     pc.onconnectionstatechange = () => {
+      console.log(`[WebRTC] Connection state with ${remoteUserId}: ${pc.connectionState}`);
       if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
         console.warn(`Connection to ${remoteUserId} ${pc.connectionState}. Closing.`);
         pc.close();
         peersRef.current.delete(remoteUserId);
+        pendingCandidatesRef.current.delete(remoteUserId);
         const audio = remoteAudiosRef.current.get(remoteUserId);
         if (audio) {
           audio.srcObject = null;
@@ -292,13 +308,7 @@ export default function VoiceRooms() {
     };
   }, [user, activeRoom, profile, muted, myRole, handRaised, isSpeaking]);
 
-  // Hand Raise Timeout
-  useEffect(() => {
-    if (handRaised) {
-      const timer = setTimeout(() => setHandRaised(false), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [handRaised]);
+  // Hand Raise Toggle (Manually controlled by user)
 
   // Reactions Listener
   useEffect(() => {
@@ -309,15 +319,15 @@ export default function VoiceRooms() {
 
     const unsubscribe = onChildAdded(reactionsRef, (snapshot) => {
       const data = snapshot.val();
-      if (data && Date.now() - data.timestamp < 10000) {
+      // Only show reactions from the last 5 seconds to avoid flooding on join
+      if (data && data.timestamp && (Date.now() - data.timestamp < 5000)) {
+        console.log(`[Interaction] Received reaction: ${data.emoji} from ${data.userId}`);
         const id = snapshot.key || Math.random().toString();
         setFloatingReactions(prev => [...prev, { id, emoji: data.emoji, userId: data.userId }]);
         setTimeout(() => {
           setFloatingReactions(prev => prev.filter(r => r.id !== id));
         }, 4000);
       }
-      // Cleanup old reactions periodically
-      remove(snapshot.ref);
     });
 
     return () => off(reactionsRef);
@@ -345,6 +355,13 @@ export default function VoiceRooms() {
           await pc.setLocalDescription(answer);
           const outRef = ref(rtdb, `signaling/${roomId}/${from}`);
           push(outRef, { from: user.uid, type: 'answer', data: answer });
+          
+          // Process queued candidates
+          const queued = pendingCandidatesRef.current.get(from) || [];
+          for (const cand of queued) {
+            await pc.addIceCandidate(new RTCIceCandidate(cand));
+          }
+          pendingCandidatesRef.current.delete(from);
         } catch (err) {
           console.error("Error handling offer:", err);
         }
@@ -353,18 +370,30 @@ export default function VoiceRooms() {
         if (pc) {
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(data));
+            
+            // Process queued candidates
+            const queued = pendingCandidatesRef.current.get(from) || [];
+            for (const cand of queued) {
+              await pc.addIceCandidate(new RTCIceCandidate(cand));
+            }
+            pendingCandidatesRef.current.delete(from);
           } catch (err) {
             console.error("Error handling answer:", err);
           }
         }
       } else if (type === 'candidate') {
         const pc = peersRef.current.get(from);
-        if (pc) {
+        if (pc && pc.remoteDescription) {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(data));
           } catch (err) {
             console.error("Error handling candidate:", err);
           }
+        } else {
+          // Queue candidate
+          const queued = pendingCandidatesRef.current.get(from) || [];
+          queued.push(data);
+          pendingCandidatesRef.current.set(from, queued);
         }
       }
     });
@@ -520,8 +549,14 @@ export default function VoiceRooms() {
 
   const createRoom = async () => {
     const name = newName.trim();
-    if (!name || !user) return;
+    if (!name || !user) {
+      toast.error('Please enter a room name');
+      return;
+    }
+    
     setCreating(true);
+    const toastId = toast.loading('Synchronizing voice field...');
+    
     try {
       const docRef = await addDoc(collection(db, 'voice_rooms'), {
         name,
@@ -530,12 +565,24 @@ export default function VoiceRooms() {
         created_at: serverTimestamp(),
         creator_name: profile?.anonymous_username || 'Anonymous'
       });
-      const room = { id: docRef.id, name, created_by: user.uid, created_at: new Date() };
-      joinRoom(room as VoiceRoom);
+      
+      const room = { 
+        id: docRef.id, 
+        name, 
+        created_by: user.uid, 
+        created_at: new Date(),
+        status: 'active'
+      };
+      
+      await joinRoom(room as VoiceRoom);
+      toast.success('Broadcast started!', { id: toastId });
+      setNewName(''); 
+      setShowCreate(false);
     } catch (err) {
       console.error('Create room error:', err);
+      toast.error('Failed to initialize voice field', { id: toastId });
     } finally {
-      setNewName(''); setShowCreate(false); setCreating(false);
+      setCreating(false);
     }
   };
 
@@ -582,6 +629,7 @@ export default function VoiceRooms() {
 
   const sendReaction = (emoji: string) => {
     if (!user || !activeRoom) return;
+    console.log(`[Interaction] Sending reaction: ${emoji}`);
     const reactionsRef = ref(rtdb, `reactions/${activeRoom.id}`);
     push(reactionsRef, {
       emoji,
@@ -593,7 +641,7 @@ export default function VoiceRooms() {
 
 
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ RENDER LOGIC â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ------------------------------------ RENDER LOGIC ------------------------------------
   if (!user) return null;
 
   const stageUsers = participants.filter(p => !p.muted || p.speaking);
@@ -605,7 +653,7 @@ export default function VoiceRooms() {
       <div className="fixed bottom-6 right-6 z-50 font-display">
         <div className="bg-room-dark/95 backdrop-blur-xl border border-white/10 p-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-4 w-72">
           <div className={`w-12 h-12 rounded-full flex items-center justify-center relative overflow-hidden shrink-0 border-2 ${isSpeaking && !muted ? 'border-accent-purple speaking-glow' : 'border-white/10'}`}>
-            <span className="text-xl relative z-10">ðŸŽ™ï¸</span>
+            <Mic size={20} className="relative z-10 text-white" />
           </div>
 
           <div className="flex-1 min-w-0">
@@ -650,7 +698,7 @@ export default function VoiceRooms() {
               <h1 className="text-xl font-bold tracking-tight text-white">{activeRoom.name}</h1>
               <div className="flex items-center gap-2 text-sm text-slate-400">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"></span>
-                <span>Live â€¢ {participants.length} participants</span>
+                <span>Live • {participants.length} participants</span>
               </div>
             </div>
           </div>
@@ -719,7 +767,7 @@ export default function VoiceRooms() {
                         )}
                       </div>
                       <span className={`${active ? 'font-semibold text-sm text-sky-100' : 'font-medium text-sm text-slate-400'}`}>
-                        {isMe ? 'You' : p.username} {isHost && !isMe ? 'â˜…' : ''}
+                        {isMe ? 'You' : p.username} {isHost && !isMe ? '★' : ''}
                       </span>
                     </div>
                   );
@@ -911,7 +959,7 @@ export default function VoiceRooms() {
           </aside>
 
           {/* Floating Controls Bar */}
-          <div className="absolute bottom-4 sm:bottom-8 left-1/2 -translate-x-1/2 bg-[#1c1c24]/90 backdrop-blur-xl rounded-full px-4 sm:px-6 py-2.5 flex items-center gap-2 sm:gap-3 shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/10 z-30 w-[95%] sm:w-auto overflow-x-auto custom-scrollbar-voice justify-center">
+          <div className="absolute bottom-4 sm:bottom-8 left-1/2 -translate-x-1/2 bg-[#1c1c24]/90 backdrop-blur-xl rounded-full px-4 sm:px-6 py-2.5 flex items-center gap-2 sm:gap-3 shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/10 z-30 w-max max-w-[95vw] justify-center">
             <button 
               onClick={toggleMute}
               className={`w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center transition-all group ${
@@ -936,28 +984,7 @@ export default function VoiceRooms() {
                 <span className="material-symbols-outlined text-slate-300 group-hover:text-amber-300 transition-colors text-[22px]">add_reaction</span>
               </button>
               
-              <AnimatePresence>
-                {showReactionMenu && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10, scale: 0.9 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.9 }}
-                    className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 bg-[#1c1c24] border border-white/10 rounded-2xl p-2 flex gap-2 shadow-2xl z-50"
-                  >
-                    {['â¤ï¸', 'ðŸ”¥', 'ðŸ‘', 'ðŸ˜‚', 'ðŸ˜®', 'ðŸ™Œ'].map(emoji => (
-                      <button 
-                        key={emoji}
-                        onClick={() => sendReaction(emoji)}
-                        className="w-10 h-10 flex items-center justify-center text-xl hover:bg-white/5 rounded-xl transition-colors"
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-              
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 pointer-events-none z-40 mb-2">
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 pointer-events-none z-[60] mb-2">
                 <AnimatePresence>
                   {floatingReactions.map(r => (
                     <motion.div
@@ -973,6 +1000,29 @@ export default function VoiceRooms() {
                   ))}
                 </AnimatePresence>
               </div>
+
+              <AnimatePresence>
+                {showReactionMenu && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.9 }}
+                    className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 bg-[#1c1c24] border border-white/10 rounded-2xl p-2 flex gap-2 shadow-2xl z-50"
+                  >
+                    {['❤️', '🔥', '👍', '😂', '😮', '🙌'].map(emoji => (
+                      <button 
+                        key={emoji}
+                        onClick={() => sendReaction(emoji)}
+                        className="w-10 h-10 flex items-center justify-center text-xl hover:bg-white/5 rounded-xl transition-colors"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              
+
             </div>
             <div className="hidden sm:block w-[1px] h-8 bg-white/10 shrink-0"></div>
             <button 
@@ -990,6 +1040,8 @@ export default function VoiceRooms() {
               </button>
             )}
           </div>
+          {/* Hidden container for remote WebRTC audio elements */}
+          <div id="remote-audio-container" style={{ display: 'none' }} />
         </main>
       </div>
     );
@@ -1088,8 +1140,13 @@ export default function VoiceRooms() {
                     <p className="mt-1 text-[8px] text-slate-500 md:hidden">Host a topic</p>
                     
                     <button 
-                      onClick={() => setShowCreate(true)}
-                      className="mt-2 w-full py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500 text-violet-400 hover:text-white border border-violet-500/20 font-bold text-[8px] transition-all flex items-center justify-center gap-1.5 group/btn md:mt-6 md:py-2.5 md:rounded-xl md:text-xs"
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setShowCreate(true);
+                      }}
+                      className="relative z-20 mt-2 w-full py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500 text-violet-400 hover:text-white border border-violet-500/20 font-bold text-[8px] transition-all flex items-center justify-center gap-1.5 group/btn md:mt-6 md:py-2.5 md:rounded-xl md:text-xs cursor-pointer"
                     >
                       <span>Create</span>
                       <div className="w-1 h-1 rounded-full bg-violet-400 group-hover/btn:bg-white animate-pulse md:w-1.5 md:h-1.5" />
@@ -1218,7 +1275,7 @@ export default function VoiceRooms() {
                         {trendingRoom.name}
                       </h2>
                       <p className="text-slate-400 text-sm font-medium line-clamp-1 max-w-xl">
-                        Hosted by <span className="text-indigo-300">@{trendingRoom.creator_name || 'anonymous'}</span> â€¢ Join over {trendingRoom.participantCount || 0} people discussing this topic in real-time.
+                        Hosted by <span className="text-indigo-300">@{trendingRoom.creator_name || 'anonymous'}</span> • Join over {trendingRoom.participantCount || 0} people discussing this topic in real-time.
                       </p>
                     </div>
                   </div>
@@ -1314,7 +1371,7 @@ export default function VoiceRooms() {
                           <div className="flex items-center gap-2 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
                             <Users size={12} />
                             <span>{room.participantCount || 0} LISTENERS</span>
-                            <span className="mx-1 opacity-20">â€¢</span>
+                            <span className="mx-1 opacity-20">•</span>
                             <span>Live Now</span>
                           </div>
                         </div>
@@ -1590,6 +1647,9 @@ export default function VoiceRooms() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Hidden container for remote WebRTC audio elements (Fallback) */}
+      <div id="remote-audio-container" style={{ display: 'none' }} />
     </div>
   );
 }
