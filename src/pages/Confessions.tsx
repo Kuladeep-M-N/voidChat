@@ -37,6 +37,8 @@ import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
 import { containsInappropriateContent } from '../lib/filter';
 import ReportModal from '../components/ReportModal';
+import { useSystemConfig } from '../hooks/useSystemConfig';
+import { ShieldAlert } from 'lucide-react';
 
 interface Confession {
   id: string;
@@ -206,6 +208,8 @@ function CommentPanel({
   const [posting, setPosting] = useState(false);
   const [nameCache] = useState<Map<string, string>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
+  const { config } = useSystemConfig();
+  const safeMode = config.safeMode && !profile?.is_admin;
   const meta = getCategoryMeta(confession.category);
 
   useEffect(() => {
@@ -411,12 +415,12 @@ function CommentPanel({
             />
             <motion.button
               onClick={post}
-              disabled={!text.trim() || posting}
+              disabled={!text.trim() || posting || safeMode}
               className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-pink-500 text-white transition disabled:cursor-not-allowed disabled:opacity-40"
               whileTap={{ scale: 0.92 }}
               aria-label="Send comment"
             >
-              <Send size={16} />
+              {safeMode ? <ShieldAlert size={16} /> : <Send size={16} />}
             </motion.button>
           </div>
         </div>
@@ -427,6 +431,8 @@ function CommentPanel({
 
 export default function Confessions() {
   const { user, profile, loading } = useAuth();
+  const { config } = useSystemConfig();
+  const safeMode = config.safeMode && !profile?.is_admin;
   const navigate = useNavigate();
 
   const [confessions, setConfessions] = useState<Confession[]>([]);
@@ -967,10 +973,10 @@ export default function Confessions() {
                 <button
                   onClick={post}
                   className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-orange-500 via-pink-500 to-violet-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(249,115,22,0.35)] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={!text.trim() || posting}
+                  disabled={!text.trim() || posting || safeMode}
                 >
-                  <Sparkles size={16} />
-                  {posting ? 'Posting...' : 'Post confession'}
+                  {safeMode ? <ShieldAlert size={16} /> : <Sparkles size={16} />}
+                  {posting ? 'Posting...' : safeMode ? 'Safe Mode' : 'Post confession'}
                 </button>
               </div>
             </div>

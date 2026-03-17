@@ -16,8 +16,10 @@ import {
   ChevronDown,
   Lock,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  ShieldAlert
 } from 'lucide-react';
+import { useSystemConfig } from '../hooks/useSystemConfig';
 import { 
   collection, 
   query, 
@@ -69,6 +71,8 @@ interface Argument {
 export default function DebateThread() {
   const { id: debateId } = useParams<{ id: string }>();
   const { user, profile, loading } = useAuth();
+  const { config } = useSystemConfig();
+  const safeMode = config.safeMode && !profile?.is_admin;
   const { markAsActive } = useNotifications();
   const navigate = useNavigate();
 
@@ -178,7 +182,7 @@ export default function DebateThread() {
   }, [debateId, user, navigate]);
 
   const handleVote = async (side: 'A' | 'B') => {
-    if (!user || !debateId || userVote === side || debate?.status === 'closed') return;
+    if (!user || !debateId || userVote === side || debate?.status === 'closed' || safeMode) return;
 
     // Optimistic Update
     const oldVote = userVote;
@@ -400,15 +404,21 @@ export default function DebateThread() {
               <motion.button 
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => handleVote('A')}
+                onClick={() => {
+                  if (safeMode) {
+                    toast.error('Voting is restricted during Safe Mode');
+                    return;
+                  }
+                  handleVote('A');
+                }}
                 className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl text-[11px] font-black transition-all ${
                   userVote === 'A' 
                     ? 'bg-blue-500 text-white shadow-[0_0_20px_rgba(59,130,246,0.5)] border-transparent' 
                     : 'bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500/20'
-                }`}
+                } ${safeMode ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <div className={`w-2 h-2 rounded-full ${userVote === 'A' ? 'bg-white animate-pulse' : 'bg-blue-500'}`} />
-                {pctA}% VOTE {userVote === 'A' && 'CAST'}
+                {safeMode ? 'SAFE MODE' : `${pctA}% VOTE ${userVote === 'A' ? 'CAST' : ''}`}
               </motion.button>
             </div>
             <div className="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar">
@@ -430,15 +440,21 @@ export default function DebateThread() {
               <motion.button 
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => handleVote('B')}
+                onClick={() => {
+                  if (safeMode) {
+                    toast.error('Voting is restricted during Safe Mode');
+                    return;
+                  }
+                  handleVote('B');
+                }}
                 className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl text-[11px] font-black transition-all ${
                   userVote === 'B' 
                     ? 'bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)] border-transparent' 
                     : 'bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20'
-                }`}
+                } ${safeMode ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <div className={`w-2 h-2 rounded-full ${userVote === 'B' ? 'bg-white animate-pulse' : 'bg-red-500'}`} />
-                {pctB}% VOTE {userVote === 'B' && 'CAST'}
+                {safeMode ? 'SAFE MODE' : `${pctB}% VOTE ${userVote === 'B' ? 'CAST' : ''}`}
               </motion.button>
             </div>
             <div className="flex-1 overflow-y-auto pr-2 space-y-4 custom-scrollbar">
@@ -454,50 +470,59 @@ export default function DebateThread() {
       {debate.status === 'active' ? (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-3xl px-6 z-30">
           <div className="glass border border-white/10 rounded-2xl p-2 shadow-2xl">
-            <div className="flex gap-2 mb-2">
-              <button 
-                onClick={() => setSelectedSide('A')}
-                className={`flex-1 py-1 px-2 rounded-lg text-[10px] font-black border transition-all ${
-                  selectedSide === 'A' ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' : 'bg-white/5 border-white/5 text-slate-500'
-                }`}
-              >
-                SIDE {debate.side_a_label.toUpperCase()}
-              </button>
-              <button 
-                onClick={() => setSelectedSide('B')}
-                className={`flex-1 py-1 px-2 rounded-lg text-[10px] font-black border transition-all ${
-                  selectedSide === 'B' ? 'bg-red-500/20 border-red-500/50 text-red-400' : 'bg-white/5 border-white/5 text-slate-500'
-                }`}
-              >
-                SIDE {debate.side_b_label.toUpperCase()}
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              <input 
-                type="text" 
-                className="input-field flex-1 h-12 py-0 border-none bg-transparent rounded-none focus:bg-transparent" 
-                placeholder={selectedSide ? `Speak for Side ${selectedSide === 'A' ? debate.side_a_label : debate.side_b_label}...` : "Choose a side to speak..."}
-                value={text}
-                onChange={e => setText(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    postArgument();
-                  }
-                }}
-                disabled={!selectedSide}
-              />
-              <motion.button 
-                onClick={postArgument}
-                disabled={!text.trim() || !selectedSide || sending}
-                className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
-                   text.trim() && selectedSide ? 'bg-slate-200 text-slate-900 shadow-lg' : 'bg-white/5 text-slate-500'
-                }`}
-                whileTap={{ scale: 0.9 }}
-              >
-                <Send size={18} fill="currentColor" />
-              </motion.button>
-            </div>
+            {safeMode ? (
+              <div className="flex items-center justify-center p-4 gap-3 text-red-400 font-bold uppercase tracking-widest text-xs">
+                <ShieldAlert size={18} />
+                Emergency Moderation Mode Active
+              </div>
+            ) : (
+              <>
+                <div className="flex gap-2 mb-2">
+                  <button 
+                    onClick={() => setSelectedSide('A')}
+                    className={`flex-1 py-1 px-2 rounded-lg text-[10px] font-black border transition-all ${
+                      selectedSide === 'A' ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' : 'bg-white/5 border-white/5 text-slate-500'
+                    }`}
+                  >
+                    SIDE {debate.side_a_label.toUpperCase()}
+                  </button>
+                  <button 
+                    onClick={() => setSelectedSide('B')}
+                    className={`flex-1 py-1 px-2 rounded-lg text-[10px] font-black border transition-all ${
+                      selectedSide === 'B' ? 'bg-red-500/20 border-red-500/50 text-red-400' : 'bg-white/5 border-white/5 text-slate-500'
+                    }`}
+                  >
+                    SIDE {debate.side_b_label.toUpperCase()}
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="text" 
+                    className="input-field flex-1 h-12 py-0 border-none bg-transparent rounded-none focus:bg-transparent" 
+                    placeholder={selectedSide ? `Speak for Side ${selectedSide === 'A' ? debate.side_a_label : debate.side_b_label}...` : "Choose a side to speak..."}
+                    value={text}
+                    onChange={e => setText(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        postArgument();
+                      }
+                    }}
+                    disabled={!selectedSide}
+                  />
+                  <motion.button 
+                    onClick={postArgument}
+                    disabled={!text.trim() || !selectedSide || sending}
+                    className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
+                      text.trim() && selectedSide ? 'bg-slate-200 text-slate-900 shadow-lg' : 'bg-white/5 text-slate-500'
+                    }`}
+                    whileTap={{ scale: 0.9 }}
+                  >
+                    <Send size={18} fill="currentColor" />
+                  </motion.button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       ) : (

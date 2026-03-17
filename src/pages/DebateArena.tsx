@@ -16,8 +16,10 @@ import {
   Lock,
   Trash2,
   History,
-  AlertTriangle
+  AlertTriangle,
+  ShieldAlert
 } from 'lucide-react';
+import { useSystemConfig } from '../hooks/useSystemConfig';
 import { 
   collection, 
   query, 
@@ -59,6 +61,8 @@ const CATEGORIES = ['Tech', 'Campus', 'Fun', 'Life', 'Random'];
 
 export default function DebateArena() {
   const { user, profile, loading } = useAuth();
+  const { config } = useSystemConfig();
+  const safeMode = config.safeMode && !profile?.is_admin;
   const { markAsActive, onlineCount } = useNotifications();
   const navigate = useNavigate();
   
@@ -263,13 +267,20 @@ export default function DebateArena() {
                   Start a topic and let the void decide. All debates are anonymous.
                 </p>
                 <motion.button 
-                  onClick={() => setShowCreate(true)}
-                  className="w-full relative flex items-center justify-center gap-2 bg-gradient-to-r from-slate-600 to-slate-800 hover:from-slate-500 hover:to-slate-700 text-white font-bold py-4 rounded-2xl shadow-xl transition-all"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    if (safeMode) {
+                      toast.error('Platform is in Safe Mode. Debate creation is restricted.');
+                      return;
+                    }
+                    setShowCreate(true);
+                  }}
+                  disabled={safeMode && !profile?.is_admin}
+                  className="w-full relative flex items-center justify-center gap-2 bg-gradient-to-r from-slate-600 to-slate-800 hover:from-slate-500 hover:to-slate-700 text-white font-bold py-4 rounded-2xl shadow-xl transition-all disabled:opacity-50"
+                  whileHover={safeMode ? {} : { scale: 1.02 }}
+                  whileTap={safeMode ? {} : { scale: 0.98 }}
                 >
-                  <Plus size={20} />
-                  Start Debate
+                  {safeMode ? <ShieldAlert size={20} /> : <Plus size={20} />}
+                  {safeMode ? 'Safe Mode Active' : 'Start Debate'}
                 </motion.button>
                 <div className="h-px bg-white/5 my-4" />
                 <motion.button 

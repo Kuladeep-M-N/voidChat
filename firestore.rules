@@ -17,6 +17,14 @@ service cloud.firestore {
       return request.auth.uid == userId;
     }
 
+    function isSafeModeActive() {
+      return get(/databases/$(database)/documents/system_config/global).data.safeMode == true;
+    }
+    
+    function canCreateContent() {
+      return isAuthenticated() && (!isSafeModeActive() || isAdmin());
+    }
+
     // Users collection
     match /users/{userId} {
       allow read: if true; 
@@ -26,62 +34,69 @@ service cloud.firestore {
     // Chat Rooms
     match /chat_rooms/{roomId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
+      allow create: if canCreateContent();
+      allow update: if canCreateContent();
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.created_by == request.auth.uid);
     }
 
     // Room Members
     match /room_members/{memberId} {
-      allow read, create: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow create: if canCreateContent();
       allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
     }
 
     // Messages
     match /messages/{messageId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
+      allow create: if canCreateContent();
       allow delete: if isAdmin();
     }
 
     // Confessions
     match /confessions/{confessionId} {
-      allow read, create: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow create: if canCreateContent();
       allow update: if isAuthenticated(); // For likes
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
     }
 
     // Confession Comments
     match /confession_comments/{commentId} {
-      allow read, create: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow create: if canCreateContent();
       allow delete: if isAdmin();
     }
 
     // Shoutouts
     match /shoutouts/{shoutoutId} {
-      allow read, create: if isAuthenticated();
-      allow update: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow create: if canCreateContent();
+      allow update: if canCreateContent();
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
     }
 
     // Debates
     match /debates/{debateId} {
-      allow read, create: if isAuthenticated();
-      allow update: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow create: if canCreateContent();
+      allow update: if canCreateContent();
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
     }
 
     // Debate Arguments
     match /debate_arguments/{argId} {
-      allow read, create: if isAuthenticated();
-      allow update: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow create: if canCreateContent();
+      allow update: if canCreateContent();
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
     }
 
     // Polls
     match /polls/{pollId} {
-      allow read, create: if isAuthenticated();
-      allow update: if isAuthenticated() && (isAdmin() || resource.data.created_by == request.auth.uid);
+      allow read: if isAuthenticated();
+      allow create: if canCreateContent();
+      allow update: if canCreateContent() && (isAdmin() || resource.data.created_by == request.auth.uid);
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.created_by == request.auth.uid);
     }
 
@@ -89,15 +104,21 @@ service cloud.firestore {
     match /poll_votes/{voteId} {
       allow read: if isAuthenticated();
       // Users can only write their own vote using a composite ID {pollId}_{userId}
-      allow create, update: if isAuthenticated() && request.auth.uid == request.resource.data.user_id;
+      allow create, update: if canCreateContent() && request.auth.uid == request.resource.data.user_id;
       allow delete: if isAdmin();
     }
     
     // Reports
     match /reports/{reportId} {
       allow read: if isAdmin();
-      allow create: if isAuthenticated();
+      allow create: if isAuthenticated(); // Always allow reporting
       allow update, delete: if isAdmin();
+    }
+    
+    // System Config
+    match /system_config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
     
     // Default catch-all

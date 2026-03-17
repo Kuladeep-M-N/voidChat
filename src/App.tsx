@@ -42,14 +42,18 @@ const GlobalVoice = () => {
 
 import { Toaster } from 'sonner';
 import { NotificationProvider } from './hooks/useNotifications';
+import { SystemConfigProvider } from './hooks/useSystemConfig';
+import SafeModeBanner from './components/SafeModeBanner';
 
 function App() {
   return (
     <AuthProvider>
-      <NotificationProvider>
-        <BrowserRouter>
+      <SystemConfigProvider>
+        <NotificationProvider>
+          <BrowserRouter>
           <AnimatedBackground />
           <Toaster position="top-right" richColors />
+          <SafeModeBanner />
           <div className="relative" style={{ zIndex: 1 }}>
           <GlobalVoice />
           <Routes>
@@ -69,9 +73,10 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
-      </BrowserRouter>
-    </NotificationProvider>
-  </AuthProvider>
+        </BrowserRouter>
+      </NotificationProvider>
+     </SystemConfigProvider>
+   </AuthProvider>
 );
 }
 

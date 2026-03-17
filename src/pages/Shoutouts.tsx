@@ -38,6 +38,8 @@ import { useAuth } from '../hooks/useAuth';
 import { toast } from 'sonner';
 import { containsInappropriateContent } from '../lib/filter';
 import ReportModal from '../components/ReportModal';
+import { useSystemConfig } from '../hooks/useSystemConfig';
+import { ShieldAlert } from 'lucide-react';
 
 interface Shoutout {
   id: string;
@@ -138,6 +140,8 @@ function clamp(value: number, min: number, max: number) {
 
 export default function Shoutouts() {
   const { user, profile, loading } = useAuth();
+  const { config } = useSystemConfig();
+  const safeMode = config.safeMode && !profile?.is_admin;
   const navigate = useNavigate();
   const messageRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -708,8 +712,8 @@ export default function Shoutouts() {
                   disabled={!toAlias.trim() || !message.trim() || posting}
                   className="group inline-flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-8 py-4 text-sm font-extrabold tracking-wide text-white shadow-[0_0_25px_rgba(168,85,247,0.45)] transition hover:scale-[1.01] hover:shadow-[0_0_35px_rgba(34,211,238,0.25)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:min-w-[196px]"
                 >
-                  <span>{posting ? 'BROADCASTING...' : 'BROADCAST'}</span>
-                  <Send className="h-4 w-4 transition group-hover:translate-x-0.5" />
+                  <span>{posting ? 'BROADCASTING...' : safeMode ? 'SAFE MODE ACTIVE' : 'BROADCAST'}</span>
+                  {safeMode ? <ShieldAlert className="h-4 w-4" /> : <Send className="h-4 w-4 transition group-hover:translate-x-0.5" />}
                 </button>
               </div>
             </div>

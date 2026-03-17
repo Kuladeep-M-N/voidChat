@@ -17,8 +17,10 @@ import {
   TrendingUp,
   Clock,
   Layout,
-  AlertTriangle
+  AlertTriangle,
+  ShieldAlert
 } from 'lucide-react';
+import { useSystemConfig } from '../hooks/useSystemConfig';
 import { 
   collection, 
   query, 
@@ -42,6 +44,7 @@ import {
 } from 'firebase/database';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
+import { toast } from 'sonner';
 import ReportModal from '../components/ReportModal';
 
 interface Room { 
@@ -65,6 +68,8 @@ const roomThemes = {
 
 export default function ChatCenter() {
   const { user, profile, loading } = useAuth();
+  const { config } = useSystemConfig();
+  const safeMode = config.safeMode && !profile?.is_admin;
   const { unreadCounts, markAsActive, onlineCount } = useNotifications();
   const navigate = useNavigate();
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -311,13 +316,20 @@ export default function ChatCenter() {
                 </div>
 
                 <motion.button 
-                  onClick={() => setShowCreate(true)}
-                  className="w-full group/btn relative flex items-center justify-center gap-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold py-4 rounded-2xl shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all overflow-hidden"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    if (safeMode) {
+                      toast.error('Platform is in Safe Mode. Room creation is restricted.');
+                      return;
+                    }
+                    setShowCreate(true);
+                  }}
+                  disabled={safeMode}
+                  className="w-full group/btn relative flex items-center justify-center gap-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold py-4 rounded-2xl shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all overflow-hidden disabled:opacity-50"
+                  whileHover={safeMode ? {} : { scale: 1.02 }}
+                  whileTap={safeMode ? {} : { scale: 0.98 }}
                 >
-                  <Plus size={20} />
-                  New Chat Room
+                  {safeMode ? <ShieldAlert size={20} /> : <Plus size={20} />}
+                  {safeMode ? 'Safe Mode Active' : 'New Chat Room'}
                 </motion.button>
 
                 {/* Message Activity Wave */}

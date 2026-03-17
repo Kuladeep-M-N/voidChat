@@ -72,6 +72,7 @@ import {
   limit
 } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
+import { useSystemConfig } from '../hooks/useSystemConfig';
 import { toast } from 'sonner';
 
 interface Report {
@@ -105,7 +106,8 @@ export default function AdminModeration() {
   
   // Admin Tools View State
   const [activeTab, setActiveTab] = useState<'moderation' | 'tools'>('moderation');
-  const [safeMode, setSafeMode] = useState(false);
+  const { config, loading: configLoading, updateConfig } = useSystemConfig();
+  const safeMode = config.safeMode;
   
   // Stats State
   const [stats, setStats] = useState({
@@ -141,13 +143,7 @@ export default function AdminModeration() {
   });
 
   // System Config & Controls
-  const [systemConfig, setSystemConfig] = useState({
-    disableConfessions: false,
-    disableDebates: false,
-    disableVoiceRooms: false,
-    disableShoutouts: false,
-    disablePolls: false
-  });
+  const systemConfig = config;
 
   // Spam Watch State
   const [flaggedUsers, setFlaggedUsers] = useState<any[]>([]);
@@ -292,11 +288,11 @@ export default function AdminModeration() {
     }
 
     if (adminToolsTab === 'system') {
-      unsubConfig = onSnapshot(doc(db, 'system_config', 'global'), (snap) => {
-        if (snap.exists()) {
-          setSystemConfig(snap.data() as any);
-        }
-      });
+    // unsubConfig = onSnapshot(doc(db, 'system_config', 'global'), (snap) => {
+    //   if (snap.exists()) {
+    //     setSystemConfig(snap.data() as any);
+    //   }
+    // });
     }
 
     return () => {
@@ -310,8 +306,7 @@ export default function AdminModeration() {
 
   const toggleSystemFeature = async (feature: keyof typeof systemConfig) => {
     try {
-      const configRef = doc(db, 'system_config', 'global');
-      await updateDoc(configRef, {
+      await updateConfig({
         [feature]: !systemConfig[feature]
       });
       toast.success('System configuration updated.');
@@ -790,7 +785,7 @@ export default function AdminModeration() {
                     </div>
                   </div>
                   <button
-                    onClick={() => setSafeMode(!safeMode)}
+                    onClick={() => updateConfig({ safeMode: !safeMode })}
                     className={`relative h-8 w-14 rounded-full transition-colors ${
                       safeMode ? 'bg-red-500' : 'bg-slate-700'
                     }`}

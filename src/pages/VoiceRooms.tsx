@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trash2, Archive, Users, Mic, Mic2, TrendingUp, Zap, Clock, MessageSquare, History, Plus, Play, Sparkles, ArrowLeft, Dices, Flame } from 'lucide-react';
+import { Trash2, Archive, Users, Mic, Mic2, TrendingUp, Zap, Clock, MessageSquare, History, Plus, Play, Sparkles, ArrowLeft, Dices, Flame, ShieldAlert } from 'lucide-react';
+import { useSystemConfig } from '../hooks/useSystemConfig';
 import { 
   collection, 
   query, 
@@ -118,6 +119,8 @@ function useSpeakingDetector(stream: MediaStream | null): boolean {
 
 export default function VoiceRooms() {
   const { user, profile, loading } = useAuth();
+  const { config } = useSystemConfig();
+  const safeMode = config.safeMode && !profile?.is_admin;
   const navigate = useNavigate();
   const location = useLocation();
   const isVoiceRoute = location.pathname === '/voice';
@@ -548,6 +551,10 @@ export default function VoiceRooms() {
   useEffect(() => () => { leaveRoom(); }, [leaveRoom]);
 
   const createRoom = async () => {
+    if (safeMode) {
+      toast.error('Voice field generation is suppressed during Safe Mode');
+      return;
+    }
     const name = newName.trim();
     if (!name || !user) {
       toast.error('Please enter a room name');
@@ -604,7 +611,7 @@ export default function VoiceRooms() {
   };
 
   const sendChat = () => {
-    if (!chatInput.trim() || !activeRoom) return;
+    if (!chatInput.trim() || !activeRoom || safeMode) return;
     const newId = Date.now().toString();
     const msg: ChatMessage = { 
       id: newId, 
@@ -628,7 +635,7 @@ export default function VoiceRooms() {
   }, [muted]);
 
   const sendReaction = (emoji: string) => {
-    if (!user || !activeRoom) return;
+    if (!user || !activeRoom || safeMode) return;
     console.log(`[Interaction] Sending reaction: ${emoji}`);
     const reactionsRef = ref(rtdb, `reactions/${activeRoom.id}`);
     push(reactionsRef, {
@@ -1087,30 +1094,39 @@ export default function VoiceRooms() {
           </div>
 
           <motion.button 
-            onClick={() => setShowCreate(true)} 
-            className="group relative px-6 py-2.5 rounded-2xl bg-violet-600/10 backdrop-blur-md border border-violet-400/30 text-white font-bold text-sm transition-all flex items-center gap-3 overflow-hidden shadow-[0_0_20px_rgba(139,92,246,0.1)]"
-            whileHover={{ y: -2, boxShadow: "0 0 30px rgba(139,92,246,0.2)" }}
-            whileTap={{ scale: 0.98 }}
+            onClick={() => {
+              if (safeMode) {
+                toast.error('Voice field generation is suppressed during Safe Mode');
+                return;
+              }
+              setShowCreate(true);
+            }}
+            disabled={safeMode}
+            className="group relative px-6 py-2.5 rounded-2xl bg-violet-600/10 backdrop-blur-md border border-violet-400/30 text-white font-bold text-sm transition-all flex items-center gap-3 overflow-hidden shadow-[0_0_20px_rgba(139,92,246,0.1)] disabled:opacity-50"
+            whileHover={safeMode ? {} : { y: -2, boxShadow: "0 0 30px rgba(139,92,246,0.2)" }}
+            whileTap={safeMode ? {} : { scale: 0.98 }}
           >
             {/* Hover Gradient Overlay */}
             <div className="absolute inset-0 bg-gradient-to-r from-violet-500/10 to-indigo-600/10 opacity-0 group-hover:opacity-100 transition-opacity" />
             
             <div className="relative flex items-center gap-2">
               <div className="relative">
-                <Mic size={18} className="relative z-10" />
+                {safeMode ? <ShieldAlert size={18} className="relative z-10" /> : <Mic size={18} className="relative z-10" />}
                 {/* Animated Soundwave Dots */}
-                <div className="absolute -right-1 -top-1 flex gap-[1px]">
-                  {[1, 2].map((_, i) => (
-                    <motion.div 
-                      key={i}
-                      className="w-[2px] bg-violet-400 rounded-full"
-                      animate={{ height: ["2px", "6px", "2px"] }}
-                      transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.2 }}
-                    />
-                  ))}
-                </div>
+                {!safeMode && (
+                  <div className="absolute -right-1 -top-1 flex gap-[1px]">
+                    {[1, 2].map((_, i) => (
+                      <motion.div 
+                        key={i}
+                        className="w-[2px] bg-violet-400 rounded-full"
+                        animate={{ height: ["2px", "6px", "2px"] }}
+                        transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.2 }}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
-              <span className="tracking-tight">Start Voice Room</span>
+              <span className="tracking-tight">{safeMode ? 'Safe Mode Active' : 'Start Voice Room'}</span>
             </div>
           </motion.button>
         </div>
@@ -1144,12 +1160,17 @@ export default function VoiceRooms() {
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
+                        if (safeMode) {
+                          toast.error('Voice field generation is suppressed during Safe Mode');
+                          return;
+                        }
                         setShowCreate(true);
                       }}
-                      className="relative z-20 mt-2 w-full py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500 text-violet-400 hover:text-white border border-violet-500/20 font-bold text-[8px] transition-all flex items-center justify-center gap-1.5 group/btn md:mt-6 md:py-2.5 md:rounded-xl md:text-xs cursor-pointer"
+                      disabled={safeMode}
+                      className="relative z-20 mt-2 w-full py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500 text-violet-400 hover:text-white border border-violet-500/20 font-bold text-[8px] transition-all flex items-center justify-center gap-1.5 group/btn md:mt-6 md:py-2.5 md:rounded-xl md:text-xs cursor-pointer disabled:opacity-50"
                     >
-                      <span>Create</span>
-                      <div className="w-1 h-1 rounded-full bg-violet-400 group-hover/btn:bg-white animate-pulse md:w-1.5 md:h-1.5" />
+                      <span>{safeMode ? 'Restricted' : 'Create'}</span>
+                      {safeMode ? <ShieldAlert size={10} className="md:size-14" /> : <div className="w-1 h-1 rounded-full bg-violet-400 group-hover/btn:bg-white animate-pulse md:w-1.5 md:h-1.5" />}
                     </button>
                   </div>
                   
@@ -1634,12 +1655,17 @@ export default function VoiceRooms() {
                   </button>
                   <button 
                     onClick={() => {
+                      if (safeMode) {
+                        toast.error('Voice field generation is suppressed during Safe Mode');
+                        return;
+                      }
                       setShowNoRoomsOverlay(false);
                       setShowCreate(true);
                     }} 
-                    className="flex-[2] py-4 rounded-2xl bg-amber-500 text-black font-black text-xs uppercase tracking-widest hover:bg-amber-400 transition-all shadow-xl shadow-amber-500/20 active:scale-95"
+                    disabled={safeMode}
+                    className="flex-[2] py-4 rounded-2xl bg-amber-500 text-black font-black text-xs uppercase tracking-widest hover:bg-amber-400 transition-all shadow-xl shadow-amber-500/20 active:scale-95 disabled:opacity-50"
                   >
-                    Initialize Voice Field
+                    {safeMode ? 'SAFE MODE ACTIVE' : 'Initialize Voice Field'}
                   </button>
                 </div>
               </div>

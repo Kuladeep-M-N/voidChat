@@ -12,8 +12,10 @@ import {
   X,
   AlertTriangle,
   Trophy,
-  Star
+  Star,
+  ShieldAlert
 } from 'lucide-react';
+import { useSystemConfig } from '../hooks/useSystemConfig';
 import { 
   collection, 
   query, 
@@ -92,6 +94,8 @@ const timeAgo = (date: any) => {
 
 export default function Polls() {
   const { user, profile, loading } = useAuth();
+  const { config } = useSystemConfig();
+  const safeMode = config.safeMode && !profile?.is_admin;
   const navigate = useNavigate();
 
   const [polls, setPolls] = useState<Poll[]>([]);
@@ -324,12 +328,18 @@ export default function Polls() {
           </div>
           <button
             onClick={() => {
+              if (safeMode) {
+                toast.error('Platform is in Safe Mode. Poll creation is restricted.');
+                return;
+              }
               setShowCreate(true);
               setCreateError('');
             }}
-            className="btn-primary !w-auto px-4 py-2 rounded-xl text-sm"
+            disabled={safeMode && !profile?.is_admin}
+            className="btn-primary !w-auto px-4 py-2 rounded-xl text-sm flex items-center gap-2"
           >
-            Start Poll
+            {safeMode ? <ShieldAlert size={14} /> : null}
+            {safeMode ? 'Safe Mode' : 'Start Poll'}
           </button>
         </div>
       </header>
@@ -563,8 +573,14 @@ export default function Polls() {
                         return (
                           <button
                             key={optionIndex}
-                            onClick={() => vote(poll, optionIndex)}
-                            disabled={poll.closed}
+                            onClick={() => {
+                              if (safeMode) {
+                                toast.error('Voting is restricted during Safe Mode');
+                                return;
+                              }
+                              vote(poll, optionIndex);
+                            }}
+                            disabled={poll.closed || safeMode}
                             className={`w-full text-left rounded-xl p-3.5 transition-all relative overflow-hidden border group ${
                               showResults
                                 ? isMyVote

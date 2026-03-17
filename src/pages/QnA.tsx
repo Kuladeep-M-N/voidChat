@@ -18,8 +18,10 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ShieldAlert } from 'lucide-react';
 import ReportModal from '../components/ReportModal';
+import { useSystemConfig } from '../hooks/useSystemConfig';
+import { toast } from 'sonner';
 
 interface QnaQuestion {
   id: string;
@@ -80,6 +82,8 @@ const timeAgo = (date: any) => {
 
 export default function QnA() {
   const { user, profile, loading } = useAuth();
+  const { config } = useSystemConfig();
+  const safeMode = config.safeMode && !profile?.is_admin;
   const navigate = useNavigate();
 
   const [questions, setQuestions] = useState<QnaQuestion[]>([]);
@@ -205,7 +209,7 @@ export default function QnA() {
   const resolutionRate = questions.length > 0 ? Math.round((resolvedCount / questions.length) * 100) : 0;
 
   const submitQuestion = async () => {
-    if (!user || questionSubmitting) return;
+    if (!user || questionSubmitting || safeMode) return;
     const cleanTitle = title.trim();
     const cleanContent = content.trim();
     if (!cleanTitle || !cleanContent) return;
@@ -239,7 +243,7 @@ export default function QnA() {
   };
 
   const submitAnswer = async () => {
-    if (!user || !activeQuestion || answerSubmitting) return;
+    if (!user || !activeQuestion || answerSubmitting || safeMode) return;
     const clean = answerText.trim();
     if (!clean) return;
 
@@ -267,7 +271,7 @@ export default function QnA() {
   };
 
   const upvoteQuestion = async (question: QnaQuestion) => {
-    if (questionVotes.has(question.id)) return;
+    if (questionVotes.has(question.id) || safeMode) return;
     setQuestionVotes((prev) => new Set(prev).add(question.id));
     
     try {
@@ -280,7 +284,7 @@ export default function QnA() {
   };
 
   const upvoteAnswer = async (answer: QnaAnswer) => {
-    if (answerVotes.has(answer.id)) return;
+    if (answerVotes.has(answer.id) || safeMode) return;
     setAnswerVotes((prev) => new Set(prev).add(answer.id));
 
     try {
@@ -449,11 +453,18 @@ export default function QnA() {
                   ))}
                 </div>
                 <button
-                  onClick={submitQuestion}
-                  disabled={title.trim().length < 5 || content.trim().length < 10 || questionSubmitting}
-                  className="btn-primary !w-auto px-5 py-2 rounded-xl text-sm disabled:opacity-50 disabled:grayscale transition-all"
+                  onClick={() => {
+                    if (safeMode) {
+                      toast.error('Questioning is restricted during Safe Mode');
+                      return;
+                    }
+                    submitQuestion();
+                  }}
+                  disabled={title.trim().length < 5 || content.trim().length < 10 || questionSubmitting || safeMode}
+                  className="btn-primary !w-auto px-5 py-2 rounded-xl text-sm disabled:opacity-50 disabled:grayscale transition-all flex items-center gap-2"
                 >
-                  {questionSubmitting ? 'Posting...' : 'Post Question'}
+                  {safeMode && <ShieldAlert size={16} />}
+                  {safeMode ? 'Safe Mode Active' : (questionSubmitting ? 'Posting...' : 'Post Question')}
                 </button>
               </div>
           </div>
@@ -716,11 +727,18 @@ export default function QnA() {
                   <div className="flex justify-between items-center gap-3">
                     <span className="text-xs text-slate-500">Your name remains hidden in this Q&A space.</span>
                     <button
-                      onClick={submitAnswer}
-                      disabled={answerText.trim().length < 2 || answerSubmitting}
-                      className="btn-primary !w-auto px-5 py-2 rounded-xl text-sm disabled:opacity-50 disabled:grayscale transition-all"
+                      onClick={() => {
+                        if (safeMode) {
+                          toast.error('Answering is restricted during Safe Mode');
+                          return;
+                        }
+                        submitAnswer();
+                      }}
+                      disabled={answerText.trim().length < 2 || answerSubmitting || safeMode}
+                      className="btn-primary !w-auto px-5 py-2 rounded-xl text-sm disabled:opacity-50 disabled:grayscale transition-all flex items-center gap-2"
                     >
-                      {answerSubmitting ? 'Posting...' : 'Post Answer'}
+                      {safeMode && <ShieldAlert size={16} />}
+                      {safeMode ? 'Safe Mode Active' : (answerSubmitting ? 'Posting...' : 'Post Answer')}
                     </button>
                   </div>
                 </div>

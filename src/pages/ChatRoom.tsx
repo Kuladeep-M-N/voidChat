@@ -33,6 +33,8 @@ import { AlertTriangle } from 'lucide-react';
 import { containsInappropriateContent } from '../lib/filter';
 import ReportModal from '../components/ReportModal';
 import { toast } from 'sonner';
+import { useSystemConfig } from '../hooks/useSystemConfig';
+import { ShieldAlert } from 'lucide-react';
 
 interface Message {
   id: string; content: string; created_at: any;
@@ -53,6 +55,8 @@ const getInitials = (s: string) => (s || '??').slice(0, 2).toUpperCase();
 export default function ChatRoom() {
   const { id: roomId } = useParams<{ id: string }>();
   const { user, profile, loading } = useAuth();
+  const { config } = useSystemConfig();
+  const safeMode = config.safeMode && !profile?.is_admin;
   const { markAsActive } = useNotifications();
   const navigate = useNavigate();
 
@@ -274,7 +278,7 @@ export default function ChatRoom() {
 
   const sendMessage = useCallback(async () => {
     const content = text.trim();
-    if (!content || !user || !roomId || !profile || sending.current || isArchived) return;
+    if (!content || !user || !roomId || !profile || sending.current || isArchived || safeMode) return;
 
     // Check permissions
     if (onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole)) return;
@@ -323,7 +327,7 @@ export default function ChatRoom() {
   }, [text, user, roomId, profile, isArchived, onlyAdminsCanMessage, userRole]);
 
   const reactToMessage = useCallback((msgId: string, emoji: string) => {
-    if (!user || !roomId || isArchived) return;
+    if (!user || !roomId || isArchived || safeMode) return;
     setPicker(null);
     
     const reactionRef = ref(rtdb, `rooms/${roomId}/reactions/${msgId}/${emoji}`);
@@ -551,10 +555,13 @@ export default function ChatRoom() {
 
       {/* Input */}
       <div className="border-t border-white/5 glass shrink-0 relative">
-        {isArchived && (
+        {(isArchived || safeMode) && (
           <div className="absolute inset-0 z-20 bg-[#07070f]/80 backdrop-blur-sm flex items-center justify-center">
-             <span className="text-red-400/80 font-bold uppercase tracking-widest text-xs border border-red-500/20 px-4 py-1.5 rounded-full bg-red-500/10">
-               Conversation Archived
+             <span className={`font-bold uppercase tracking-widest text-xs border px-4 py-1.5 rounded-full bg-opacity-10 flex items-center gap-2 ${
+               safeMode ? 'text-red-400 border-red-500/20 bg-red-500' : 'text-red-400/80 border-red-500/20 bg-red-500'
+             }`}>
+               {safeMode && <ShieldAlert size={14} />}
+               {safeMode ? 'Safe Mode Active' : 'Conversation Archived'}
              </span>
           </div>
         )}
@@ -562,20 +569,23 @@ export default function ChatRoom() {
           <input
             type="text"
             className="input-field flex-1 py-2.5 rounded-2xl"
-            placeholder={onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole) ? "Only admins can message" : "Message..."}
+            placeholder={
+              safeMode ? "Safe Mode is active" :
+              onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole) ? "Only admins can message" : "Message..."
+            }
             value={text}
             onChange={e => { setText(e.target.value); if (e.target.value) emitTyping(); }}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
             maxLength={2000}
-            disabled={onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole)}
+            disabled={safeMode || (onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole))}
           />
           <motion.button
             onClick={sendMessage}
-            disabled={!text.trim() || (onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole))}
+            disabled={!text.trim() || safeMode || (onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole))}
             className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-all"
-            style={{ background: text.trim() && !(onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole)) ? 'linear-gradient(135deg, #7c3aed, #5b21b6)' : 'rgba(255,255,255,0.05)' }}
+            style={{ background: text.trim() && !safeMode && !(onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole)) ? 'linear-gradient(135deg, #7c3aed, #5b21b6)' : 'rgba(255,255,255,0.05)' }}
             whileTap={{ scale: 0.88 }}>
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={text.trim() ? 'white' : '#64748b'} strokeWidth="2.5">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={text.trim() && !safeMode ? 'white' : '#64748b'} strokeWidth="2.5">
               <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
             </svg>
           </motion.button>
