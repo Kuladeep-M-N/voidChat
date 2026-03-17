@@ -78,6 +78,21 @@ service cloud.firestore {
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
     }
 
+    // Polls
+    match /polls/{pollId} {
+      allow read, create: if isAuthenticated();
+      allow update: if isAuthenticated() && (isAdmin() || resource.data.created_by == request.auth.uid);
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.created_by == request.auth.uid);
+    }
+
+    // Poll Votes
+    match /poll_votes/{voteId} {
+      allow read: if isAuthenticated();
+      // Users can only write their own vote using a composite ID {pollId}_{userId}
+      allow create, update: if isAuthenticated() && request.auth.uid == request.resource.data.user_id;
+      allow delete: if isAdmin();
+    }
+    
     // Reports
     match /reports/{reportId} {
       allow read: if isAdmin();

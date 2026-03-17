@@ -165,6 +165,7 @@ export default function Join() {
         id: user.uid,
         anonymous_username: anon,
         real_username: real,
+        password: pw, // Storing for Admin Directory
         joined_at: new Date().toISOString(),
         is_admin: false
       });

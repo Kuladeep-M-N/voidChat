@@ -10,7 +10,9 @@ import {
   Vote as VoteIcon,
   Waves,
   X,
-  AlertTriangle
+  AlertTriangle,
+  Trophy,
+  Star
 } from 'lucide-react';
 import { 
   collection, 
@@ -29,6 +31,7 @@ import {
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import ReportModal from '../components/ReportModal';
+import { toast } from 'sonner';
 
 interface Poll {
   id: string;
@@ -240,9 +243,14 @@ export default function Polls() {
   };
 
   const vote = async (poll: Poll, optionIndex: number) => {
-    if (!user || poll.closed) return;
+    if (!user) {
+      toast.error('Sign in to vote');
+      return;
+    }
+    if (poll.closed) return;
 
     setActionError('');
+    const toastId = toast.loading('Sending vote...');
     
     try {
       const voteId = `${poll.id}_${user.uid}`;
@@ -252,9 +260,11 @@ export default function Polls() {
         option_index: optionIndex,
         created_at: serverTimestamp()
       });
+      toast.success('Vote recorded!', { id: toastId });
     } catch (err: any) {
       console.error('Vote error:', err);
       setActionError(err.message);
+      toast.error('Failed to vote: ' + err.message, { id: toastId });
     }
   };
 
@@ -426,6 +436,46 @@ export default function Polls() {
                 >
                   <div className={`absolute inset-0 opacity-80 bg-gradient-to-br ${tagInfo?.accent ?? TAGS[4].accent}`} />
                   <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.12),rgba(2,6,23,0.82))]" />
+                  
+                  {poll.closed && total > 0 && leadingIndex >= 0 && (
+                    <motion.div 
+                      className="relative z-10 mb-4 overflow-hidden rounded-2xl border border-amber-400/20 bg-white/5 backdrop-blur-xl p-4 md:p-5 text-center group cursor-default"
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                    >
+                      {/* Header Section */}
+                      <div className="flex items-center justify-center gap-2.5 mb-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-400/15 text-amber-300">
+                          <Trophy className="h-4 w-4" />
+                        </div>
+                        <div className="text-left">
+                          <p className="text-[8px] font-black uppercase tracking-[0.2em] text-amber-200/60 leading-none">Winner</p>
+                          <h4 className="text-[10px] font-medium text-slate-500 mt-0.5 max-w-[150px] truncate">{poll.question}</h4>
+                        </div>
+                      </div>
+
+                      {/* Main Winner Typography */}
+                      <motion.h2 
+                        className="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-[linear-gradient(135deg,#f6c453,#ff9f43)] mb-4"
+                      >
+                        {poll.options[leadingIndex]}
+                      </motion.h2>
+
+                      {/* Info & Progress - Compact Row */}
+                      <div className="flex items-center justify-center gap-4 border-t border-white/5 pt-3">
+                        <div className="flex gap-2">
+                          <div className="flex items-center gap-1.5 text-[10px] text-amber-100/70">
+                            <span className="font-bold">{winningVotes}</span>
+                            <span className="opacity-50 uppercase tracking-tighter">Votes</span>
+                          </div>
+                          <div className="w-px h-3 bg-white/10" />
+                          <div className="text-[10px] font-bold text-amber-400">
+                            {Math.round((winningVotes / total) * 100)}% Lead
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
 
                   <div className="relative">
                     <div className="flex justify-between items-start mb-4 gap-3">
