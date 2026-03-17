@@ -16,6 +16,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { useSystemConfig } from '../hooks/useSystemConfig';
+import FeatureDisabledBanner from '../components/FeatureDisabledBanner';
 import { 
   collection, 
   query, 
@@ -95,7 +96,8 @@ const timeAgo = (date: any) => {
 export default function Polls() {
   const { user, profile, loading } = useAuth();
   const { config } = useSystemConfig();
-  const safeMode = config.safeMode && !profile?.is_admin;
+  const isDisabled = config.disablePolls && !profile?.is_admin;
+  const safeMode = (config.safeMode || isDisabled) && !profile?.is_admin;
   const navigate = useNavigate();
 
   const [polls, setPolls] = useState<Poll[]>([]);
@@ -120,6 +122,7 @@ export default function Polls() {
 
   useEffect(() => {
     if (!user) return;
+    if (isDisabled) return; // Do not fetch polls if disabled
 
     // 1. Polls Real-time Sync
     const pollsQuery = query(collection(db, 'polls'), orderBy('created_at', 'desc'));
@@ -153,7 +156,7 @@ export default function Polls() {
       unsubscribePolls();
       unsubscribeVotes();
     };
-  }, [user, navigate]);
+  }, [user, navigate, isDisabled]);
 
   const voteBuckets = useMemo(() => {
     const bucket = new Map<string, { total: number; counts: number[]; latestVoteAt: any | null }>();
@@ -216,6 +219,10 @@ export default function Polls() {
 
   const createPoll = async () => {
     if (!user || creating) return;
+    if (isDisabled) {
+      toast.error('The Polls section has been disabled by administrators.');
+      return;
+    }
 
     const cleanQuestion = question.trim();
     const cleanOptions = options.map((option) => option.trim()).filter(Boolean);
@@ -251,6 +258,10 @@ export default function Polls() {
       toast.error('Sign in to vote');
       return;
     }
+    if (isDisabled) {
+      toast.error('The Polls section has been disabled by administrators.');
+      return;
+    }
     if (poll.closed) return;
 
     setActionError('');
@@ -273,6 +284,10 @@ export default function Polls() {
   };
 
   const closePoll = async (poll: Poll) => {
+    if (isDisabled) {
+      toast.error('The Polls section has been disabled by administrators.');
+      return;
+    }
     setActionError('');
     try {
       await updateDoc(doc(db, 'polls', poll.id), {
@@ -285,6 +300,10 @@ export default function Polls() {
   };
 
   const deletePoll = async (pollId: string) => {
+    if (isDisabled) {
+      toast.error('The Polls section has been disabled by administrators.');
+      return;
+    }
     if (!window.confirm('Are you sure you want to delete this poll? All votes will be lost.')) return;
     setActionError('');
 
@@ -298,6 +317,23 @@ export default function Polls() {
       setActionError(err.message);
     }
   };
+
+  // Scroll to poll from hash
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '');
+    if (hash && polls.length > 0) {
+      setTimeout(() => {
+        const element = document.getElementById(hash);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('ring-2', 'ring-cyan-500', 'ring-offset-8', 'ring-offset-[#080b16]');
+          setTimeout(() => {
+            element.classList.remove('ring-2', 'ring-cyan-500', 'ring-offset-8', 'ring-offset-[#080b16]');
+          }, 3000);
+        }
+      }, 500);
+    }
+  }, [polls, window.location.hash]);
 
   if (loading) {
     return (
@@ -328,6 +364,10 @@ export default function Polls() {
           </div>
           <button
             onClick={() => {
+              if (isDisabled) {
+                toast.error('The Polls section has been disabled by administrators.');
+                return;
+              }
               if (safeMode) {
                 toast.error('Platform is in Safe Mode. Poll creation is restricted.');
                 return;
@@ -335,16 +375,17 @@ export default function Polls() {
               setShowCreate(true);
               setCreateError('');
             }}
-            disabled={safeMode && !profile?.is_admin}
+            disabled={(safeMode && !profile?.is_admin) || isDisabled}
             className="btn-primary !w-auto px-4 py-2 rounded-xl text-sm flex items-center gap-2"
           >
-            {safeMode ? <ShieldAlert size={14} /> : null}
-            {safeMode ? 'Safe Mode' : 'Start Poll'}
+            {(safeMode || isDisabled) ? <ShieldAlert size={14} /> : null}
+            {isDisabled ? 'Restricted' : (safeMode ? 'Safe Mode' : 'Start Poll')}
           </button>
         </div>
       </header>
 
       <main className="relative z-10 max-w-2xl mx-auto px-4 py-6">
+        {config.disablePolls && <FeatureDisabledBanner featureName="Polls" />}
         <motion.div
           className="mb-5 rounded-3xl border border-cyan-400/20 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_45%),radial-gradient(circle_at_bottom_right,rgba(217,70,239,0.14),transparent_40%),rgba(8,11,22,0.9)] p-5"
           initial={{ opacity: 0, y: 16 }}
@@ -436,6 +477,7 @@ export default function Polls() {
               return (
                 <motion.div
                   key={poll.id}
+                  id={poll.id}
                   className={`relative overflow-hidden rounded-3xl border p-6 ${
                     poll.closed ? 'glass border-white/5 opacity-85' : 'border-cyan-400/20 bg-slate-950/70'
                   }`}
@@ -574,13 +616,17 @@ export default function Polls() {
                           <button
                             key={optionIndex}
                             onClick={() => {
+                              if (isDisabled) {
+                                toast.error('The Polls section has been disabled by administrators.');
+                                return;
+                              }
                               if (safeMode) {
                                 toast.error('Voting is restricted during Safe Mode');
                                 return;
                               }
                               vote(poll, optionIndex);
                             }}
-                            disabled={poll.closed || safeMode}
+                            disabled={poll.closed || safeMode || isDisabled}
                             className={`w-full text-left rounded-xl p-3.5 transition-all relative overflow-hidden border group ${
                               showResults
                                 ? isMyVote

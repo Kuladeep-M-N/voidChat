@@ -72,7 +72,8 @@ export default function DebateThread() {
   const { id: debateId } = useParams<{ id: string }>();
   const { user, profile, loading } = useAuth();
   const { config } = useSystemConfig();
-  const safeMode = config.safeMode && !profile?.is_admin;
+  const isDisabled = config.disableDebates && !profile?.is_admin;
+  const safeMode = (config.safeMode || isDisabled) && !profile?.is_admin;
   const { markAsActive } = useNotifications();
   const navigate = useNavigate();
 
@@ -182,7 +183,7 @@ export default function DebateThread() {
   }, [debateId, user, navigate]);
 
   const handleVote = async (side: 'A' | 'B') => {
-    if (!user || !debateId || userVote === side || debate?.status === 'closed' || safeMode) return;
+    if (!user || !debateId || userVote === side || debate?.status === 'closed' || safeMode || isDisabled) return;
 
     // Optimistic Update
     const oldVote = userVote;
@@ -280,7 +281,7 @@ export default function DebateThread() {
   };
 
   const postArgument = async () => {
-    if (!text.trim() || !selectedSide || !user || !debateId || !profile) return;
+    if (!text.trim() || !selectedSide || !user || !debateId || !profile || isDisabled) return;
     setSending(true);
 
     try {

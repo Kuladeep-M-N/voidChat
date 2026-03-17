@@ -39,6 +39,7 @@ import { containsInappropriateContent } from '../lib/filter';
 import ReportModal from '../components/ReportModal';
 import { useSystemConfig } from '../hooks/useSystemConfig';
 import { ShieldAlert } from 'lucide-react';
+import FeatureDisabledBanner from '../components/FeatureDisabledBanner';
 
 interface Confession {
   id: string;
@@ -209,7 +210,8 @@ function CommentPanel({
   const [nameCache] = useState<Map<string, string>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
   const { config } = useSystemConfig();
-  const safeMode = config.safeMode && !profile?.is_admin;
+  const isDisabled = config.disableConfessions && !profile?.is_admin;
+  const safeMode = (config.safeMode || isDisabled) && !profile?.is_admin;
   const meta = getCategoryMeta(confession.category);
 
   useEffect(() => {
@@ -432,7 +434,8 @@ function CommentPanel({
 export default function Confessions() {
   const { user, profile, loading } = useAuth();
   const { config } = useSystemConfig();
-  const safeMode = config.safeMode && !profile?.is_admin;
+  const isDisabled = config.disableConfessions && !profile?.is_admin;
+  const safeMode = (config.safeMode || isDisabled) && !profile?.is_admin;
   const navigate = useNavigate();
 
   const [confessions, setConfessions] = useState<Confession[]>([]);
@@ -598,6 +601,23 @@ export default function Confessions() {
     }
   };
 
+  // Scroll to confession from hash
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '');
+    if (hash && confessions.length > 0) {
+      setTimeout(() => {
+        const element = document.getElementById(hash);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('ring-2', 'ring-orange-500', 'ring-offset-8', 'ring-offset-[#09060d]');
+          setTimeout(() => {
+            element.classList.remove('ring-2', 'ring-orange-500', 'ring-offset-8', 'ring-offset-[#09060d]');
+          }, 3000);
+        }
+      }, 500);
+    }
+  }, [confessions, window.location.hash]);
+
   const deleteOwn = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this confession? This action cannot be undone.')) return;
     setConfessions((current) => current.filter((entry) => entry.id !== id));
@@ -719,6 +739,7 @@ export default function Confessions() {
       </header>
 
       <main className="relative z-10 mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">
+        {config.disableConfessions && <FeatureDisabledBanner featureName="Confessions" />}
           <motion.div
             className="confession-hero overflow-hidden rounded-[2rem] border border-white/10"
             initial={{ opacity: 0, y: 18 }}
@@ -973,10 +994,10 @@ export default function Confessions() {
                 <button
                   onClick={post}
                   className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-orange-500 via-pink-500 to-violet-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(249,115,22,0.35)] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={!text.trim() || posting || safeMode}
+                  disabled={!text.trim() || posting || safeMode || isDisabled}
                 >
-                  {safeMode ? <ShieldAlert size={16} /> : <Sparkles size={16} />}
-                  {posting ? 'Posting...' : safeMode ? 'Safe Mode' : 'Post confession'}
+                  {safeMode || isDisabled ? <ShieldAlert size={16} /> : <Sparkles size={16} />}
+                  {posting ? 'Posting...' : safeMode ? 'Safe Mode' : isDisabled ? 'Confessions Disabled' : 'Post confession'}
                 </button>
               </div>
             </div>
@@ -1080,6 +1101,7 @@ export default function Confessions() {
                 return (
                   <motion.article
                     key={confession.id}
+                    id={confession.id}
                     layout
                     className="confession-card group overflow-hidden rounded-[2rem] border border-white/10"
                     initial={{ opacity: 0, y: 18 }}

@@ -22,6 +22,7 @@ import { AlertTriangle, ShieldAlert } from 'lucide-react';
 import ReportModal from '../components/ReportModal';
 import { useSystemConfig } from '../hooks/useSystemConfig';
 import { toast } from 'sonner';
+import FeatureDisabledBanner from '../components/FeatureDisabledBanner';
 
 interface QnaQuestion {
   id: string;
@@ -83,7 +84,8 @@ const timeAgo = (date: any) => {
 export default function QnA() {
   const { user, profile, loading } = useAuth();
   const { config } = useSystemConfig();
-  const safeMode = config.safeMode && !profile?.is_admin;
+  const isQnADisabled = config.disableQnA && !profile?.is_admin;
+  const safeMode = (config.safeMode || isQnADisabled) && !profile?.is_admin;
   const navigate = useNavigate();
 
   const [questions, setQuestions] = useState<QnaQuestion[]>([]);
@@ -209,7 +211,7 @@ export default function QnA() {
   const resolutionRate = questions.length > 0 ? Math.round((resolvedCount / questions.length) * 100) : 0;
 
   const submitQuestion = async () => {
-    if (!user || questionSubmitting || safeMode) return;
+    if (!user || questionSubmitting || safeMode || isQnADisabled) return;
     const cleanTitle = title.trim();
     const cleanContent = content.trim();
     if (!cleanTitle || !cleanContent) return;
@@ -243,7 +245,7 @@ export default function QnA() {
   };
 
   const submitAnswer = async () => {
-    if (!user || !activeQuestion || answerSubmitting || safeMode) return;
+    if (!user || !activeQuestion || answerSubmitting || safeMode || isQnADisabled) return;
     const clean = answerText.trim();
     if (!clean) return;
 
@@ -393,12 +395,15 @@ export default function QnA() {
       </header>
 
       <main className="relative z-10 max-w-3xl mx-auto px-4 py-6">
+        {config.disableQnA && <FeatureDisabledBanner featureName="Q&A" />}
         <motion.div
           className="glass rounded-2xl border border-amber-500/25 p-6 mb-6"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <h2 className="text-sm uppercase tracking-[0.2em] text-amber-300/80 mb-4">Ask Anonymously</h2>
+          <h2 className="text-sm uppercase tracking-[0.2em] text-amber-300/80 mb-4">
+            {isQnADisabled ? 'Q&A Section Currently Disabled' : 'Ask Anonymously'}
+          </h2>
           <div className="space-y-3">
             <div className="relative">
               <input
@@ -418,12 +423,13 @@ export default function QnA() {
             </div>
             <div className="relative">
               <textarea
-                className="input-field resize-none"
-                placeholder="Add context so answers are useful."
+                className="input-field resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+                placeholder={isQnADisabled ? "The administrative team has temporarily disabled new questions." : "Add context so answers are useful."}
                 rows={4}
                 maxLength={1000}
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
+                disabled={isQnADisabled}
               />
               <span className={`absolute right-3 bottom-3 text-[10px] font-medium px-2 py-0.5 rounded-full border ${
                 content.trim().length >= 10 
@@ -454,17 +460,21 @@ export default function QnA() {
                 </div>
                 <button
                   onClick={() => {
+                    if (isQnADisabled) {
+                      toast.error('The Q&A section has been disabled by administrators.');
+                      return;
+                    }
                     if (safeMode) {
                       toast.error('Questioning is restricted during Safe Mode');
                       return;
                     }
                     submitQuestion();
                   }}
-                  disabled={title.trim().length < 5 || content.trim().length < 10 || questionSubmitting || safeMode}
+                  disabled={title.trim().length < 5 || content.trim().length < 10 || questionSubmitting || safeMode || isQnADisabled}
                   className="btn-primary !w-auto px-5 py-2 rounded-xl text-sm disabled:opacity-50 disabled:grayscale transition-all flex items-center gap-2"
                 >
-                  {safeMode && <ShieldAlert size={16} />}
-                  {safeMode ? 'Safe Mode Active' : (questionSubmitting ? 'Posting...' : 'Post Question')}
+                  {(safeMode || isQnADisabled) && <ShieldAlert size={16} />}
+                  {isQnADisabled ? 'Restricted' : (safeMode ? 'Safe Mode Active' : (questionSubmitting ? 'Posting...' : 'Post Question'))}
                 </button>
               </div>
           </div>
@@ -728,17 +738,21 @@ export default function QnA() {
                     <span className="text-xs text-slate-500">Your name remains hidden in this Q&A space.</span>
                     <button
                       onClick={() => {
+                        if (isQnADisabled) {
+                          toast.error('The Q&A section has been disabled by administrators.');
+                          return;
+                        }
                         if (safeMode) {
                           toast.error('Answering is restricted during Safe Mode');
                           return;
                         }
                         submitAnswer();
                       }}
-                      disabled={answerText.trim().length < 2 || answerSubmitting || safeMode}
+                      disabled={answerText.trim().length < 2 || answerSubmitting || safeMode || isQnADisabled}
                       className="btn-primary !w-auto px-5 py-2 rounded-xl text-sm disabled:opacity-50 disabled:grayscale transition-all flex items-center gap-2"
                     >
-                      {safeMode && <ShieldAlert size={16} />}
-                      {safeMode ? 'Safe Mode Active' : (answerSubmitting ? 'Posting...' : 'Post Answer')}
+                      {(safeMode || isQnADisabled) && <ShieldAlert size={16} />}
+                      {isQnADisabled ? 'Restricted' : (safeMode ? 'Safe Mode Active' : (answerSubmitting ? 'Posting...' : 'Post Answer'))}
                     </button>
                   </div>
                 </div>

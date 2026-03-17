@@ -44,6 +44,7 @@ import { Toaster } from 'sonner';
 import { NotificationProvider } from './hooks/useNotifications';
 import { SystemConfigProvider } from './hooks/useSystemConfig';
 import SafeModeBanner from './components/SafeModeBanner';
+import GlobalAnnouncement from './components/GlobalAnnouncement';
 
 function App() {
   return (
@@ -54,6 +55,7 @@ function App() {
           <AnimatedBackground />
           <Toaster position="top-right" richColors />
           <SafeModeBanner />
+          <GlobalAnnouncement />
           <div className="relative" style={{ zIndex: 1 }}>
           <GlobalVoice />
           <Routes>

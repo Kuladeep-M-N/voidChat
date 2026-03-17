@@ -1,33 +1,48 @@
 {
   "rules": {
-    ".read": "auth != null",
-    ".write": "auth != null",
     "presence": {
-      "global": {
+      ".read": "auth != null",
+      "$roomId": {
         "$uid": {
-          ".write": "$uid === auth.uid"
+          ".write": "auth != null && $uid === auth.uid",
+          "username": { ".validate": "newData.isString()" },
+          "speaking": { ".validate": "newData.isBoolean()" },
+          "muted": { ".validate": "newData.isBoolean()" },
+          "role": { ".validate": "newData.val() === 'speaker' || newData.val() === 'audience'" },
+          "handRaised": { ".validate": "newData.isBoolean()" }
         }
       }
     },
-    "rooms": {
+    "signaling": {
       "$roomId": {
-        "presence": {
-          "$uid": {
-            ".write": "$uid === auth.uid"
-          }
-        },
-        "typing": {
-          "$uid": {
-            ".write": "$uid === auth.uid"
-          }
-        },
-        "reactions": {
-          "$messageId": {
-            ".read": "auth != null",
-            ".write": "auth != null"
+        "$uid": {
+          ".read": "auth != null && $uid === auth.uid",
+          ".write": "auth != null",
+          "$signalId": {
+            ".validate": "newData.hasChildren(['from', 'type', 'data'])"
           }
         }
       }
-    }
+    },
+    "chat": {
+      "$roomId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "$messageId": {
+          ".validate": "newData.hasChildren(['userId', 'username', 'text'])"
+        }
+      }
+    },
+    "reactions": {
+      "$roomId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "$reactionId": {
+          ".validate": "newData.hasChildren(['emoji', 'userId', 'timestamp'])"
+        }
+      }
+    },
+    ".read": false,
+    ".write": false
   }
 }

@@ -40,6 +40,7 @@ import { containsInappropriateContent } from '../lib/filter';
 import ReportModal from '../components/ReportModal';
 import { useSystemConfig } from '../hooks/useSystemConfig';
 import { ShieldAlert } from 'lucide-react';
+import FeatureDisabledBanner from '../components/FeatureDisabledBanner';
 
 interface Shoutout {
   id: string;
@@ -141,7 +142,8 @@ function clamp(value: number, min: number, max: number) {
 export default function Shoutouts() {
   const { user, profile, loading } = useAuth();
   const { config } = useSystemConfig();
-  const safeMode = config.safeMode && !profile?.is_admin;
+  const isDisabled = config.disableShoutouts && !profile?.is_admin;
+  const safeMode = (config.safeMode || isDisabled) && !profile?.is_admin;
   const navigate = useNavigate();
   const messageRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -443,7 +445,7 @@ export default function Shoutouts() {
     const target = parentId ? '' : toAlias.trim().replace(/^@+/, '');
     const content = inlineContent ? inlineContent.trim() : message.trim();
 
-    if ((!parentId && !target) || !content || !user || posting) return;
+    if ((!parentId && !target) || !content || !user || posting || isDisabled) return;
 
     // Safety Check: Content Filtering
     const filterResult = containsInappropriateContent(content);
@@ -552,6 +554,7 @@ export default function Shoutouts() {
       </header>
 
       <main className="relative z-10 mx-auto flex max-w-6xl flex-col gap-8 px-5 py-8 sm:px-8 lg:py-10">
+        {config.disableShoutouts && <FeatureDisabledBanner featureName="Shoutouts" />}
         <section className="relative">
           <div className="grid grid-cols-3 gap-2 md:gap-4 lg:gap-6">
             {[
@@ -709,11 +712,11 @@ export default function Shoutouts() {
 
                 <button
                   onClick={() => post()}
-                  disabled={!toAlias.trim() || !message.trim() || posting}
+                  disabled={!toAlias.trim() || !message.trim() || posting || isDisabled}
                   className="group inline-flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-8 py-4 text-sm font-extrabold tracking-wide text-white shadow-[0_0_25px_rgba(168,85,247,0.45)] transition hover:scale-[1.01] hover:shadow-[0_0_35px_rgba(34,211,238,0.25)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:min-w-[196px]"
                 >
-                  <span>{posting ? 'BROADCASTING...' : safeMode ? 'SAFE MODE ACTIVE' : 'BROADCAST'}</span>
-                  {safeMode ? <ShieldAlert className="h-4 w-4" /> : <Send className="h-4 w-4 transition group-hover:translate-x-0.5" />}
+                  <span>{posting ? 'BROADCASTING...' : (isDisabled ? 'RESTRICTED' : safeMode ? 'SAFE MODE ACTIVE' : 'BROADCAST')}</span>
+                  {(safeMode || isDisabled) ? <ShieldAlert className="h-4 w-4" /> : <Send className="h-4 w-4 transition group-hover:translate-x-0.5" />}
                 </button>
               </div>
             </div>

@@ -1,14 +1,15 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
-interface SystemConfig {
+export interface SystemConfig {
   safeMode: boolean;
   disableConfessions: boolean;
   disableDebates: boolean;
   disableVoiceRooms: boolean;
   disableShoutouts: boolean;
   disablePolls: boolean;
+  disableQnA: boolean;
 }
 
 interface SystemConfigContextType {
@@ -24,6 +25,7 @@ const defaultConfig: SystemConfig = {
   disableVoiceRooms: false,
   disableShoutouts: false,
   disablePolls: false,
+  disableQnA: false,
 };
 
 const SystemConfigContext = createContext<SystemConfigContextType>({
@@ -59,7 +61,7 @@ export const SystemConfigProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const updateConfig = async (updates: Partial<SystemConfig>) => {
     const configRef = doc(db, 'system_config', 'global');
     try {
-      await setDoc(configRef, { ...config, ...updates }, { merge: true });
+      await updateDoc(configRef, updates);
     } catch (error) {
       console.error("Error updating system config:", error);
       throw error;

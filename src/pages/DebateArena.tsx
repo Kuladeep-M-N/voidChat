@@ -20,6 +20,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { useSystemConfig } from '../hooks/useSystemConfig';
+import FeatureDisabledBanner from '../components/FeatureDisabledBanner';
 import { 
   collection, 
   query, 
@@ -62,7 +63,8 @@ const CATEGORIES = ['Tech', 'Campus', 'Fun', 'Life', 'Random'];
 export default function DebateArena() {
   const { user, profile, loading } = useAuth();
   const { config } = useSystemConfig();
-  const safeMode = config.safeMode && !profile?.is_admin;
+  const isDisabled = config.disableDebates && !profile?.is_admin;
+  const safeMode = (config.safeMode || isDisabled) && !profile?.is_admin;
   const { markAsActive, onlineCount } = useNotifications();
   const navigate = useNavigate();
   
@@ -155,7 +157,7 @@ export default function DebateArena() {
   }, [user, filter]);
 
   const createDebate = async () => {
-    if (!newTitle.trim() || !user) return;
+    if (!newTitle.trim() || !user || creating || isDisabled) return;
     setCreating(true);
 
     try {
@@ -247,6 +249,7 @@ export default function DebateArena() {
       </header>
 
       <main className="relative z-10 max-w-7xl mx-auto px-6 py-10">
+        {config.disableDebates && <FeatureDisabledBanner featureName="Debate Arena" />}
         <div className="space-y-12">
           {/* Top Section */}
           <div className="flex flex-col lg:flex-row gap-6">

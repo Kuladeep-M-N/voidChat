@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Trash2, Archive, Users, Mic, Mic2, TrendingUp, Zap, Clock, MessageSquare, History, Plus, Play, Sparkles, ArrowLeft, Dices, Flame, ShieldAlert } from 'lucide-react';
 import { useSystemConfig } from '../hooks/useSystemConfig';
+import FeatureDisabledBanner from '../components/FeatureDisabledBanner';
 import { 
   collection, 
   query, 
@@ -60,29 +61,21 @@ interface ChatMessage {
   isSystem?: boolean;
 }
 
-const STUN_FALLBACK = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-];
-
-async function getIceServers(): Promise<RTCIceServer[]> {
-  try {
-    const domain = import.meta.env.VITE_METERED_DOMAIN;
-    const apiKey = import.meta.env.VITE_METERED_API_KEY;
-    
-    if (!domain || !apiKey) {
-      console.warn('Metered credentials missing, falling back to STUN');
-      return STUN_FALLBACK;
-    }
-
-    const response = await fetch(`https://${domain}/api/v1/turn/credentials?apiKey=${apiKey}`);
-    const data = await response.json();
-    return data as RTCIceServer[];
-  } catch (error) {
-    console.warn('Failed to fetch TURN servers, falling back to STUN:', error);
-    return STUN_FALLBACK;
+const METERED_ICE_SERVERS = [
+  {
+    urls: ["stun:stun.relay.metered.ca:80"]
+  },
+  {
+    urls: [
+      "turn:global.relay.metered.ca:80",
+      "turn:global.relay.metered.ca:80?transport=tcp",
+      "turn:global.relay.metered.ca:443",
+      "turns:global.relay.metered.ca:443?transport=tcp"
+    ],
+    username: import.meta.env.VITE_METERED_API_KEY,
+    credential: import.meta.env.VITE_METERED_API_KEY
   }
-}
+];
 
 function useSpeakingDetector(stream: MediaStream | null): boolean {
   const [speaking, setSpeaking] = useState(false);
@@ -120,7 +113,8 @@ function useSpeakingDetector(stream: MediaStream | null): boolean {
 export default function VoiceRooms() {
   const { user, profile, loading } = useAuth();
   const { config } = useSystemConfig();
-  const safeMode = config.safeMode && !profile?.is_admin;
+  const isDisabled = config.disableVoiceRooms && !profile?.is_admin;
+  const safeMode = (config.safeMode || isDisabled) && !profile?.is_admin;
   const navigate = useNavigate();
   const location = useLocation();
   const isVoiceRoute = location.pathname === '/voice';
@@ -159,6 +153,7 @@ export default function VoiceRooms() {
   const remoteAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const pendingCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const joiningRef = useRef<boolean>(false);
+  const [peerStatuses, setPeerStatuses] = useState<Record<string, string>>({});
 
   const isSpeaking = useSpeakingDetector(localStreamRef.current);
 
@@ -216,8 +211,7 @@ export default function VoiceRooms() {
     if (existing) return existing;
 
     console.log(`[WebRTC] Creating peer for ${remoteUserId}, initiator: ${isInitiator}`);
-    const iceServers = await getIceServers();
-    const pc = new RTCPeerConnection({ iceServers });
+    const pc = new RTCPeerConnection({ iceServers: METERED_ICE_SERVERS });
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
@@ -254,21 +248,27 @@ export default function VoiceRooms() {
 
     pc.oniceconnectionstatechange = () => {
       console.log(`[WebRTC] ICE state with ${remoteUserId}: ${pc.iceConnectionState}`);
+      setPeerStatuses(prev => ({ ...prev, [remoteUserId]: pc.iceConnectionState }));
     };
 
     pc.onconnectionstatechange = () => {
-      console.log(`[WebRTC] Connection state with ${remoteUserId}: ${pc.connectionState}`);
-      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-        console.warn(`Connection to ${remoteUserId} ${pc.connectionState}. Closing.`);
-        pc.close();
-        peersRef.current.delete(remoteUserId);
-        pendingCandidatesRef.current.delete(remoteUserId);
-        const audio = remoteAudiosRef.current.get(remoteUserId);
-        if (audio) {
-          audio.srcObject = null;
-          audio.remove();
-        }
-        remoteAudiosRef.current.delete(remoteUserId);
+      const state = pc.connectionState;
+      console.log(`[WebRTC] Connection state with ${remoteUserId}: ${state}`);
+      setPeerStatuses(prev => ({ ...prev, [remoteUserId]: state }));
+
+      if (state === 'failed' || state === 'disconnected') {
+        console.warn(`Connection to ${remoteUserId} ${state}. Attempting cleanup.`);
+        // Don't immediately close if it might reconnect, but for now we follow strict cleanup
+        setTimeout(() => {
+          if (pc.connectionState === 'failed') {
+            pc.close();
+            peersRef.current.delete(remoteUserId);
+            pendingCandidatesRef.current.delete(remoteUserId);
+            const audio = remoteAudiosRef.current.get(remoteUserId);
+            if (audio) { audio.srcObject = null; audio.remove(); }
+            remoteAudiosRef.current.delete(remoteUserId);
+          }
+        }, 3000);
       }
     };
 
@@ -289,27 +289,84 @@ export default function VoiceRooms() {
   }, [user, activeRoom]);
 
 
-  // 1. Presence Effect: Updates our state to others (muted, speaking, etc.)
+  // RTDB Connection monitor
+  useEffect(() => {
+    const connectedRef = ref(rtdb, '.info/connected');
+    const unsubscribe = onValue(connectedRef, (snap) => {
+      const isConnected = snap.val() === true;
+      console.log(`[VoiceRooms] RTDB Connection Status: ${isConnected}`);
+      if (!isConnected) {
+        toast.error("RTDB Disconnected - Check your network/env", { id: 'rtdb-status' });
+      } else {
+      }
+    });
+    return () => off(connectedRef);
+  }, []);
+
+  // Global error logger for diagnostics
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      if (event.message?.includes('Firebase')) {
+        toast.error(`Firebase Error: ${event.message}`);
+      }
+    };
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
+
+  useEffect(() => {
+    if (activeRoom) {
+      console.log(`[VoiceRooms] Active Room changed: ${activeRoom.name} (${activeRoom.id})`);
+    } else {
+      console.log("[VoiceRooms] No active room");
+    }
+  }, [activeRoom]);
+
+  // 1a. Presence Session: Initializes presence and handles disconnect
   useEffect(() => {
     if (!user || !activeRoom) return;
 
     const roomId = activeRoom.id;
     const presenceRef = ref(rtdb, `presence/${roomId}/${user.uid}`);
 
+    // Initial state setup
+    console.log(`[VoiceRooms] Setting presence session for room: ${roomId}, user: ${user.uid}`);
     set(presenceRef, {
       username: profile?.anonymous_username ?? 'Anonymous',
       muted,
       role: myRole,
       handRaised,
       speaking: isSpeaking
+    }).then(() => {
+      console.log(`[VoiceRooms] Presence session set successfully`);
+    }).catch(err => {
+      console.error(`[VoiceRooms] Presence session set FAILED:`, err);
+      toast.error(`Presence Setup Failed: ${err.message}`);
     });
 
-    onDisconnect(presenceRef).remove();
+    onDisconnect(presenceRef).remove().catch(err => {
+      console.error("[VoiceRooms] onDisconnect setup failed:", err);
+    });
 
     return () => {
       remove(presenceRef);
     };
-  }, [user, activeRoom, profile, muted, myRole, handRaised, isSpeaking]);
+  }, [user, activeRoom?.id, profile?.anonymous_username]); // Only core identity/room change
+
+  // 1b. Presence Updates: Syncs ephemeral state (muted, speaking, etc.)
+  useEffect(() => {
+    if (!user || !activeRoom) return;
+
+    const roomId = activeRoom.id;
+    const presenceRef = ref(rtdb, `presence/${roomId}/${user.uid}`);
+
+    update(presenceRef, {
+      muted,
+      role: myRole,
+      handRaised,
+      speaking: isSpeaking
+    });
+  }, [user, activeRoom?.id, muted, myRole, handRaised, isSpeaking]);
 
   // Hand Raise Toggle (Manually controlled by user)
 
@@ -417,12 +474,13 @@ export default function VoiceRooms() {
       const data = snapshot.val() || {};
       const users: Participant[] = Object.entries(data).map(([uid, info]: [string, any]) => ({
         userId: uid,
-        username: info.username,
-        speaking: info.speaking,
-        muted: info.muted,
-        role: info.role,
-        handRaised: info.handRaised
+        username: info.username || 'Anonymous',
+        speaking: !!info.speaking,
+        muted: !!info.muted,
+        role: info.role || 'audience',
+        handRaised: !!info.handRaised
       }));
+      console.log(`[VoiceRooms] Participants updated: ${users.length}`, users);
       setParticipants(users);
 
       // Deterministic Peer Creation: Only create peer if we are the initiator (UID < Remote UID)
@@ -434,6 +492,9 @@ export default function VoiceRooms() {
           }
         }
       });
+    }, (error) => {
+      console.error("[VoiceRooms] Participants listener error:", error);
+      toast.error(`Presence Error: ${error.message}`);
     });
 
     return () => {
@@ -479,13 +540,36 @@ export default function VoiceRooms() {
 
 
   const leaveRoom = useCallback(() => {
-    localStreamRef.current?.getTracks().forEach(t => t.stop());
-    localStreamRef.current = null;
-    peersRef.current.forEach(pc => pc.close());
+    console.log("[WebRTC] Leaving room and cleaning up...");
+    
+    // Stop local tracks
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(t => t.stop());
+      localStreamRef.current = null;
+    }
+
+    // Close and clear all peers
+    peersRef.current.forEach((pc, uid) => {
+      console.log(`[WebRTC] Closing peer for ${uid}`);
+      pc.close();
+    });
     peersRef.current.clear();
+
+    // Remove remote audio elements
     remoteAudiosRef.current.forEach(a => a.remove());
     remoteAudiosRef.current.clear();
-    setActiveRoom(null); setParticipants([]); setChatMessages([]); setHandRaised(false);
+
+    // Clear buffer and statuses
+    pendingCandidatesRef.current.clear();
+    setPeerStatuses({});
+
+    // Reset UI state
+    setActiveRoom(null);
+    setParticipants([]);
+    setChatMessages([]);
+    setHandRaised(false);
+    setMuted(false);
+    setMyRole('audience');
   }, []);
 
   const [activityFeed, setActivityFeed] = useState<any[]>([]);
@@ -527,18 +611,24 @@ export default function VoiceRooms() {
     joiningRef.current = true;
     setJoining(true); setErrorMsg(null);
 
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      console.log("[WebRTC] Requesting microphone access...");
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      
+      // Start muted by default
       stream.getAudioTracks().forEach(track => {
         track.enabled = false;
       });
+      
       localStreamRef.current = stream;
-      setMyRole('speaker');
+      setMyRole('audience');
       setMuted(true);
       setActiveRoom(room);
-      setChatMessages([{ id: '1', userId: 'sys', username: 'System', text: `Connected to ${room.name}.`, isSystem: true }]);
+      toast.success('Microphone connected. You are in the audience (muted).');
     } catch (err) {
-      console.warn('Microphone access denied, joining as listener only.');
+      console.warn('[WebRTC] Microphone access denied or failed:', err);
+      toast.error('Microphone access denied. Joining as listener only.');
       setMyRole('audience');
       setMuted(true);
       setActiveRoom(room);
@@ -550,7 +640,7 @@ export default function VoiceRooms() {
 
   useEffect(() => () => { leaveRoom(); }, [leaveRoom]);
 
-  const createRoom = async () => {
+  const handleCreateRoom = async () => {
     if (safeMode) {
       toast.error('Voice field generation is suppressed during Safe Mode');
       return;
@@ -631,8 +721,15 @@ export default function VoiceRooms() {
   const toggleMute = useCallback(() => {
     const track = localStreamRef.current?.getAudioTracks()[0];
     if (track) track.enabled = muted;
+
+    // Promote to stage if unmuting from audience
+    if (muted && myRole === 'audience' && localStreamRef.current) {
+      setMyRole('speaker');
+      toast.success("You've moved to the stage!");
+    }
+
     setMuted(m => !m);
-  }, [muted]);
+  }, [muted, myRole]);
 
   const sendReaction = (emoji: string) => {
     if (!user || !activeRoom || safeMode) return;
@@ -651,52 +748,57 @@ export default function VoiceRooms() {
   // ------------------------------------ RENDER LOGIC ------------------------------------
   if (!user) return null;
 
-  const stageUsers = participants.filter(p => !p.muted || p.speaking);
-  const listenerUsers = participants.filter(p => p.muted && !p.speaking);
+  const stageUsers = participants.filter(p => p.role === 'speaker');
+  const listenerUsers = participants.filter(p => p.role === 'audience');
 
-  if (!isVoiceRoute && activeRoom) {
-    // Minimized Widget
-    return (
-      <div className="fixed bottom-6 right-6 z-50 font-display">
-        <div className="bg-room-dark/95 backdrop-blur-xl border border-white/10 p-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-4 w-72">
-          <div className={`w-12 h-12 rounded-full flex items-center justify-center relative overflow-hidden shrink-0 border-2 ${isSpeaking && !muted ? 'border-accent-purple speaking-glow' : 'border-white/10'}`}>
-            <Mic size={20} className="relative z-10 text-white" />
-          </div>
+  const renderContent = () => {
+    if (!isVoiceRoute && activeRoom) {
+      // Minimized Widget
+      return (
+        <div className="fixed bottom-6 right-6 z-50 font-display">
+          <div className="bg-room-dark/95 backdrop-blur-xl border border-white/10 p-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-4 w-72">
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center relative overflow-hidden shrink-0 border-2 ${isSpeaking && !muted ? 'border-accent-purple speaking-glow' : 'border-white/10'}`}>
+              <Mic size={20} className="relative z-10 text-white" />
+            </div>
 
-          <div className="flex-1 min-w-0">
-            <h4 className="text-white font-bold text-sm truncate">{activeRoom.name}</h4>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary-voice animate-pulse" />
-              <span className="text-accent-purple text-[10px] font-bold uppercase tracking-widest">{participants.length} Live</span>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-white font-bold text-sm truncate">{activeRoom.name}</h4>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary-voice animate-pulse" />
+                <span className="text-accent-purple text-[10px] font-bold uppercase tracking-widest">{participants.length} Live</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button onClick={toggleMute} className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${muted ? 'bg-red-500/20 text-red-500' : 'bg-white/10 text-white hover:bg-white/20'}`}>
+                <span className="material-symbols-outlined text-[20px]">{muted ? 'mic_off' : 'mic'}</span>
+              </button>
+              <button onClick={() => navigate('/voice')} className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all">
+                <span className="material-symbols-outlined text-[20px]">open_in_full</span>
+              </button>
+              <button 
+                onClick={() => { if (window.confirm('Leave this room?')) leaveRoom(); }} 
+                className="w-9 h-9 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center transition-all" 
+                title="Leave"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
             </div>
           </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button onClick={toggleMute} className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${muted ? 'bg-red-500/20 text-red-500' : 'bg-white/10 text-white hover:bg-white/20'}`}>
-              <span className="material-symbols-outlined text-[20px]">{muted ? 'mic_off' : 'mic'}</span>
-            </button>
-            <button onClick={() => navigate('/voice')} className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all">
-              <span className="material-symbols-outlined text-[20px]">open_in_full</span>
-            </button>
-            <button 
-              onClick={() => { if (window.confirm('Leave this room?')) leaveRoom(); }} 
-              className="w-9 h-9 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center transition-all" 
-              title="Leave"
-            >
-              <span className="material-symbols-outlined text-[20px]">close</span>
-            </button>
-          </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
+    return null;
+  };
 
-  if (isVoiceRoute && activeRoom) {
+  const renderFullView = () => {
     return (
       <div className="font-display bg-[#0f1115] text-slate-800 dark:text-slate-200 h-screen w-full flex flex-col transition-colors duration-300 overflow-hidden"
            style={{
              backgroundImage: 'radial-gradient(circle at 15% 50%, rgba(139, 92, 246, 0.08), transparent 35%), radial-gradient(circle at 85% 30%, rgba(56, 189, 248, 0.08), transparent 35%)'
            }}>
+        
+
         
         {/* Header */}
         <header className="px-6 py-4 flex justify-between items-center z-20 relative bg-[#1c1c24]/80 backdrop-blur-lg border-b border-white/5 shrink-0">
@@ -725,27 +827,35 @@ export default function VoiceRooms() {
         <main className="flex-1 flex relative overflow-hidden">
           {/* Main Stage Area */}
           <div className="flex-1 flex flex-col p-4 sm:p-8 overflow-y-auto pb-32 custom-scrollbar-voice">
-            <div className="mb-12">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-sm font-bold tracking-widest uppercase text-slate-400">On Stage</h2>
-                <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/20">
+            <div className="mb-6 sm:mb-12">
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <h2 className="text-[10px] sm:text-xs font-bold tracking-widest uppercase text-slate-400">On Stage</h2>
+                <span className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/20">
                   {stageUsers.length} Speakers
                 </span>
               </div>
-              <div className="flex flex-wrap gap-6 sm:gap-8 items-center justify-center sm:justify-start">
+              <div className="flex flex-wrap gap-4 sm:gap-8 items-center justify-center sm:justify-start">
                 {stageUsers.map((p) => {
                   const isMe = p.userId === user?.uid;
                   const active = p.speaking && !p.muted;
                   const isHost = p.userId === activeRoom.created_by;
 
+                  const status = peerStatuses[p.userId];
+                  const isConnecting = status && status !== 'connected' && status !== 'completed';
+
                   return (
-                    <div key={p.userId} className={`flex flex-col items-center gap-3 transition-opacity duration-300 ${!active && !isMe ? 'opacity-80 hover:opacity-100' : ''}`}>
+                    <div key={p.userId} className={`flex flex-col items-center gap-2 sm:gap-3 transition-opacity duration-300 ${!active && !isMe ? 'opacity-80 hover:opacity-100' : ''}`}>
                       <div className="relative">
-                        <div className={`flex items-center justify-center text-3xl font-bold bg-slate-800 object-cover transition-all ${
+                        <div className={`flex items-center justify-center text-xl sm:text-3xl font-bold bg-slate-800 object-cover transition-all ${
                           active 
-                            ? 'w-24 h-24 rounded-full border-[3px] border-sky-300 shadow-[0_0_15px_rgba(125,211,252,0.4),inset_0_0_10px_rgba(125,211,252,0.2)] text-white bg-slate-700 scale-105' 
-                            : 'w-20 h-20 rounded-full border-2 border-slate-700 text-slate-400 hover:border-slate-500'
+                            ? 'w-20 h-20 sm:w-24 sm:h-24 rounded-full border-[3px] border-sky-300 shadow-[0_0_15px_rgba(125,211,252,0.4),inset_0_0_10px_rgba(125,211,252,0.2)] text-white bg-slate-700 scale-105' 
+                            : 'w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-slate-700 text-slate-400 hover:border-slate-500'
                         }`}>
+                          {isConnecting && (
+                            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 rounded-full overflow-hidden">
+                              <div className="w-10 h-10 sm:w-12 sm:h-12 border-2 border-sky-400/30 border-t-sky-400 rounded-full animate-spin" />
+                            </div>
+                          )}
                           {isHost && !active ? (
                             <div className="w-full h-full rounded-full bg-gradient-to-br from-indigo-500/80 to-purple-600/80 flex items-center justify-center text-white">
                               {p.username.slice(0, 2).toUpperCase()}
@@ -772,8 +882,13 @@ export default function VoiceRooms() {
                             <span className="material-symbols-outlined text-black text-[16px] font-bold">back_hand</span>
                           </motion.div>
                         )}
+                        {isConnecting && (
+                           <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-[7px] sm:text-[8px] font-black uppercase tracking-tighter text-sky-400 animate-pulse">
+                             Connecting...
+                           </div>
+                        )}
                       </div>
-                      <span className={`${active ? 'font-semibold text-sm text-sky-100' : 'font-medium text-sm text-slate-400'}`}>
+                      <span className={`${active ? 'font-semibold text-xs sm:text-sm text-sky-100' : 'font-medium text-xs sm:text-sm text-slate-400'}`}>
                         {isMe ? 'You' : p.username} {isHost && !isMe ? '★' : ''}
                       </span>
                     </div>
@@ -783,22 +898,25 @@ export default function VoiceRooms() {
             </div>
 
             {/* Listeners Section */}
-            {listenerUsers.length > 0 && (
-              <div>
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-4 w-full">
-                    <h2 className="text-sm font-bold tracking-widest uppercase text-slate-400 whitespace-nowrap">Listeners</h2>
-                    <div className="h-[1px] bg-white/10 w-full flex-1"></div>
-                    <span className="text-xs text-slate-500 whitespace-nowrap font-medium">{listenerUsers.length} people listening</span>
-                  </div>
+            <div className="mt-4 sm:mt-8 pt-4 sm:pt-8 border-t border-white/5">
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <div className="flex items-center gap-4 w-full">
+                  <h2 className="text-[10px] sm:text-xs font-bold tracking-widest uppercase text-slate-400 whitespace-nowrap">Listeners</h2>
+                  <div className="h-[1px] bg-white/10 w-full flex-1"></div>
+                  <span className="text-[10px] sm:text-xs text-slate-500 whitespace-nowrap font-medium">
+                    {listenerUsers.length > 0 ? `${listenerUsers.length} listening` : 'No listeners'}
+                  </span>
                 </div>
-                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-x-4 gap-y-8">
+              </div>
+
+              {listenerUsers.length > 0 ? (
+                <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-x-3 sm:gap-x-4 gap-y-6 sm:gap-y-8">
                   {listenerUsers.map((p) => {
                     const isMe = p.userId === user?.uid;
                     return (
                       <div key={p.userId} className="flex flex-col items-center gap-2 group">
                         <div className="relative">
-                          <div className="w-14 h-14 rounded-2xl bg-slate-800/80 flex items-center justify-center text-sm font-bold text-slate-300 border border-white/5 group-hover:border-indigo-500/50 group-hover:bg-slate-700/80 transition-all duration-300 shadow-sm relative overflow-hidden">
+                          <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-slate-800/80 flex items-center justify-center text-xs sm:text-sm font-bold text-slate-300 border border-white/5 group-hover:border-indigo-500/50 group-hover:bg-slate-700/80 transition-all duration-300 shadow-sm relative overflow-hidden">
                              {p.username.slice(0, 2).toUpperCase()}
                              <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                           </div>
@@ -820,10 +938,14 @@ export default function VoiceRooms() {
                     );
                   })}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="py-4 sm:py-8 flex flex-col items-center justify-center rounded-2xl sm:rounded-[2rem] bg-white/[0.02] border border-dashed border-white/5">
+                  <p className="text-[8px] sm:text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em]">Waiting for audience</p>
+                </div>
+              )}
+            </div>
             {/* Inline Chat for Mobile */}
-            <div className="lg:hidden mt-8 px-6 py-4 rounded-3xl bg-[#1c1c24]/50 border border-white/5 shadow-2xl overflow-hidden flex flex-col">
+            <div className="lg:hidden mt-4 sm:mt-8 px-4 sm:px-6 py-4 rounded-2xl sm:rounded-3xl bg-[#1c1c24]/50 border border-white/5 shadow-2xl overflow-hidden flex flex-col">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-indigo-400">forum</span>
@@ -1047,21 +1169,18 @@ export default function VoiceRooms() {
               </button>
             )}
           </div>
-          {/* Hidden container for remote WebRTC audio elements */}
-          <div id="remote-audio-container" style={{ display: 'none' }} />
+        <div id="remote-audio-container" style={{ display: 'none' }} />
         </main>
       </div>
     );
-  }
+  };
 
-  // Otherwise render the Voice Lobby (room list) if we are on the voice route
-  if (!isVoiceRoute) return null;
+  const renderLobbyView = () => {
+    const activeRoomsList = rooms.filter(r => !r.status || r.status === 'active');
+    const pastRoomsList = rooms.filter(r => r.status === 'ended');
 
-  const activeRoomsList = rooms.filter(r => !r.status || r.status === 'active');
-  const pastRoomsList = rooms.filter(r => r.status === 'ended');
-
-  return (
-    <div className="min-h-screen relative overflow-hidden bg-[#07070f] text-slate-200 font-sans selection:bg-violet-500/30">
+    return (
+      <div className="min-h-screen relative overflow-hidden bg-[#07070f] text-slate-200 font-sans selection:bg-violet-500/30">
       {/* Background Elements */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-[-10%] right-[-10%] w-[600px] h-[600px] bg-violet-600/10 blur-[120px] rounded-full animate-pulse" />
@@ -1133,6 +1252,7 @@ export default function VoiceRooms() {
       </header>
 
       <main className="relative z-10 max-w-7xl mx-auto px-6 py-10">
+        {config.disableVoiceRooms && <FeatureDisabledBanner featureName="Voice Lounge" />}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
           
           {/* Left Column: Dashboard Content */}
@@ -1281,14 +1401,22 @@ export default function VoiceRooms() {
                         Trending Now
                       </span>
                       <div className="flex -space-x-2">
-                        {[1, 2, 3].map(v => (
-                          <div key={v} className="w-6 h-6 rounded-full border border-slate-800 bg-slate-700 flex items-center justify-center text-[8px] font-bold">
-                            {String.fromCharCode(64 + v)}
+                        {globalPresence[trendingRoom.id] ? (
+                          Object.entries(globalPresence[trendingRoom.id]).slice(0, 4).map(([uid, info]: [any, any]) => (
+                            <div key={uid} className="w-6 h-6 rounded-full border border-slate-800 bg-violet-600/30 flex items-center justify-center text-[7px] font-black text-violet-100 overflow-hidden" title={info.username}>
+                              {info.username?.slice(0, 2).toUpperCase() || '?'}
+                            </div>
+                          ))
+                        ) : (
+                          [1, 2, 3].map(v => (
+                            <div key={v} className="w-6 h-6 rounded-full border border-slate-800 bg-slate-700 flex items-center justify-center text-[8px] font-bold" />
+                          ))
+                        )}
+                        {(globalPresence[trendingRoom.id] && Object.keys(globalPresence[trendingRoom.id]).length > 4) && (
+                          <div className="w-6 h-6 rounded-full border border-slate-800 bg-violet-600/50 flex items-center justify-center text-[8px] font-bold">
+                            +{Object.keys(globalPresence[trendingRoom.id]).length - 4}
                           </div>
-                        ))}
-                        <div className="w-6 h-6 rounded-full border border-slate-800 bg-violet-600/50 flex items-center justify-center text-[8px] font-bold">
-                          +12
-                        </div>
+                        )}
                       </div>
                     </div>
                     <div>
@@ -1296,7 +1424,8 @@ export default function VoiceRooms() {
                         {trendingRoom.name}
                       </h2>
                       <p className="text-slate-400 text-sm font-medium line-clamp-1 max-w-xl">
-                        Hosted by <span className="text-indigo-300">@{trendingRoom.creator_name || 'anonymous'}</span> • Join over {trendingRoom.participantCount || 0} people discussing this topic in real-time.
+                        Hosted by <span className="text-indigo-300">@{trendingRoom.creator_name || 'anonymous'}</span> 
+                        {trendingRoom.participantCount > 0 && ` • ${trendingRoom.participantCount} people connected`}
                       </p>
                     </div>
                   </div>
@@ -1404,10 +1533,18 @@ export default function VoiceRooms() {
                             </div>
                             <span className="text-[11px] font-bold text-slate-400">@{room.creator_name || 'host'}</span>
                           </div>
-                          <div className="flex -space-x-1.5">
-                            {[1,2,3].map(v => (
-                              <div key={v} className="w-5 h-5 rounded-full border-2 border-[#0c0c14] bg-slate-800" />
-                            ))}
+                          <div className="flex -space-x-1.5 grayscale group-hover:grayscale-0 transition-all">
+                            {globalPresence[room.id] ? (
+                              Object.entries(globalPresence[room.id]).slice(0, 3).map(([uid, info]: [any, any]) => (
+                                <div key={uid} className="w-5 h-5 rounded-full border-2 border-[#0c0c14] bg-slate-800 flex items-center justify-center text-[6px] font-black text-slate-300" title={info.username}>
+                                  {info.username?.slice(0, 2).toUpperCase() || '?'}
+                                </div>
+                              ))
+                            ) : (
+                              [1,2,3].map(v => (
+                                <div key={v} className="w-5 h-5 rounded-full border-2 border-[#0c0c14] bg-slate-800" />
+                              ))
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1589,7 +1726,7 @@ export default function VoiceRooms() {
                       placeholder="e.g. Late Night Philosophies"
                       value={newName} 
                       onChange={e => setNewName(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && createRoom()} 
+                      onKeyDown={e => e.key === 'Enter' && handleCreateRoom()} 
                       autoFocus 
                       maxLength={40} 
                     />
@@ -1603,7 +1740,7 @@ export default function VoiceRooms() {
                       Abort
                     </button>
                     <button 
-                      onClick={createRoom} 
+                      onClick={handleCreateRoom} 
                       className="flex-[2] py-4 rounded-2xl bg-white text-black font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all shadow-xl shadow-white/5 disabled:opacity-50"
                       disabled={creating || !newName.trim()}
                     >
@@ -1677,6 +1814,15 @@ export default function VoiceRooms() {
       {/* Hidden container for remote WebRTC audio elements (Fallback) */}
       <div id="remote-audio-container" style={{ display: 'none' }} />
     </div>
+    );
+  };
+
+  return (
+    <>
+      <div id="remote-audio-container" style={{ display: 'none' }} />
+      {renderContent()}
+      {isVoiceRoute && activeRoom ? renderFullView() : (isVoiceRoute ? renderLobbyView() : null)}
+    </>
   );
 }
 

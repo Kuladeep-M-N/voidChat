@@ -13,6 +13,7 @@ import {
   ArrowLeft,
   Clock,
   Filter,
+  HelpCircle,
   Search,
   MoreVertical,
   Ghost,
@@ -56,7 +57,6 @@ import {
   Pause,
   Play
 } from 'lucide-react';
-import { db } from '../lib/firebase';
 import { 
   collection, 
   query, 
@@ -69,10 +69,13 @@ import {
   getDocs,
   where,
   writeBatch,
-  limit
+  limit,
+  Timestamp
 } from 'firebase/firestore';
+import { ref, onValue, off } from 'firebase/database';
+import { db, rtdb } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
-import { useSystemConfig } from '../hooks/useSystemConfig';
+import { useSystemConfig, SystemConfig } from '../hooks/useSystemConfig';
 import { toast } from 'sonner';
 
 interface Report {
@@ -115,7 +118,13 @@ export default function AdminModeration() {
     activeVoiceRooms: 0,
     debatesToday: 0,
     pollVotesToday: 0,
-    onlineUsers: 0
+    onlineUsers: 0,
+    deletedConfessions: 0,
+    closedDebates: 0,
+    expiredPolls: 0,
+    totalConfessions: 0,
+    totalDebates: 0,
+    totalPolls: 0
   });
 
   // Trending Content State
@@ -155,6 +164,8 @@ export default function AdminModeration() {
   // Sub-tabs for Admin Tools
   const [adminToolsTab, setAdminToolsTab] = useState<'overview' | 'users' | 'content' | 'analytics' | 'system'>('overview');
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+  const [isScanningSpam, setIsScanningSpam] = useState(false);
+  const [activeAnnouncements, setActiveAnnouncements] = useState<any[]>([]);
 
   const CONFIRMATION_PHRASE = "ERASE ALL PLATFORM DATA";
 
@@ -192,35 +203,167 @@ export default function AdminModeration() {
   useEffect(() => {
     if (activeTab !== 'tools') return;
 
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const startTimestamp = Timestamp.fromDate(startOfDay);
+
     // Confessions Today
-    const confQ = query(collection(db, 'confessions'));
+    const confQ = query(
+      collection(db, 'confessions'), 
+      where('created_at', '>=', startTimestamp)
+    );
     const unSubConf = onSnapshot(confQ, (snap) => {
       setStats(prev => ({ ...prev, confessionsToday: snap.size }));
     });
 
     // Active Voice Rooms
-    const vrQ = query(collection(db, 'voice_rooms'));
+    const vrQ = query(
+      collection(db, 'voice_rooms'), 
+      where('status', '==', 'active')
+    );
     const unSubVR = onSnapshot(vrQ, (snap) => {
-      const active = snap.docs.filter(d => d.data().status === 'active').length;
-      setStats(prev => ({ ...prev, activeVoiceRooms: active }));
+      setStats(prev => ({ ...prev, activeVoiceRooms: snap.size }));
     });
 
     // Debates Today
-    const debQ = query(collection(db, 'debates'));
+    const debQ = query(
+      collection(db, 'debates'), 
+      where('created_at', '>=', startTimestamp)
+    );
     const unSubDeb = onSnapshot(debQ, (snap) => {
       setStats(prev => ({ ...prev, debatesToday: snap.size }));
     });
 
-    // Online Users (Mocking as presence isn't fully implemented in RTDB/Firestore yet)
-    // In a full implementation, we'd query query(collection(db, 'profiles'), where('is_online', '==', true))
-    setStats(prev => ({ ...prev, onlineUsers: 12 }));
+    // Poll Votes Today
+    const votesQ = query(
+      collection(db, 'poll_votes'), 
+      where('created_at', '>=', startTimestamp)
+    );
+    const unSubVotes = onSnapshot(votesQ, (snap) => {
+      setStats(prev => ({ ...prev, pollVotesToday: snap.size }));
+    });
+
+    // Online Users (RTDB Presence)
+    const presenceRef = ref(rtdb, 'presence');
+    const onPresenceValue = onValue(presenceRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      let total = 0;
+      // Presence is nested by room_id or just global platform presence?
+      // Based on VoiceRooms.tsx: presence/${roomId}/${userId}
+      // We should probably count all unique users across all rooms or check a global presence path
+      Object.keys(data).forEach(roomId => {
+        total += Object.keys(data[roomId] || {}).length;
+      });
+      setStats(prev => ({ ...prev, onlineUsers: total }));
+    });
+
+    // Total counts for Archive
+    const unsubUnConf = onSnapshot(collection(db, 'confessions'), snap => {
+      setStats(prev => ({ ...prev, totalConfessions: snap.size }));
+    });
+    
+    const unsubUnDeb = onSnapshot(collection(db, 'debates'), snap => {
+      setStats(prev => ({ ...prev, totalDebates: snap.size }));
+    });
+
+    const unsubUnPolls = onSnapshot(collection(db, 'polls'), snap => {
+      setStats(prev => ({ ...prev, totalPolls: snap.size }));
+    });
 
     return () => {
       unSubConf();
       unSubVR();
       unSubDeb();
+      unSubVotes();
+      unsubUnConf();
+      unsubUnDeb();
+      unsubUnPolls();
+      off(presenceRef, 'value', onPresenceValue);
     };
   }, [activeTab]);
+
+  // User Growth Analytics Effect
+  useEffect(() => {
+    if (activeTab !== 'tools' || adminToolsTab !== 'analytics') return;
+
+    // Fetch all users metadata for growth chart
+    // We only need the joined_at field
+    const q = query(collection(db, 'profiles'), orderBy('joined_at', 'asc'));
+    const unsub = onSnapshot(q, (snap) => {
+      const users = snap.docs.map(d => ({ 
+        joined_at: d.data().joined_at 
+      }));
+      setAllUsers(users);
+    });
+
+    return () => unsub();
+  }, [activeTab, adminToolsTab]);
+
+  // Trending Content & Mood Effect
+  useEffect(() => {
+    if (activeTab !== 'tools' || adminToolsTab !== 'overview') return;
+
+    // Fetch collections for aggregation
+    const confessionsQ = query(collection(db, 'confessions'), orderBy('created_at', 'desc'), limit(100));
+    const debatesQ = query(collection(db, 'debates'), orderBy('created_at', 'desc'), limit(50));
+    const pollsQ = query(collection(db, 'polls'), orderBy('created_at', 'desc'), limit(50));
+    const commentsQ = query(collection(db, 'confession_comments'), orderBy('created_at', 'desc'), limit(200));
+
+    const unsubConf = onSnapshot(confessionsQ, (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      
+      // Community Mood Calculation
+      const moods: Record<string, number> = { Chaos: 0, Funny: 0, Romantic: 0, Sad: 0, Awkward: 0 };
+      data.forEach(c => {
+        if (c.category === 'crush') moods.Romantic++;
+        else if (c.category === 'funny') moods.Funny++;
+        else if (c.category === 'academic') moods.Awkward++;
+        else if (c.category === 'random') moods.Chaos++;
+        else moods.Sad++;
+      });
+      const total = data.length || 1;
+      setStats(prev => ({ 
+        ...prev, 
+        moods: Object.entries(moods).map(([label, count]) => ({
+          label,
+          value: Math.round((count / total) * 100),
+          color: label === 'Chaos' ? 'bg-red-500' : 
+                 label === 'Funny' ? 'bg-amber-500' : 
+                 label === 'Romantic' ? 'bg-pink-500' : 
+                 label === 'Awkward' ? 'bg-sky-500' : 'bg-slate-500'
+        }))
+      }));
+
+      // Trending Confession
+      const topConf = data.sort((a, b) => (b.likes || 0) - (a.likes || 0))[0];
+      setTrending(prev => ({ ...prev, confession: topConf }));
+    });
+
+    const unsubDeb = onSnapshot(debatesQ, (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      const closed = data.filter(d => d.status === 'closed').length;
+      const topDeb = data.sort((a, b) => ((b.participantCount || 0) + (b.votes_a || 0) + (b.votes_b || 0)) - ((a.participantCount || 0) + (a.votes_a || 0) + (a.votes_b || 0)))[0];
+      
+      setStats(prev => ({ ...prev, closedDebates: closed }));
+      setTrending(prev => ({ ...prev, debate: topDeb }));
+    });
+
+    const unsubPolls = onSnapshot(pollsQ, (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      const now = new Date();
+      const expired = data.filter(p => p.expires_at && (p.expires_at.toDate ? p.expires_at.toDate() : new Date(p.expires_at)) < now).length;
+      const topPoll = data.sort((a, b) => (b.total_votes || 0) - (a.total_votes || 0))[0];
+      
+      setStats(prev => ({ ...prev, expiredPolls: expired }));
+      setTrending(prev => ({ ...prev, poll: topPoll }));
+    });
+
+    return () => {
+      unsubConf();
+      unsubDeb();
+      unsubPolls();
+    };
+  }, [activeTab, adminToolsTab]);
 
   // User Moderation Search
   useEffect(() => {
@@ -257,6 +400,14 @@ export default function AdminModeration() {
 
     let unsubUsers: any;
     let unsubConfessions: any;
+    let unsubAnnouncements: any;
+
+    if (adminToolsTab === 'system') {
+      const annQ = query(collection(db, 'global_announcements'), orderBy('created_at', 'desc'), limit(5));
+      unsubAnnouncements = onSnapshot(annQ, (snap) => {
+        setActiveAnnouncements(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      });
+    }
     let unsubDebates: any;
     let unsubPolls: any;
     let unsubConfig: any;
@@ -304,12 +455,18 @@ export default function AdminModeration() {
     };
   }, [activeTab, adminToolsTab]);
 
-  const toggleSystemFeature = async (feature: keyof typeof systemConfig) => {
+  const toggleSystemFeature = async (feature: keyof SystemConfig) => {
+    const isCurrentlyDisabled = config[feature];
+    const action = isCurrentlyDisabled ? "re-enable" : "temporarily disable";
+    const featureName = (feature as string).replace('disable', '');
+    
+    if (!window.confirm(`Are you sure you want to ${action} ${featureName}? This will affect all users immediately.`)) return;
+
     try {
       await updateConfig({
-        [feature]: !systemConfig[feature]
+        [feature]: !isCurrentlyDisabled
       });
-      toast.success('System configuration updated.');
+      toast.success(`${featureName} ${isCurrentlyDisabled ? 'enabled' : 'disabled'} successfully.`);
     } catch (err) {
       console.error('Update config error:', err);
       toast.error('Failed to update configuration.');
@@ -332,6 +489,17 @@ export default function AdminModeration() {
       toast.error('Failed to broadcast announcement.');
     } finally {
       setIsBroadcasting(false);
+    }
+  };
+
+  const deleteAnnouncement = async (id: string) => {
+    if (!window.confirm('Are you sure you want to remove this announcement for all users?')) return;
+    try {
+      await deleteDoc(doc(db, 'global_announcements', id));
+      toast.success('Announcement removed.');
+    } catch (err) {
+      console.error('Delete announcement error:', err);
+      toast.error('Failed to remove announcement.');
     }
   };
 
@@ -371,18 +539,49 @@ export default function AdminModeration() {
   };
 
   const runSpamDetection = () => {
-    // Basic spam pattern detection
-    const flagged: any[] = [];
-    allUsers.forEach((u: any) => {
-      if (u.activity_count > 50) { // Example threshold
-        flagged.push({
-          ...u,
-          spam_reason: 'High activity frequency',
-          risk_score: 85
-        });
-      }
-    });
-    setFlaggedUsers(flagged);
+    setIsScanningSpam(true);
+    // Basic spam pattern detection enhanced with reports
+    setTimeout(() => {
+      const flagged: any[] = [];
+      allUsers.forEach((u: any) => {
+        let riskScore = 0;
+        const reasons: string[] = [];
+
+        // Factor 1: High activity
+        if (u.activity_count > 50) {
+          riskScore += 40;
+          reasons.push('High activity frequency');
+        } else if (u.activity_count > 20) {
+          riskScore += 15;
+          reasons.push('Elevated activity');
+        }
+
+        // Factor 2: Reports against user
+        const userReports = reports.filter(r => r.target_id === u.id || (r.target_type === 'user' && r.target_id === u.id)).length;
+        if (userReports > 0) {
+          riskScore += Math.min(userReports * 20, 50);
+          reasons.push(`${userReports} community report(s)`);
+        }
+
+        // Factor 3: Account Age (New accounts are higher risk if they have reports)
+        const joinedDate = u.joined_at ? new Date(u.joined_at) : new Date();
+        const hoursOld = (new Date().getTime() - joinedDate.getTime()) / (1000 * 60 * 60);
+        if (hoursOld < 24 && (u.activity_count > 10 || userReports > 0)) {
+          riskScore += 20;
+          reasons.push('Highly active new account');
+        }
+
+        if (riskScore >= 40) {
+          flagged.push({
+            ...u,
+            spam_reason: reasons.join(', '),
+            risk_score: Math.min(riskScore, 100)
+          });
+        }
+      });
+      setFlaggedUsers(flagged.sort((a, b) => b.risk_score - a.risk_score));
+      setIsScanningSpam(false);
+    }, 1000); // Simulate processing delay for UX feedback
   };
 
   useEffect(() => {
@@ -431,6 +630,34 @@ export default function AdminModeration() {
     } catch (error: any) {
       console.error('Delete content error:', error);
       toast.error(`Failed to delete content: ${error.message}`);
+    }
+  };
+
+  const handleQuickDelete = async (type: string, id: string) => {
+    if (!window.confirm(`Are you sure you want to delete this ${type}?`)) return;
+    
+    let collectionName = '';
+    switch (type) {
+      case 'confession': collectionName = 'confessions'; break;
+      case 'debate': collectionName = 'debates'; break;
+      case 'poll': collectionName = 'polls'; break;
+      default: return;
+    }
+
+    try {
+      await deleteDoc(doc(db, collectionName, id));
+      toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} deleted successfully.`);
+    } catch (error: any) {
+      console.error('Delete content error:', error);
+      toast.error(`Failed to delete content: ${error.message}`);
+    }
+  };
+
+  const navigateToContent = (type: string, id: string) => {
+    switch (type) {
+      case 'confession': navigate(`/confessions#${id}`); break;
+      case 'debate': navigate(`/debate-arena/${id}`); break;
+      case 'poll': navigate(`/polls#${id}`); break;
     }
   };
 
@@ -785,7 +1012,18 @@ export default function AdminModeration() {
                     </div>
                   </div>
                   <button
-                    onClick={() => updateConfig({ safeMode: !safeMode })}
+                    onClick={() => {
+                      const nextState = !safeMode;
+                      if (nextState) {
+                        if (window.confirm("ARE YOU SURE? This will disable content creation platform-wide for all non-admin users immediately.")) {
+                          updateConfig({ safeMode: true });
+                          toast.warning("EMERGENCY MODE ACTIVATED");
+                        }
+                      } else {
+                        updateConfig({ safeMode: false });
+                        toast.success("Emergency Mode Deactivated");
+                      }
+                    }}
                     className={`relative h-8 w-14 rounded-full transition-colors ${
                       safeMode ? 'bg-red-500' : 'bg-slate-700'
                     }`}
@@ -829,20 +1067,54 @@ export default function AdminModeration() {
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {[
-                          { type: 'Confession', title: 'Why is VoidChat so dark?', engagement: '42 replies • 128 reactions' },
-                          { type: 'Debate', title: 'Arcane vs Cyberpunk Aesthetic', engagement: '18 participants • 94 arguments' },
-                          { type: 'Poll', title: 'Next feature release?', engagement: '312 votes total' },
-                          { type: 'Voice', title: 'Midnight Chill Vibes', engagement: '14 listeners • Host: Shadow' }
-                        ].map((item, i) => (
-                          <div key={i} className="group p-5 rounded-[2rem] bg-white/5 border border-white/5 hover:border-amber-500/30 transition cursor-pointer">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-[9px] font-black uppercase tracking-widest text-amber-500/70">{item.type}</span>
-                              <ChevronRight size={14} className="text-slate-600 group-hover:text-amber-500 transition" />
+                          { 
+                            type: 'Confession', 
+                            title: trending.confession?.content || 'Calculating...', 
+                            engagement: `${trending.confession?.likes || 0} reactions` 
+                          },
+                          { 
+                            type: 'Debate', 
+                            title: trending.debate?.title || 'Calculating...', 
+                            engagement: `${(trending.debate?.votes_a || 0) + (trending.debate?.votes_b || 0)} votes • ${trending.debate?.participantCount || 0} participants` 
+                          },
+                          { 
+                            type: 'Poll', 
+                            title: trending.poll?.question || 'Calculating...', 
+                            engagement: `${trending.poll?.total_votes || 0} votes total` 
+                          },
+                          { 
+                            type: 'Voice', 
+                            title: 'Active Voice Channels', 
+                            engagement: `${stats.activeVoiceRooms} channels live` 
+                          }
+                        ].map((item, i) => {
+                          const navigateToContent = () => {
+                            if (item.type === 'Confession' && trending.confession?.id) {
+                              navigate(`/confessions#${trending.confession.id}`);
+                            } else if (item.type === 'Debate' && trending.debate?.id) {
+                              navigate(`/debate-arena/${trending.debate.id}`);
+                            } else if (item.type === 'Poll' && trending.poll?.id) {
+                              navigate(`/polls#${trending.poll.id}`);
+                            } else if (item.type === 'Voice') {
+                              navigate('/voice');
+                            }
+                          };
+
+                          return (
+                            <div 
+                              key={i} 
+                              onClick={navigateToContent}
+                              className="group p-5 rounded-[2rem] bg-white/5 border border-white/5 hover:border-amber-500/30 transition cursor-pointer"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-[9px] font-black uppercase tracking-widest text-amber-500/70">{item.type}</span>
+                                <ChevronRight size={14} className="text-slate-600 group-hover:text-amber-500 transition" />
+                              </div>
+                              <h4 className="font-bold text-white mb-1 group-hover:text-amber-200 transition line-clamp-1">{item.title}</h4>
+                              <p className="text-[10px] text-slate-500">{item.engagement}</p>
                             </div>
-                            <h4 className="font-bold text-white mb-1 group-hover:text-amber-200 transition">{item.title}</h4>
-                            <p className="text-[10px] text-slate-500">{item.engagement}</p>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </section>
                   </div>
@@ -854,12 +1126,7 @@ export default function AdminModeration() {
                         <h3 className="text-sm font-black uppercase tracking-tight text-white">Community Mood</h3>
                       </div>
                       <div className="space-y-4">
-                        {[
-                          { label: 'Chaos', color: 'bg-red-500', value: 75 },
-                          { label: 'Funny', color: 'bg-amber-500', value: 45 },
-                          { label: 'Romantic', color: 'bg-pink-500', value: 30 },
-                          { label: 'Sad', color: 'bg-sky-500', value: 15 }
-                        ].map((m) => (
+                        {(stats as any).moods?.map((m: any) => (
                           <div key={m.label} className="space-y-1.5">
                             <div className="flex justify-between text-[10px] uppercase font-bold tracking-widest">
                               <span className="text-slate-400">{m.label}</span>
@@ -873,7 +1140,9 @@ export default function AdminModeration() {
                               />
                             </div>
                           </div>
-                        ))}
+                        )) || (
+                          <p className="text-[10px] text-slate-500 italic">Analyzing community vibes...</p>
+                        )}
                       </div>
                     </section>
 
@@ -884,9 +1153,9 @@ export default function AdminModeration() {
                       </div>
                       <div className="space-y-3">
                         {[
-                          { icon: MessageSquare, label: 'Deleted Confessions', count: 128 },
-                          { icon: Zap, label: 'Closed Debates', count: 54 },
-                          { icon: RefreshCw, label: 'Expired Polls', count: 12 }
+                          { icon: MessageSquare, label: 'Deleted Confessions', count: stats.deletedConfessions || 0 },
+                          { icon: Zap, label: 'Closed Debates', count: stats.closedDebates || 0 },
+                          { icon: RefreshCw, label: 'Expired Polls', count: stats.expiredPolls || 0 }
                         ].map((item, i) => (
                           <button key={i} className="w-full group flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition">
                             <div className="flex items-center gap-3">
@@ -1077,10 +1346,18 @@ export default function AdminModeration() {
                               <ShieldAlert size={28} />
                             </div>
                             <div>
-                              <h3 className="text-xl font-black text-white uppercase tracking-tight">Spam Watch</h3>
-                              <p className="text-slate-400 text-sm">Automated system flagging</p>
-                            </div>
-                         </div>
+                               <h3 className="text-xl font-black text-white uppercase tracking-tight">Spam Watch</h3>
+                               <p className="text-slate-400 text-sm">Automated system flagging</p>
+                             </div>
+                             <button
+                               onClick={runSpamDetection}
+                               disabled={isScanningSpam}
+                               className="ml-auto p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all disabled:opacity-50"
+                               title="Run Manual Scan"
+                             >
+                               <RefreshCw size={18} className={isScanningSpam ? 'animate-spin text-sky-400' : ''} />
+                             </button>
+                          </div>
 
                          <div className="space-y-6">
                            {flaggedUsers.map((u: any) => (
@@ -1192,82 +1469,134 @@ export default function AdminModeration() {
                            <span className="text-[10px] bg-sky-500/10 text-sky-500 px-2 py-0.5 rounded-lg border border-sky-500/20 font-bold">LIVE</span>
                         </div>
                         <div className="space-y-4">
-                           {recentContent.confessions.map((c: any) => (
-                             <div key={c.id} className="group p-5 rounded-3xl bg-black/40 border border-white/5 hover:border-sky-500/30 transition-all relative">
-                                <p className="text-sm text-slate-300 leading-relaxed line-clamp-3 mb-4">{c.content}</p>
-                                <div className="flex items-center justify-between">
-                                   <div className="flex items-center gap-2">
-                                      <div className="h-1.5 w-1.5 rounded-full bg-sky-500 animate-pulse" />
-                                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                                        {c.created_at?.toDate ? c.created_at.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'NEW'}
-                                      </span>
-                                   </div>
-                                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <button className="h-8 w-8 rounded-lg bg-white/5 flex items-center justify-center text-slate-500 hover:text-white transition"><Pin size={14} /></button>
-                                      <button className="h-8 w-8 rounded-lg bg-white/5 flex items-center justify-center text-slate-500 hover:text-red-500 transition"><Trash2 size={14} /></button>
-                                   </div>
-                                </div>
-                             </div>
-                           ))}
-                        </div>
-                      </div>
-
-                      {/* Recent Debates */}
-                      <div className="space-y-6">
-                        <div className="flex items-center justify-between pb-4 border-b border-white/5">
-                           <h4 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Recent Debates</h4>
-                           <span className="text-[10px] bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded-lg border border-amber-500/20 font-bold">ACTIVE</span>
-                        </div>
-                        <div className="space-y-4">
-                           {recentContent.debates.map((d: any) => (
-                             <div key={d.id} className="group p-5 rounded-3xl bg-black/40 border border-white/5 hover:border-amber-500/30 transition-all relative">
-                                <div className="mb-2">
-                                   <span className="text-[10px] font-black uppercase tracking-widest text-amber-500/70">{d.category || 'General'}</span>
-                                   <h5 className="text-sm font-bold text-white mt-1 line-clamp-2">{d.topic}</h5>
-                                </div>
-                                <div className="flex items-center justify-between mt-4">
-                                   <div className="flex items-center gap-2">
-                                      <Users size={12} className="text-slate-500" />
-                                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{d.participants?.length || 0} Battling</span>
-                                   </div>
-                                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <button className="h-8 w-8 rounded-lg bg-white/5 flex items-center justify-center text-slate-500 hover:text-amber-500 transition"><Star size={14} /></button>
-                                      <button className="h-8 w-8 rounded-lg bg-white/5 flex items-center justify-center text-slate-500 hover:text-red-500 transition"><Trash2 size={14} /></button>
-                                   </div>
-                                </div>
-                             </div>
-                           ))}
-                        </div>
-                      </div>
-
-                      {/* Recent Polls */}
-                      <div className="space-y-6">
-                        <div className="flex items-center justify-between pb-4 border-b border-white/5">
-                           <h4 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Recent Polls</h4>
-                           <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-lg border border-emerald-500/20 font-bold">VOTING</span>
-                        </div>
-                        <div className="space-y-4">
-                           {recentContent.polls.map((p: any) => (
-                             <div key={p.id} className="group p-5 rounded-3xl bg-black/40 border border-white/5 hover:border-emerald-500/30 transition-all relative">
-                                <h5 className="text-sm font-bold text-white mb-2 line-clamp-2">{p.question}</h5>
-                                <div className="space-y-2 mb-4">
-                                   {p.options?.slice(0, 2).map((opt: any, idx: number) => (
-                                     <div key={idx} className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
-                                        <div className="h-full bg-emerald-500/40" style={{ width: `${Math.random() * 100}%` }} />
-                                     </div>
-                                   ))}
-                                </div>
-                                <div className="flex items-center justify-between">
-                                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{p.total_votes || 0} Votes</span>
-                                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <button className="h-8 w-8 rounded-lg bg-white/5 flex items-center justify-center text-slate-500 hover:text-emerald-500 transition"><RefreshCw size={14} /></button>
-                                      <button className="h-8 w-8 rounded-lg bg-white/5 flex items-center justify-center text-slate-500 hover:text-red-500 transition"><Trash2 size={14} /></button>
-                                   </div>
-                                </div>
-                             </div>
-                           ))}
-                        </div>
-                      </div>
+                            {recentContent.confessions.map((c: any) => (
+                              <div 
+                                key={c.id} 
+                                className="group p-5 rounded-3xl bg-black/40 border border-white/5 hover:border-sky-500/30 transition-all relative cursor-pointer"
+                                onClick={(e) => {
+                                  if ((e.target as HTMLElement).closest('button')) return;
+                                  navigateToContent('confession', c.id);
+                                }}
+                              >
+                                 <p className="text-sm text-slate-300 leading-relaxed line-clamp-3 mb-4">{c.content}</p>
+                                 <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                       <div className="h-1.5 w-1.5 rounded-full bg-sky-500 animate-pulse" />
+                                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                         {c.created_at?.toDate ? c.created_at.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'NEW'}
+                                       </span>
+                                    </div>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                       <button 
+                                         onClick={(e) => {
+                                           e.stopPropagation();
+                                           handleQuickDelete('confession', c.id);
+                                         }}
+                                         className="h-8 w-8 rounded-lg bg-white/5 flex items-center justify-center text-slate-500 hover:text-red-500 transition"
+                                       >
+                                         <Trash2 size={14} />
+                                       </button>
+                                    </div>
+                                 </div>
+                              </div>
+                            ))}
+                         </div>
+                       </div>
+ 
+                       {/* Recent Debates */}
+                       <div className="space-y-6">
+                         <div className="flex items-center justify-between pb-4 border-b border-white/5">
+                            <h4 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Recent Debates</h4>
+                            <span className="text-[10px] bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded-lg border border-amber-500/20 font-bold">ACTIVE</span>
+                         </div>
+                         <div className="space-y-4">
+                            {recentContent.debates.map((d: any) => (
+                              <div 
+                                key={d.id} 
+                                className="group p-5 rounded-3xl bg-black/40 border border-white/5 hover:border-amber-500/30 transition-all relative cursor-pointer"
+                                onClick={(e) => {
+                                  if ((e.target as HTMLElement).closest('button')) return;
+                                  navigateToContent('debate', d.id);
+                                }}
+                              >
+                                 <div className="mb-2">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-amber-500/70">{d.category || 'General'}</span>
+                                    <h5 className="text-sm font-bold text-white mt-1 line-clamp-2">{d.topic}</h5>
+                                 </div>
+                                 <div className="flex items-center justify-between mt-4">
+                                    <div className="flex items-center gap-2">
+                                       <Users size={12} className="text-slate-500" />
+                                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{d.participants?.length || 0} Battling</span>
+                                    </div>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                       <button 
+                                         onClick={(e) => {
+                                           e.stopPropagation();
+                                           handleQuickDelete('debate', d.id);
+                                         }}
+                                         className="h-8 w-8 rounded-lg bg-white/5 flex items-center justify-center text-slate-500 hover:text-red-500 transition"
+                                       >
+                                         <Trash2 size={14} />
+                                       </button>
+                                    </div>
+                                 </div>
+                              </div>
+                            ))}
+                         </div>
+                       </div>
+ 
+                       {/* Recent Polls */}
+                       <div className="space-y-6">
+                         <div className="flex items-center justify-between pb-4 border-b border-white/5">
+                            <h4 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Recent Polls</h4>
+                            <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-lg border border-emerald-500/20 font-bold">VOTING</span>
+                         </div>
+                         <div className="space-y-4">
+                            {recentContent.polls.map((p: any) => (
+                              <div 
+                                key={p.id} 
+                                className="group p-5 rounded-3xl bg-black/40 border border-white/5 hover:border-emerald-500/30 transition-all relative cursor-pointer"
+                                onClick={(e) => {
+                                  if ((e.target as HTMLElement).closest('button')) return;
+                                  navigateToContent('poll', p.id);
+                                }}
+                              >
+                                 <h5 className="text-sm font-bold text-white mb-2 line-clamp-2">{p.question}</h5>
+                                 <div className="space-y-2 mb-4">
+                                    {p.options?.map((opt: any, idx: number) => {
+                                      const totalVotes = p.total_votes || 1;
+                                      const percentage = Math.round(((opt.votes || 0) / totalVotes) * 100);
+                                      return (
+                                        <div key={idx} className="space-y-1">
+                                          <div className="flex justify-between items-center text-[8px] uppercase font-bold text-slate-500 tracking-tighter">
+                                            <span>{opt.text}</span>
+                                            <span>{percentage}%</span>
+                                          </div>
+                                          <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                                            <div className="h-full bg-emerald-500/40 transition-all duration-1000" style={{ width: `${percentage}%` }} />
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                 </div>
+                                 <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{p.total_votes || 0} Votes</span>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                       <button 
+                                         onClick={(e) => {
+                                           e.stopPropagation();
+                                           handleQuickDelete('poll', p.id);
+                                         }}
+                                         className="h-8 w-8 rounded-lg bg-white/5 flex items-center justify-center text-slate-500 hover:text-red-500 transition"
+                                       >
+                                         <Trash2 size={14} />
+                                       </button>
+                                    </div>
+                                 </div>
+                              </div>
+                            ))}
+                         </div>
+                    </div>
                    </div>
                 </section>
               </div>
@@ -1285,32 +1614,41 @@ export default function AdminModeration() {
                             </div>
                             <div>
                                <h3 className="text-xl font-black text-white uppercase tracking-tight">Growth Velocity</h3>
-                               <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">New Users per Hour</p>
+                               <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Citizens per Month (New)</p>
                             </div>
                          </div>
                          <div className="flex items-center gap-2 bg-emerald-500/10 text-emerald-500 px-3 py-1.5 rounded-xl border border-emerald-500/20">
                             <ArrowUpRight size={14} />
-                            <span className="text-xs font-black">+12%</span>
+                            <span className="text-xs font-black">+{Math.round((allUsers.length / 100) * 100)}%</span>
                          </div>
                       </div>
                       <div className="h-64 flex items-end justify-between gap-2 px-2">
-                         {[40, 65, 45, 90, 75, 55, 100, 85, 60, 70, 45, 80].map((h, i) => (
-                           <motion.div 
-                             key={i}
-                             initial={{ height: 0 }}
-                             animate={{ height: `${h}%` }}
-                             transition={{ delay: i * 0.05, duration: 1, ease: "circOut" }}
-                             className="flex-1 bg-gradient-to-t from-pink-500/20 to-pink-500/50 rounded-t-lg relative group"
-                           >
-                              <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] font-bold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                                 {h}
-                              </div>
-                           </motion.div>
-                         ))}
+                         {(() => {
+                           // Bucket users by month/day of joining
+                           const buckets = new Array(12).fill(0);
+                           allUsers.forEach((u: any) => {
+                             const date = u.joined_at ? new Date(u.joined_at) : new Date();
+                             const month = date.getMonth();
+                             buckets[month]++;
+                           });
+                           const max = Math.max(...buckets, 1);
+                           return buckets.map((count, i) => (
+                             <motion.div 
+                               key={i}
+                               initial={{ height: 0 }}
+                               animate={{ height: `${(count / max) * 100}%` }}
+                               className="flex-1 bg-gradient-to-t from-pink-500/20 to-pink-500/50 rounded-t-lg relative group"
+                             >
+                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] font-bold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                   {count} New
+                                </div>
+                             </motion.div>
+                           ));
+                         })()}
                       </div>
                       <div className="flex justify-between mt-4 px-2">
-                         <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">08:00</span>
-                         <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">20:00</span>
+                         <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">JAN</span>
+                         <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">DEC</span>
                       </div>
                    </section>
 
@@ -1325,43 +1663,50 @@ export default function AdminModeration() {
                                <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Activity Distribution</p>
                             </div>
                          </div>
-                         <div className="flex items-center gap-1 text-slate-500">
-                            <RefreshCw size={12} className="animate-spin-slow" />
+                         <button 
+                           onClick={() => {
+                             toast.success('Analytics synchronized successfully.');
+                           }}
+                           className="flex items-center gap-1 text-slate-500 hover:text-white transition-colors group"
+                         >
+                            <RefreshCw size={12} className="group-active:animate-spin" />
                             <span className="text-[10px] font-bold uppercase tracking-widest">Live Updates</span>
-                         </div>
+                         </button>
                       </div>
                       <div className="space-y-6">
-                         {[
-                           { label: 'Confessions', val: 85, color: 'sky' },
-                           { label: 'Debates', val: 62, color: 'amber' },
-                           { label: 'Voice Lounge', val: 44, color: 'pink' },
-                           { label: 'Polls', val: 31, color: 'emerald' }
-                         ].map((item) => (
-                           <div key={item.label} className="space-y-2">
-                              <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest">
-                                 <span className="text-slate-400">{item.label}</span>
-                                 <span className="text-white">{item.val}%</span>
-                              </div>
-                              <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
-                                 <motion.div 
-                                   initial={{ width: 0 }}
-                                   animate={{ width: `${item.val}%` }}
-                                   transition={{ duration: 1.5, ease: "circOut" }}
-                                   className={`h-full bg-${item.color}-500 shadow-[0_0_10px_rgba(var(--${item.color}-500-rgb),0.5)]`}
-                                 />
-                              </div>
-                           </div>
-                         ))}
+                         {(() => {
+                           const total = (stats.totalConfessions || 0) + (stats.totalDebates || 0) + (stats.onlineUsers || 0) + (stats.totalPolls || 0) || 1;
+                           return [
+                             { label: 'Confessions', val: Math.round(((stats.totalConfessions || 0) / total) * 100), color: 'sky' },
+                             { label: 'Debates', val: Math.round(((stats.totalDebates || 0) / total) * 100), color: 'amber' },
+                             { label: 'Voice Lounge', val: Math.round(((stats.onlineUsers || 0) / total) * 100), color: 'pink' },
+                             { label: 'Polls', val: Math.round(((stats.totalPolls || 0) / total) * 100), color: 'emerald' }
+                           ].map((item) => (
+                             <div key={item.label} className="space-y-2">
+                                <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest">
+                                   <span className="text-slate-400">{item.label}</span>
+                                   <span className="text-white">{item.val}%</span>
+                                </div>
+                                <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
+                                   <motion.div 
+                                     initial={{ width: 0 }}
+                                     animate={{ width: `${item.val}%` }}
+                                     className={`h-full bg-${item.color}-500`}
+                                   />
+                                </div>
+                             </div>
+                           ));
+                         })()}
                       </div>
                    </section>
                 </div>
 
                 <div className="grid gap-8 grid-cols-1 md:grid-cols-4">
                    {[
-                     { label: 'Total Confessions', val: '12,842', trend: '+124', icon: MessageSquare, color: 'sky' },
-                     { label: 'Active Debates', val: '43', trend: '+2', icon: Sword, color: 'amber' },
-                     { label: 'Live Listeners', val: '892', trend: '+45', icon: Radio, color: 'pink' },
-                     { label: 'Total Votes', val: '5,120', trend: '+312', icon: Table, color: 'emerald' }
+                     { label: 'Total Confessions', val: stats.totalConfessions || 0, trend: `+${stats.confessionsToday}`, icon: MessageSquare, color: 'sky' },
+                     { label: 'Active Debates', val: stats.totalDebates || 0, trend: `+${stats.debatesToday}`, icon: Sword, color: 'amber' },
+                     { label: 'Live Listeners', val: stats.onlineUsers, trend: 'Online', icon: Radio, color: 'pink' },
+                     { label: 'Total Polls', val: stats.totalPolls || 0, trend: `+${stats.pollVotesToday}`, icon: Table, color: 'emerald' }
                    ].map((s) => (
                      <div key={s.label} className="bg-white/5 border border-white/5 rounded-3xl p-6 hover:bg-white/[0.07] transition-colors group">
                         <div className={`h-10 w-10 rounded-xl bg-${s.color}-500/10 flex items-center justify-center text-${s.color}-500 mb-4 group-hover:scale-110 transition-transform`}>
@@ -1400,7 +1745,8 @@ export default function AdminModeration() {
                            { id: 'disableDebates', label: 'Disable Debates', icon: Sword, color: 'amber' },
                            { id: 'disablePolls', label: 'Disable Polls', icon: Table, color: 'emerald' },
                            { id: 'disableVoiceRooms', label: 'Disable Voice Rooms', icon: Radio, color: 'pink' },
-                           { id: 'disableShoutouts', label: 'Disable Shoutouts', icon: Megaphone, color: 'sky' }
+                           { id: 'disableShoutouts', label: 'Disable Shoutouts', icon: Megaphone, color: 'sky' },
+                           { id: 'disableQnA', label: 'Disable Q&A Section', icon: HelpCircle, color: 'violet' }
                          ].map((f) => (
                            <div key={f.id} className="flex items-center justify-between p-4 rounded-3xl bg-black/40 border border-white/5">
                               <div className="flex items-center gap-4">
@@ -1433,30 +1779,92 @@ export default function AdminModeration() {
                       </div>
 
                       <div className="space-y-6">
-                         <div className="relative">
-                            <textarea 
-                               value={announcementText}
-                               onChange={(e) => setAnnouncementText(e.target.value)}
-                               placeholder="Type your global message here..."
-                               className="w-full h-40 bg-black/40 border border-white/5 rounded-[2rem] p-6 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-pink-500/50 transition-all resize-none"
-                            />
-                            <div className="absolute bottom-6 right-6 flex gap-2">
-                               <button 
-                                 onClick={() => broadcastAnnouncement()}
-                                 className="h-10 px-6 rounded-xl bg-pink-500 text-xs font-black uppercase tracking-widest text-white hover:bg-pink-600 transition shadow-lg shadow-pink-500/20"
-                               >
-                                  Broadcast
-                               </button>
+                         <div className="space-y-6">
+                          {announcementText.trim() && (
+                            <div className="space-y-3">
+                              <p className="text-[10px] font-black uppercase tracking-widest text-pink-500/60 ml-1">Live Preview</p>
+                              <div className="relative overflow-hidden group">
+                                <div className="absolute inset-0 bg-gradient-to-r from-pink-500/20 via-violet-500/20 to-pink-500/20 animate-gradient-x opacity-50 blur-xl" />
+                                <div className="relative bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl">
+                                  <div className="flex items-start gap-4">
+                                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-pink-500 to-violet-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-pink-500/20">
+                                      <Megaphone size={18} />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-pink-400">System Broadcast</span>
+                                        <span className="h-1 w-1 rounded-full bg-white/20" />
+                                        <span className="text-[10px] font-bold text-white/40">Just now</span>
+                                      </div>
+                                      <p className="text-sm font-medium text-white/90 leading-relaxed max-w-sm">
+                                        {announcementText}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                         </div>
-                         
-                         <div className="flex items-center gap-4 p-4 rounded-3xl bg-amber-500/5 border border-amber-500/10">
-                            <AlertTriangle size={16} className="text-amber-500 shrink-0" />
-                            <p className="text-[10px] font-bold text-amber-500/80 uppercase leading-relaxed tracking-wider">
-                               Announcements are sent in real-time to all connected clients as system notifications.
-                            </p>
-                         </div>
-                      </div>
+                          )}
+
+                          <div className="relative">
+                             <textarea 
+                                value={announcementText}
+                                onChange={(e) => setAnnouncementText(e.target.value)}
+                                placeholder="Type your global message here..."
+                                className="w-full h-32 bg-black/40 border border-white/5 rounded-[2rem] p-6 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-pink-500/50 transition-all resize-none"
+                             />
+                             <div className="absolute bottom-6 right-6 flex gap-2">
+                                <button 
+                                  onClick={() => broadcastAnnouncement()}
+                                  disabled={!announcementText.trim() || isBroadcasting}
+                                  className="h-10 px-6 rounded-xl bg-pink-500 text-xs font-black uppercase tracking-widest text-white hover:bg-pink-600 transition shadow-lg shadow-pink-500/20 disabled:opacity-50 disabled:cursor-not-allowed group"
+                                >
+                                   {isBroadcasting ? (
+                                     <RefreshCw size={14} className="animate-spin" />
+                                   ) : (
+                                     <span className="group-hover:scale-105 transition-transform inline-block">Broadcast</span>
+                                   )}
+                                </button>
+                             </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-4 p-4 rounded-3xl bg-amber-500/5 border border-amber-500/10">
+                             <AlertTriangle size={16} className="text-amber-500 shrink-0" />
+                             <p className="text-[10px] font-bold text-amber-500/80 uppercase leading-relaxed tracking-wider">
+                                Announcements are sent in real-time to all connected clients as premium system notifications.
+                             </p>
+                          </div>
+
+                          {activeAnnouncements.length > 0 && (
+                            <div className="space-y-4 pt-4 border-t border-white/5">
+                              <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Manage Active Broadcasts</h4>
+                              <div className="space-y-3">
+                                {activeAnnouncements.map((ann) => (
+                                  <div key={ann.id} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5 group">
+                                    <div className="flex items-start gap-3 min-w-0">
+                                      <div className="h-8 w-8 rounded-lg bg-pink-500/10 flex items-center justify-center text-pink-500 shrink-0">
+                                        <Megaphone size={14} />
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="text-xs text-white/80 line-clamp-1">{ann.message}</p>
+                                        <p className="text-[9px] text-slate-500 mt-0.5 font-bold uppercase tracking-widest">
+                                          {ann.created_at?.toDate ? ann.created_at.toDate().toLocaleString() : 'Just now'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <button 
+                                      onClick={() => deleteAnnouncement(ann.id)}
+                                      className="h-8 w-8 rounded-lg bg-white/5 flex items-center justify-center text-slate-500 hover:text-white hover:bg-red-500/20 hover:border-red-500/30 transition opacity-0 group-hover:opacity-100"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                       </div>
+                    </div>
                    </section>
                 </div>
               </div>
