@@ -41,6 +41,7 @@ import ReportModal from '../components/ReportModal';
 import { useSystemConfig } from '../hooks/useSystemConfig';
 import { ShieldAlert } from 'lucide-react';
 import FeatureDisabledBanner from '../components/FeatureDisabledBanner';
+import { sanitizeContent } from '../lib/sanitize';
 
 interface Shoutout {
   id: string;
@@ -854,7 +855,7 @@ export default function Shoutouts() {
                                 {isForMe && <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-200">For You</span>}
                                 {isMine && <span className="rounded-full border border-violet-400/30 bg-violet-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-violet-200">You Posted</span>}
                               </div>
-                              <p className="mt-4 max-w-3xl text-[1.1rem] leading-8 text-white/92 sm:text-[1.28rem]">{shoutout.message}</p>
+                              <p className="mt-4 max-w-3xl text-[1.1rem] leading-8 text-white/92 sm:text-[1.28rem]" dangerouslySetInnerHTML={{ __html: sanitizeContent(shoutout.message) }}></p>
                               <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-white/35">
                                 <span className="font-mono uppercase tracking-[0.24em]">{timeAgo(shoutout.created_at)}</span>
                                 <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">{reactionCount} reactions</span>
@@ -991,7 +992,7 @@ export default function Shoutouts() {
 
                       <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
                         <div className="mb-8 rounded-2xl bg-white/[0.03] p-5 border border-white/5">
-                           <p className="text-white/85 leading-relaxed italic">"{activeShoutout.message}"</p>
+                           <p className="text-white/85 leading-relaxed italic" dangerouslySetInnerHTML={{ __html: sanitizeContent(activeShoutout.message) }}></p>
                         </div>
 
                         <div className="mb-8 space-y-4">

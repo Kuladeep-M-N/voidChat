@@ -17,6 +17,12 @@ import {
   limit
 } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: 'http://localhost:4000',
+  withCredentials: true,
+});
 
 // Floating particle
 interface Particle { x: number; y: number; vx: number; vy: number; size: number; opacity: number; color: string; }
@@ -151,25 +157,20 @@ export default function Join() {
         return; 
       }
 
-      // 2. Create Firebase Auth user
-      const virtualEmail = `${real.toLowerCase()}@voidchat.internal`;
-      
-      const userCredential = await createUserWithEmailAndPassword(auth, virtualEmail, pw);
-      const user = userCredential.user;
-
-      // Update display name with real username
-      await updateProfile(user, { displayName: real });
-
-      // 3. Create Firestore profile
-      await setDoc(doc(db, 'users', user.uid), {
-        id: user.uid,
-        anonymous_username: anon,
-        real_username: real,
-        password: pw, // Storing for Admin Directory
-        joined_at: new Date().toISOString(),
-        is_admin: false
+      // 2. Call Backend Signup
+      await api.post('/auth/signup', {
+        realUsername: real,
+        anonymousUsername: anon,
+        password: pw
       });
-      // Credentials are no longer saved to localStorage to ensure empty fields on return
+
+      // 3. Sign in on client to get ID token (even though we have session cookie, JS SDK needs it for Firestore)
+      const virtualEmail = `${real.toLowerCase()}@voidchat.internal`;
+      const userCredential = await signInWithEmailAndPassword(auth, virtualEmail, pw);
+      const idToken = await userCredential.user.getIdToken();
+
+      // 4. Exchange for Session Cookie
+      await api.post('/auth/login', { idToken });
 
       setStep('success');
       setTimeout(() => navigate('/dashboard'), 1200);
@@ -208,10 +209,11 @@ export default function Join() {
 
       // 2. Sign in with the virtual email derived from real_username
       const virtualEmail = `${real_username.toLowerCase()}@voidchat.internal`;
-      
-      await signInWithEmailAndPassword(auth, virtualEmail, pw);
+      const userCredential = await signInWithEmailAndPassword(auth, virtualEmail, pw);
+      const idToken = await userCredential.user.getIdToken();
 
-      // Credentials are no longer saved to localStorage to ensure empty fields on return
+      // 3. Exchange for Session Cookie
+      await api.post('/auth/login', { idToken });
 
       setStep('success');
       setTimeout(() => navigate('/dashboard'), 1200);

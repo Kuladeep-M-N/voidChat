@@ -40,6 +40,7 @@ import ReportModal from '../components/ReportModal';
 import { useSystemConfig } from '../hooks/useSystemConfig';
 import { ShieldAlert } from 'lucide-react';
 import FeatureDisabledBanner from '../components/FeatureDisabledBanner';
+import { sanitizeContent } from '../lib/sanitize';
 
 interface Confession {
   id: string;
@@ -316,7 +317,7 @@ function CommentPanel({
                 {meta.label} thread
               </span>
               <h3 className="mt-3 text-lg font-semibold text-white">Anonymous replies</h3>
-              <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">{confession.content}</p>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300" dangerouslySetInnerHTML={{ __html: sanitizeContent(confession.content) }}></p>
             </div>
             <button
               onClick={onClose}
@@ -361,7 +362,7 @@ function CommentPanel({
                         {timeAgo(comment.created_at)}
                       </span>
                     </div>
-                    <p className="text-sm leading-6 text-slate-200">{comment.content}</p>
+                    <p className="text-sm leading-6 text-slate-200" dangerouslySetInnerHTML={{ __html: sanitizeContent(comment.content) }}></p>
                     <div className="mt-2 flex items-center gap-3">
                       {(!isMe || profile?.is_admin) && (
                         <button 

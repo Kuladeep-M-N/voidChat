@@ -29,12 +29,13 @@ import {
 import { db, rtdb } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../hooks/useNotifications';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Users, Settings, Info, ChevronLeft, Smile, Paperclip, Activity, History, ShieldCheck, MoreVertical, Send, Reply as ReplyIcon, ShieldAlert, X } from 'lucide-react';
 import { containsInappropriateContent } from '../lib/filter';
 import ReportModal from '../components/ReportModal';
 import { toast } from 'sonner';
 import { useSystemConfig } from '../hooks/useSystemConfig';
-import { ShieldAlert } from 'lucide-react';
+import { sanitizeContent } from '../lib/sanitize';
+import VoidBackground from '../components/VoidBackground';
 
 interface Message {
   id: string; content: string; created_at: any;
@@ -75,8 +76,24 @@ export default function ChatRoom() {
   const [reactions, setReactions] = useState<Record<string, Record<string, string[]>>>({});
   const [picker, setPicker] = useState<string | null>(null);
   const [showMembers, setShowMembers] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [reportingContent, setReportingContent] = useState<{ type: 'message' | 'user'; id: string } | null>(null);
+
+  // Auto-show sidebar on desktop
+  useEffect(() => {
+    const checkWidth = () => {
+      if (window.innerWidth >= 1024) {
+        setShowInfo(true);
+      }
+      if (window.innerWidth >= 1280) {
+        setShowMembers(true);
+      }
+    };
+    checkWidth();
+    window.addEventListener('resize', checkWidth);
+    return () => window.removeEventListener('resize', checkWidth);
+  }, []);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -92,12 +109,10 @@ export default function ChatRoom() {
     }
   }, [user, roomId, markAsActive]);
 
-  // ── Fetch room data ──
   useEffect(() => {
     if (!roomId) return;
-
     const roomRef = doc(db, 'chat_rooms', roomId);
-    const unsubscribe = onSnapshot(roomRef, (snapshot) => {
+    return onSnapshot(roomRef, (snapshot) => {
       if (snapshot.exists()) {
         const roomData = snapshot.data();
         setRoomName(roomData.name);
@@ -107,22 +122,15 @@ export default function ChatRoom() {
         setRoomCreatorId(roomData.created_by);
       }
     });
-
-    return () => unsubscribe();
   }, [roomId]);
 
-  // ── Fetch user role and all members ──
   useEffect(() => {
     if (!roomId || !user || !profile) return;
-
     const loadUserRoleAndMembers = async () => {
-      // 1. Fetch User Role
       const memberQuery = query(collection(db, 'room_members'), where('room_id', '==', roomId), where('user_id', '==', user.uid));
       const memberSnapshot = await getDocs(memberQuery);
-      
       let finalRole = 'member';
       if (memberSnapshot.empty) {
-        // Auto-join
         await addDoc(collection(db, 'room_members'), {
           room_id: roomId,
           user_id: user.uid,
@@ -133,12 +141,9 @@ export default function ChatRoom() {
       } else {
         finalRole = memberSnapshot.docs[0].data().role;
       }
-      
       setUserRole(finalRole);
-
-      // 2. Fetch All Members (limited to prevent massive payload)
       const allMembersQuery = query(collection(db, 'room_members'), where('room_id', '==', roomId), limit(100));
-      const unsubscribeMembers = onSnapshot(allMembersQuery, (snapshot) => {
+      return onSnapshot(allMembersQuery, (snapshot) => {
         const rolesMap = new Map<string, string>();
         const membersList: RoomMember[] = [];
         const seen = new Set<string>();
@@ -146,7 +151,6 @@ export default function ChatRoom() {
           const m = doc.data();
           if (seen.has(m.user_id)) return;
           seen.add(m.user_id);
-          
           rolesMap.set(m.user_id, m.role);
           membersList.push({
             user_id: m.user_id,
@@ -158,9 +162,7 @@ export default function ChatRoom() {
         setMembers(membersList);
         setUserRoles(rolesMap);
       });
-      return unsubscribeMembers;
     };
-
     let isMounted = true;
     let unsub: (() => void) | undefined;
     loadUserRoleAndMembers().then(u => {
@@ -168,22 +170,15 @@ export default function ChatRoom() {
       else u?.();
     });
     return () => { 
-      isMounted = false;
+      isMounted = false; 
       if (unsub) unsub(); 
     };
   }, [roomId, user, profile]);
 
-  // ── Realtime Messages ──
   useEffect(() => {
     if (!roomId || !user) return;
-
-    const q = query(
-      collection(db, 'messages'), 
-      where('room_id', '==', roomId)
-      // orderBy removed to avoid composite index requirement
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const q = query(collection(db, 'messages'), where('room_id', '==', roomId));
+    return onSnapshot(q, (snapshot) => {
       const dbMessages: Message[] = [];
       snapshot.forEach((doc) => {
         const data = doc.data();
@@ -193,48 +188,32 @@ export default function ChatRoom() {
           anonymous_username: nameCache.current.get(data.user_id) || data.anonymous_username || 'Anonymous'
         } as Message);
       });
-      
-      // Sort in memory and limit to latest 100
       const sorted = dbMessages.sort((a, b) => {
           const timeA = a.created_at?.toMillis?.() || a.created_at?.seconds * 1000 || Date.now();
           const timeB = b.created_at?.toMillis?.() || b.created_at?.seconds * 1000 || Date.now();
-          
-          if (timeA === timeB) return 0;
           return timeA - timeB;
       }).slice(-100);
-      
       setMessages(sorted);
-    }, (err) => {
-      console.error("Messages sync error:", err);
     });
-
-    return () => unsubscribe();
   }, [roomId, user]);
 
-  // ── Realtime Presence / Typing / Reactions (RTDB) ──
   useEffect(() => {
     if (!roomId || !user || !profile || isArchived) return;
-
     const presenceRef = ref(rtdb, `rooms/${roomId}/presence/${user.uid}`);
     const typingRef = ref(rtdb, `rooms/${roomId}/typing/${user.uid}`);
     const roomPresenceRef = ref(rtdb, `rooms/${roomId}/presence`);
     const roomTypingRef = ref(rtdb, `rooms/${roomId}/typing`);
     const roomReactionsRef = ref(rtdb, `rooms/${roomId}/reactions`);
-
-    // Presence
     rtdbSet(presenceRef, {
       user_id: user.uid,
       username: profile.anonymous_username,
       online_at: new Date().toISOString()
     });
     onDisconnect(presenceRef).remove();
-
     const unsubPresence = onValue(roomPresenceRef, (snapshot) => {
       const data = snapshot.val() || {};
       setOnlineCount(Object.keys(data).length || 1);
     });
-
-    // Typing
     const unsubTyping = onValue(roomTypingRef, (snapshot) => {
       const data = snapshot.val() || {};
       const typers: TypingUser[] = [];
@@ -245,13 +224,10 @@ export default function ChatRoom() {
       });
       setTypingUsers(typers);
     });
-
-    // Reactions
     const unsubReactions = onValue(roomReactionsRef, (snapshot) => {
       const data = snapshot.val() || {};
       setReactions(data);
     });
-
     return () => {
       rtdbRemove(presenceRef);
       rtdbRemove(typingRef);
@@ -269,7 +245,6 @@ export default function ChatRoom() {
     if (!roomId || !user || !profile || isArchived) return;
     const typingRef = ref(rtdb, `rooms/${roomId}/typing/${user.uid}`);
     rtdbSet(typingRef, { username: profile.anonymous_username });
-    
     if (typingTimer.current) clearTimeout(typingTimer.current);
     typingTimer.current = setTimeout(() => {
       rtdbRemove(typingRef);
@@ -279,57 +254,38 @@ export default function ChatRoom() {
   const sendMessage = useCallback(async () => {
     const content = text.trim();
     if (!content || !user || !roomId || !profile || sending.current || isArchived || safeMode) return;
-
-    // Check permissions
     if (onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole)) return;
-
     if (containsInappropriateContent(content).matches) {
-      toast.error('Your message contains inappropriate content and cannot be sent.');
+      toast.error('Your message contains inappropriate content.');
       return;
     }
-
     sending.current = true;
-    
-    // Optimistic Update
     const tempId = `temp-${Date.now()}`;
     const optimisticMsg: Message = {
-      id: tempId,
-      content,
-      user_id: user.uid,
-      anonymous_username: profile.anonymous_username,
-      created_at: { toDate: () => new Date() }, // Mock timestamp
-      optimistic: true
+      id: tempId, content, user_id: user.uid, anonymous_username: profile.anonymous_username,
+      created_at: { toDate: () => new Date() }, optimistic: true
     };
-    
     setMessages(prev => [...prev, optimisticMsg]);
     setText('');
-    
     const typingRef = ref(rtdb, `rooms/${roomId}/typing/${user.uid}`);
     rtdbRemove(typingRef);
-
     try {
       await addDoc(collection(db, 'messages'), {
-        content,
-        user_id: user.uid,
-        room_id: roomId,
-        anonymous_username: profile.anonymous_username, // Denormalize name for instant display
-        created_at: serverTimestamp()
+        content, user_id: user.uid, room_id: roomId,
+        anonymous_username: profile.anonymous_username, created_at: serverTimestamp()
       });
     } catch (error) {
-      console.error("Failed to send message:", error);
       toast.error("Failed to send message");
-      // Remove optimistic message on failure
       setMessages(prev => prev.filter(m => m.id !== tempId));
-      setText(content); // Restore text
+      setText(content);
     } finally {
       sending.current = false;
     }
-  }, [text, user, roomId, profile, isArchived, onlyAdminsCanMessage, userRole]);
+  }, [text, user, roomId, profile, isArchived, onlyAdminsCanMessage, userRole, safeMode]);
 
   const reactToMessage = useCallback((msgId: string, emoji: string) => {
     if (!user || !roomId || isArchived || safeMode) return;
     setPicker(null);
-    
     const reactionRef = ref(rtdb, `rooms/${roomId}/reactions/${msgId}/${emoji}`);
     onValue(reactionRef, (snapshot) => {
       const uids = snapshot.val() || [];
@@ -337,9 +293,8 @@ export default function ChatRoom() {
         rtdbSet(reactionRef, [...uids, user.uid]);
       }
     }, { onlyOnce: true });
-  }, [user, roomId, isArchived]);
+  }, [user, roomId, isArchived, safeMode]);
 
-  // Group consecutive messages by user
   const grouped = messages.map((msg, i) => {
     const prev = messages[i - 1];
     const next = messages[i + 1];
@@ -352,348 +307,452 @@ export default function ChatRoom() {
 
   const typingText = typingUsers.length === 0 ? null
     : typingUsers.length === 1 ? `${typingUsers[0].username} is typing...`
-    : `${typingUsers.length} people are typing...`;
+    : `${typingUsers.length} entities are typing...`;
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">
-      <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
-    </div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#07070f]">
+        <VoidBackground />
+        <div className="w-12 h-12 border-4 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
+      </div>
+    );
   }
 
   return (
-    <div className="h-screen flex bg-[#07070f]" onClick={() => setPicker(null)}>
-      {/* Main Chat Area */}
-      <div className={`flex flex-col ${showMembers ? 'flex-1' : 'w-full'}`}>
-      {/* Header */}
-      <header className="border-b border-white/5 glass shrink-0 z-50">
-        <div className="max-w-3xl mx-auto flex items-center gap-3 px-4 py-3">
-          <Link to="/chat-center">
-            <button className="btn-ghost rounded-xl p-2 text-slate-400 shrink-0">←</button>
+    <div className="h-screen flex flex-col relative overflow-hidden bg-[#07070f] text-slate-200" onClick={() => setPicker(null)}>
+      <VoidBackground />
+      
+      {/* Top Header */}
+      <header className="h-16 shrink-0 z-50 glass-premium border-b border-white/5 flex items-center justify-between px-6">
+        <div className="flex items-center gap-2 sm:gap-4">
+          <Link to="/chat-center" className="hover:scale-110 transition-transform">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl glass-premium flex items-center justify-center hover:bg-white/10">
+              <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" />
+            </div>
           </Link>
-          <div className="w-9 h-9 rounded-full bg-violet-500/30 border border-violet-500/40 flex items-center justify-center font-bold text-violet-300 shrink-0">
-            {roomName ? roomName[0].toUpperCase() : '#'}
-          </div>
-          <div className="flex-1 min-w-0">
-            <h1 className="font-semibold text-white leading-tight flex items-center gap-2">
-              {roomName || <span className="text-slate-500">Loading...</span>}
-              {isArchived && <span className="text-[9px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest border border-red-500/20">Archived</span>}
-            </h1>
-            <p className={`text-xs flex items-center gap-1 ${isArchived ? 'text-slate-500' : 'text-emerald-400'}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${isArchived ? 'bg-slate-500' : 'bg-emerald-400 animate-pulse'}`} />
-              {isArchived ? 'Room is read-only' : `${onlineCount} online`}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm sm:text-lg font-bold tracking-tight text-white glow-text-violet truncate max-w-[120px] sm:max-w-none">
+                {roomName || 'Void Chamber'}
+              </h1>
+              <span className="text-[8px] sm:text-[10px] font-black bg-violet-500/20 text-violet-400 px-1.5 sm:px-2 py-0.5 rounded-full border border-violet-500/20 uppercase tracking-widest leading-none shrink-0">
+                {roomCategory || 'Lobby'}
+              </span>
+            </div>
+            <p className="text-[9px] sm:text-[10px] text-emerald-400 font-bold flex items-center gap-1.5 mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+              {onlineCount} ENTITIES
             </p>
           </div>
-          <button onClick={() => setShowMembers(!showMembers)} className="btn-ghost rounded-xl p-2 text-slate-400 shrink-0">
-            👥
+        </div>
+
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button onClick={() => { setShowInfo(!showInfo); if (!showInfo && window.innerWidth < 1024) setShowMembers(false); }} 
+            className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl flex items-center justify-center transition-all ${showInfo ? 'bg-violet-500/20 text-violet-400' : 'glass-premium text-slate-400 hover:text-white'}`}>
+            <Info className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
+          <button onClick={() => { setShowMembers(!showMembers); if (!showMembers && window.innerWidth < 1024) setShowInfo(false); }} 
+            className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl flex items-center justify-center transition-all ${showMembers ? 'bg-cyan-500/20 text-cyan-400' : 'glass-premium text-slate-400 hover:text-white'}`}>
+            <Users className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
           {(['creator', 'admin'].includes(userRole) || profile?.is_admin) && (
-            <button onClick={() => setShowSettings(true)} className="btn-ghost rounded-xl p-2 text-slate-400 shrink-0">
-              ⚙️
+            <button onClick={() => setShowSettings(true)} className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl glass-premium text-slate-400 hover:text-white flex items-center justify-center transition-all">
+              <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           )}
         </div>
       </header>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 max-w-3xl mx-auto w-full">
-        {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-slate-500 py-20">
-            <div className="text-5xl mb-4 opacity-40">💬</div>
-            <p className="text-slate-400 font-medium">No messages yet</p>
-            <p className="text-sm mt-1">Say hello!</p>
-          </div>
-        ) : (
-          <>
-            {grouped.map((msg) => {
-              const isMe = msg.user_id === user?.uid;
-              const color = getColor(msg.anonymous_username);
-              const msgReactions = reactions[msg.id] ?? {};
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Mobile Backdrop */}
+        <AnimatePresence>
+          {(showInfo || showMembers) && (
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              onClick={() => { 
+                if (window.innerWidth < 1024) setShowInfo(false); 
+                if (window.innerWidth < 1280) setShowMembers(false); 
+              }}
+              className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-30"
+            />
+          )}
+        </AnimatePresence>
 
-              return (
-                <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${msg.isFirst ? 'mt-5' : 'mt-1'}`}>
-                  {/* Avatar — others only */}
-                  {!isMe && (
-                    <div className="w-8 shrink-0 mr-2 self-end mb-1">
-                      {msg.isLast && (
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
-                          style={{ background: color }}>
-                          {getInitials(msg.anonymous_username)}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className={`max-w-[68%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                    {/* Name shown on first bubble of group */}
-                    {msg.isFirst && (
-                      <div className="flex items-center gap-1 mb-1 px-1">
-                        <span className="text-[11px] font-semibold"
-                          style={{ color: isMe ? '#a78bfa' : color }}>
-                          {isMe ? `You (${profile?.anonymous_username ?? ''})` : msg.anonymous_username}
-                        </span>
-                        {(() => {
-                          const role = userRoles.get(msg.user_id);
-                          if (role === 'creator') return <span className="text-xs bg-yellow-500/20 text-yellow-300 px-1 rounded">👑</span>;
-                          if (role === 'admin') return <span className="text-xs bg-blue-500/20 text-blue-300 px-1 rounded">⭐</span>;
-                          return null;
-                        })()}
-                      </div>
-                    )}
-
-                    {/* Bubble */}
-                    <div className="relative group">
-                      <div
-                        onClick={(e) => { e.stopPropagation(); setPicker(picker === msg.id ? null : msg.id); }}
-                        className={`rounded-2xl px-4 py-2 text-sm leading-relaxed break-words cursor-pointer select-text
-                          ${isMe
-                            ? `bg-gradient-to-br from-violet-600 to-violet-700 text-white ${msg.isFirst ? 'rounded-tr-sm' : ''}`
-                            : `glass border border-white/10 text-slate-100 ${msg.isFirst ? 'rounded-tl-sm' : ''}`
-                          }
-                          ${msg.optimistic ? 'opacity-70' : ''}`}>
-                        {msg.content}
-                      </div>
-
-                      {/* Reaction picker */}
-                      <AnimatePresence>
-                        {!isArchived && picker === msg.id && (
-                          <motion.div
-                            className={`absolute bottom-full ${isMe ? 'right-0' : 'left-0'} mb-2 flex gap-1 glass border border-white/15 rounded-2xl px-3 py-2 z-30 shadow-xl`}
-                            initial={{ opacity: 0, scale: 0.7, y: 8 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.7 }}
-                            transition={{ duration: 0.1 }}
-                            onClick={e => e.stopPropagation()}>
-                            {EMOJI_REACTIONS.map(emoji => (
-                              <button key={emoji} onClick={() => reactToMessage(msg.id, emoji)}
-                                className="text-xl hover:scale-125 transition-transform px-1 py-0.5 rounded-lg hover:bg-white/10">
-                                {emoji}
-                              </button>
-                            ))}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      {/* Report button */}
-                      {!isMe && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setReportingContent({ type: 'message', id: msg.id });
-                          }}
-                          className="absolute -right-8 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-1 text-amber-500/40 hover:text-amber-500"
-                          title="Report Message"
-                        >
-                          <AlertTriangle size={14} />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Reactions */}
-                    {Object.keys(msgReactions).length > 0 && (
-                      <div className={`flex gap-1 mt-1 flex-wrap ${isMe ? 'justify-end' : 'justify-start'}`}>
-                        {Object.entries(msgReactions).map(([emoji, who]) => (
-                          <button key={emoji} onClick={e => { e.stopPropagation(); reactToMessage(msg.id, emoji); }}
-                            disabled={isArchived}
-                            className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border transition-all ${
-                              (who as string[]).includes(user!.uid)
-                                ? 'border-violet-500/50 bg-violet-500/15 text-violet-300'
-                                : 'border-white/10 text-slate-400'} ${!isArchived ? 'hover:border-violet-500/30' : 'cursor-default'}`}>
-                            {emoji} {(who as string[]).length}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Time + delivery */}
-                    {msg.isLast && (
-                      <span className={`text-[10px] mt-1 px-1 flex items-center gap-1 ${isMe ? 'text-slate-500 self-end' : 'text-slate-600 self-start'}`}>
-                        {msg.created_at?.toDate ? msg.created_at.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}
-                        {isMe && (
-                          <span className={msg.optimistic ? 'text-slate-600' : 'text-violet-400'}>
-                            {msg.optimistic ? '○' : '✓✓'}
-                          </span>
-                        )}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Own avatar */}
-                  {isMe && (
-                    <div className="w-8 shrink-0 ml-2 self-end mb-1">
-                      {msg.isLast && (
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
-                          style={{ background: getColor(profile?.anonymous_username ?? 'me') }}>
-                          {getInitials(profile?.anonymous_username ?? 'Me')}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </>
-        )}
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Typing indicator */}
-      <AnimatePresence>
-        {typingText && (
-          <motion.div className="max-w-3xl mx-auto w-full px-6 pb-1 shrink-0"
-            initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span className="flex gap-0.5">
-                {[0,1,2].map(i => (
-                  <span key={i} className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: `${i*150}ms` }} />
-                ))}
-              </span>
-              {typingText}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Input */}
-      <div className="border-t border-white/5 glass shrink-0 relative">
-        {(isArchived || safeMode) && (
-          <div className="absolute inset-0 z-20 bg-[#07070f]/80 backdrop-blur-sm flex items-center justify-center">
-             <span className={`font-bold uppercase tracking-widest text-xs border px-4 py-1.5 rounded-full bg-opacity-10 flex items-center gap-2 ${
-               safeMode ? 'text-red-400 border-red-500/20 bg-red-500' : 'text-red-400/80 border-red-500/20 bg-red-500'
-             }`}>
-               {safeMode && <ShieldAlert size={14} />}
-               {safeMode ? 'Safe Mode Active' : 'Conversation Archived'}
-             </span>
-          </div>
-        )}
-        <div className="max-w-3xl mx-auto flex items-center gap-3 px-4 py-3 relative z-10">
-          <input
-            type="text"
-            className="input-field flex-1 py-2.5 rounded-2xl"
-            placeholder={
-              safeMode ? "Safe Mode is active" :
-              onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole) ? "Only admins can message" : "Message..."
-            }
-            value={text}
-            onChange={e => { setText(e.target.value); if (e.target.value) emitTyping(); }}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-            maxLength={2000}
-            disabled={safeMode || (onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole))}
-          />
-          <motion.button
-            onClick={sendMessage}
-            disabled={!text.trim() || safeMode || (onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole))}
-            className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-all"
-            style={{ background: text.trim() && !safeMode && !(onlyAdminsCanMessage && !['creator', 'admin'].includes(userRole)) ? 'linear-gradient(135deg, #7c3aed, #5b21b6)' : 'rgba(255,255,255,0.05)' }}
-            whileTap={{ scale: 0.88 }}>
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={text.trim() && !safeMode ? 'white' : '#64748b'} strokeWidth="2.5">
-              <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
-            </svg>
-          </motion.button>
-        </div>
-      </div>
-    </div>
-
-      {/* Members Sidebar (Moved outside the flex-col of main chat area) */}
-      <AnimatePresence>
-        {showMembers && (
-          <motion.div
-            className="w-64 border-l border-white/5 glass flex flex-col shrink-0"
-            initial={{ x: '100%', opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: '100%', opacity: 0 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}>
-            <div className="p-4 border-b border-white/5 flex items-center justify-between">
-              <h3 className="font-semibold text-white">Members ({members.length})</h3>
-              <button onClick={() => setShowMembers(false)} className="md:hidden text-slate-400">✕</button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {members.map(member => (
-                <div key={member.user_id} className="flex items-center gap-3 p-3 hover:bg-white/5">
-                  <div className="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center text-xs font-bold text-white"
-                    style={{ background: getColor(member.anonymous_username) }}>
-                    {member.anonymous_username.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm text-white truncate">{member.anonymous_username}</div>
-                    <div className="text-xs text-slate-400 capitalize flex items-center gap-1">
-                      {member.role === 'creator' && '👑'}
-                      {member.role === 'admin' && '⭐'}
-                      {member.role}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Settings Modal */}
-    <AnimatePresence>
-      {showSettings && (
-        <motion.div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
-          <motion.div className="glass border border-white/10 rounded-3xl p-8 w-full max-w-md"
-            initial={{ scale: 0.9, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }}
-            exit={{ scale: 0.9, y: 20, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
-            <h2 className="text-xl font-semibold text-white mb-6">Room Settings</h2>
-            <div className="space-y-4">
+        {/* Left Panel: Room Info */}
+        <AnimatePresence>
+          {showInfo && (
+            <motion.aside
+              initial={{ x: -400, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -400, opacity: 0 }}
+              className="fixed lg:relative top-0 bottom-0 left-0 w-[280px] lg:w-72 flex flex-col glass-premium border-r border-white/5 lg:m-4 lg:rounded-[2rem] p-6 pt-20 lg:pt-6 space-y-8 z-40"
+            >
+              <div className="flex items-center justify-between lg:hidden mb-4">
+                <h2 className="text-[10px] font-black text-white uppercase tracking-[0.2em]">Dimensions</h2>
+                <button onClick={() => setShowInfo(false)} className="w-8 h-8 rounded-full glass-premium flex items-center justify-center text-slate-400"><X className="w-4 h-4" /></button>
+              </div>
               <div>
-                <label className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={onlyAdminsCanMessage}
-                    onChange={async (e) => {
-                      const newValue = e.target.checked;
-                      if (!roomId) return;
-                      await updateDoc(doc(db, 'chat_rooms', roomId), { only_admins_can_message: newValue });
-                      setOnlyAdminsCanMessage(newValue);
-                    }}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-white">Only admins can send messages</span>
-                </label>
+                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Space Genesis</h3>
+                <div className="glass-premium rounded-2xl p-4 border-white/5">
+                  <p className="text-xs text-slate-400 leading-relaxed italic">
+                    "This chamber was manifested to facilitate anonymous discourse within the {roomCategory} frequency."
+                  </p>
+                </div>
               </div>
 
-              {(userRole === 'creator' || profile?.is_admin) && !isArchived && (
-                <div className="pt-4 border-t border-white/10">
-                  <h3 className="text-red-400 font-bold mb-2 text-sm uppercase tracking-wider">Moderation</h3>
-                  <p className="text-xs text-slate-400 mb-3">
-                    Deleting or archiving this room will move it to the history section and make it read-only for everyone.
-                  </p>
-                  <button 
-                    onClick={async () => {
-                      if(window.confirm('Are you sure you want to Delete/Archive this chat room? It will be moved to history and become read-only.')) {
-                        if (!roomId) return;
-                        try {
-                          await updateDoc(doc(db, 'chat_rooms', roomId), { is_archived: true });
-                          navigate('/chat-center');
-                        } catch (error) {
-                          alert('Failed to archive room.');
-                        }
-                      }
-                    }}
-                    className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 py-2.5 rounded-xl text-sm font-bold transition">
-                    Delete/Archive Room
-                  </button>
+              <div className="space-y-4">
+                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Protocol</h3>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3 p-2 rounded-xl glass-premium border-white/5">
+                    <ShieldCheck className="w-4 h-4 text-violet-400" />
+                    <span className="text-xs font-medium">Encryption Active</span>
+                  </div>
+                  <div className="flex items-center gap-3 p-2 rounded-xl glass-premium border-white/5">
+                    <History className="w-4 h-4 text-cyan-400" />
+                    <span className="text-xs font-medium">Auto-purge Enabled</span>
+                  </div>
                 </div>
-              )}
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={() => setShowSettings(false)} className="btn-primary rounded-xl flex-1">Close</button>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+              </div>
+            </motion.aside>
+          )}
+        </AnimatePresence>
 
-    <ReportModal 
-      isOpen={!!reportingContent}
-      onClose={() => setReportingContent(null)}
-      targetType={reportingContent?.type || 'message'}
-      targetId={reportingContent?.id || ''}
-    />
+        {/* Center: Chat Window */}
+        <main className="flex-1 flex flex-col items-center relative z-10 px-4">
+          <div className="w-full max-w-2xl flex-col h-full flex pt-6 pb-4">
+            {/* Scrollable Area */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar-voice space-y-6 pb-24 pr-2">
+              <AnimatePresence initial={false}>
+                {messages.length === 0 ? (
+                  <motion.div 
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    className="flex flex-col items-center justify-center h-full text-slate-500 space-y-4"
+                  >
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-[2.5rem] glass-premium flex items-center justify-center text-3xl sm:text-4xl animate-pulse">
+                      🛸
+                    </div>
+                    <p className="font-bold tracking-widest text-[10px] uppercase text-center">The void is silent...</p>
+                  </motion.div>
+                ) : (
+                  grouped.map((msg) => {
+                    const isMe = msg.user_id === user?.uid;
+                    const color = getColor(msg.anonymous_username);
+                    const msgReactions = reactions[msg.id] ?? {};
+                    const role = userRoles.get(msg.user_id);
+
+                    return (
+                      <motion.div 
+                        key={msg.id}
+                        initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        className={`flex gap-2 sm:gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${msg.isFirst ? 'mt-6 sm:mt-8' : 'mt-1'}`}
+                      >
+                        {/* Avatar Column */}
+                        <div className="w-8 sm:w-10 shrink-0 self-end mb-1">
+                          {msg.isLast && (
+                            <div 
+                              className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl flex items-center justify-center text-[10px] sm:text-sm font-black text-white relative transition-transform hover:scale-110"
+                              style={{ background: `linear-gradient(135deg, ${color}, ${color}dd)`, boxShadow: `0 4px 15px ${color}44` }}
+                            >
+                              {getInitials(msg.anonymous_username)}
+                              {!isMe && <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#07070f]" />}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Content Column */}
+                        <div className={`flex flex-col max-w-[85%] ${isMe ? 'items-end' : 'items-start'}`}>
+                          {msg.isFirst && (
+                            <div className="flex items-center gap-2 mb-1 px-1 sm:px-2">
+                              <span className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${isMe ? 'text-violet-400 glow-text-violet' : 'text-slate-400'}`}>
+                                {isMe ? 'YOU' : msg.anonymous_username}
+                              </span>
+                              {role === 'creator' && <span className="bg-yellow-500/20 text-yellow-400 text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded border border-yellow-500/20">VOID_LORD</span>}
+                              {role === 'admin' && <span className="bg-blue-500/20 text-blue-400 text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded border border-blue-500/20">CATALYST</span>}
+                            </div>
+                          )}
+
+                          <div className="group relative">
+                            <div
+                              onClick={(e) => { e.stopPropagation(); setPicker(picker === msg.id ? null : msg.id); }}
+                              className={`rounded-2xl sm:rounded-3xl px-4 py-2 sm:px-5 sm:py-3 text-sm sm:text-[15px] leading-relaxed shadow-lg backdrop-blur-3xl transition-all duration-300
+                                ${isMe
+                                  ? `bg-gradient-to-br from-violet-600/90 to-violet-800/90 text-white border border-violet-400/30 hover:shadow-violet-500/20 ${msg.isFirst ? 'rounded-tr-sm' : ''}`
+                                  : `glass-premium text-slate-100 border-white/10 hover:border-white/20 hover:shadow-white/5 ${msg.isFirst ? 'rounded-tl-sm' : ''}`
+                                }
+                                ${msg.optimistic ? 'opacity-50' : 'opacity-100'}`}
+                              dangerouslySetInnerHTML={{ __html: sanitizeContent(msg.content) }}
+                            />
+
+                            {/* Hover Actions */}
+                            <div className={`absolute top-0 ${isMe ? 'right-full mr-2' : 'left-full ml-2'} opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1`}>
+                              <button onClick={(e) => { e.stopPropagation(); setPicker(msg.id); }} className="w-7 h-7 sm:w-8 sm:h-8 rounded-full glass-premium flex items-center justify-center hover:bg-violet-500/20 hover:text-violet-400 transition-colors">
+                                <Smile className="w-3.5 h-3.5 sm:w-4 h-4" />
+                              </button>
+                              <button className="w-7 h-7 sm:w-8 sm:h-8 rounded-full glass-premium flex items-center justify-center hover:bg-cyan-500/20 hover:text-cyan-400 transition-colors">
+                                <ReplyIcon className="w-3.5 h-3.5 sm:w-4 h-4" />
+                              </button>
+                            </div>
+
+                            {/* Reaction Picker Popover */}
+                            <AnimatePresence>
+                              {picker === msg.id && (
+                                <motion.div
+                                  initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                                  exit={{ opacity: 0, scale: 0.9 }}
+                                  className={`absolute bottom-full mb-3 z-50 p-1.5 sm:p-2 glass-premium rounded-xl sm:rounded-2xl flex gap-1.5 sm:gap-2 shadow-2xl ${isMe ? 'right-0' : 'left-0'}`}
+                                  onClick={e => e.stopPropagation()}
+                                >
+                                  {EMOJI_REACTIONS.map(emoji => (
+                                    <button 
+                                      key={emoji} 
+                                      onClick={() => reactToMessage(msg.id, emoji)}
+                                      className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center hover:bg-white/10 rounded-lg sm:rounded-xl transition-all hover:scale-125 hover:-rotate-12"
+                                    >
+                                      {emoji}
+                                    </button>
+                                  ))}
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+
+                          {/* Reactions Display */}
+                          {Object.keys(msgReactions).length > 0 && (
+                            <div className={`flex flex-wrap gap-1 mt-1.5 sm:mt-2 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                              {Object.entries(msgReactions).map(([emoji, who]) => {
+                                const hasReacted = (who as string[]).includes(user?.uid || '');
+                                return (
+                                  <button
+                                    key={emoji}
+                                    onClick={(e) => { e.stopPropagation(); reactToMessage(msg.id, emoji); }}
+                                    className={`flex items-center gap-1 sm:gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all border
+                                      ${hasReacted 
+                                        ? 'bg-violet-500/20 border-violet-500/30 text-violet-300' 
+                                        : 'glass-premium border-white/10 text-slate-400 hover:border-white/20'}`}
+                                  >
+                                    <span>{emoji}</span>
+                                    <span>{(who as string[]).length}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {msg.isLast && (
+                            <div className="mt-1 flex items-center gap-2 px-1 sm:px-2 text-[8px] sm:text-[9px] font-black text-slate-500">
+                              <span>{msg.created_at?.toDate ? msg.created_at.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'TRANSMITTING...'}</span>
+                              {isMe && (
+                                <div className="flex items-center gap-0.5">
+                                  <div className={`w-1 h-1 rounded-full ${msg.optimistic ? 'bg-slate-700' : 'bg-violet-400 glow-violet'}`} />
+                                  <div className={`w-1 h-1 rounded-full ${msg.optimistic ? 'bg-slate-700' : 'bg-violet-400 glow-violet'}`} />
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </motion.div>
+                    );
+                  })
+                )}
+              </AnimatePresence>
+              <div ref={bottomRef} />
+            </div>
+
+            {/* Floating Input Dock */}
+            <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 flex flex-col gap-2 z-20">
+              <AnimatePresence>
+                {typingText && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
+                    className="flex justify-center px-4"
+                  >
+                    <div className="glass-premium rounded-full px-3 py-1 sm:px-4 sm:py-1.5 border-white/5 flex items-center gap-2 sm:gap-3">
+                      <div className="flex gap-1">
+                        <span className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-violet-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                        <span className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-violet-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                        <span className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-violet-400 rounded-full animate-bounce" />
+                      </div>
+                      <span className="text-[8px] sm:text-[10px] font-bold text-slate-300 uppercase tracking-widest">{typingText}</span>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="relative glass-premium rounded-2xl sm:rounded-[2.5rem] p-1.5 sm:p-2 border-white/10 group focus-within:border-violet-500/50 focus-within:shadow-[0_0_30px_rgba(139,92,246,0.15)] transition-all mx-2 sm:mx-0">
+                {(isArchived || safeMode) && (
+                  <div className="absolute inset-0 z-20 bg-black/80 rounded-2xl sm:rounded-[2.5rem] flex items-center justify-center backdrop-blur-sm">
+                    <div className="flex items-center gap-2 text-red-400 text-[8px] sm:text-[10px] font-black uppercase tracking-widest">
+                       {safeMode ? <ShieldAlert className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <History className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+                       {safeMode ? 'Safe Mode Restricted' : 'Chamber Deactivated'}
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center gap-1 sm:gap-2 px-1 sm:px-2">
+                  <button className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-slate-500 hover:text-cyan-400 transition-colors">
+                    <Paperclip className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+                  <input
+                    type="text"
+                    value={text}
+                    onChange={e => { setText(e.target.value); if (e.target.value) emitTyping(); }}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                    placeholder={isArchived ? "Archived" : "Transmit..."}
+                    className="flex-1 bg-transparent border-0 outline-none text-sm sm:text-[15px] placeholder:text-slate-600 py-2 sm:py-3"
+                    disabled={safeMode || isArchived}
+                  />
+                  <div className="flex items-center gap-0.5 sm:gap-1">
+                    <button className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-slate-500 hover:text-yellow-400 transition-colors">
+                      <Smile className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </button>
+                    <motion.button
+                      onClick={sendMessage}
+                      whileTap={{ scale: 0.9 }}
+                      disabled={!text.trim() || safeMode || isArchived}
+                      className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center bg-gradient-to-br from-violet-500 to-violet-700 text-white shadow-lg shadow-violet-500/20 disabled:scale-90 disabled:opacity-0 transition-all"
+                    >
+                      <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    </motion.button>
+                  </div>
+                </div>
+              </div>
+              <div className="text-center">
+                <span className="text-[8px] sm:text-[9px] font-bold text-slate-600 uppercase tracking-[0.3em]">Enter to Transmit</span>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        {/* Right Panel: Presence & Activity */}
+        <AnimatePresence>
+          {showMembers && (
+            <motion.aside
+              initial={{ x: 400, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 400, opacity: 0 }}
+              className="fixed lg:relative top-0 bottom-0 right-0 w-[280px] lg:w-72 flex flex-col glass-premium border-l border-white/5 lg:m-4 lg:rounded-[2rem] p-6 pt-20 lg:pt-6 space-y-8 z-40"
+            >
+              <div className="flex-1 overflow-hidden flex flex-col">
+                <div className="flex items-center justify-between mb-4 lg:mb-6">
+                  <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Active Entities</h3>
+                  <button onClick={() => setShowMembers(false)} className="w-8 h-8 rounded-full glass-premium flex items-center justify-center text-slate-400 lg:hidden"><X className="w-4 h-4" /></button>
+                  <Activity className="hidden lg:block w-3 h-3 text-emerald-400 animate-pulse" />
+                </div>
+                <div className="flex-1 overflow-y-auto custom-scrollbar-voice space-y-3">
+                  {members.map(member => (
+                    <motion.div 
+                      key={member.user_id}
+                      initial={{ opacity: 0, x: 10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="flex items-center gap-3 p-2.5 rounded-2xl glass-premium border-white/5 hover:bg-white/5 transition-colors group cursor-default"
+                    >
+                      <div className="w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-black text-white"
+                        style={{ background: getColor(member.anonymous_username) }}>
+                        {getInitials(member.anonymous_username)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors">
+                          {member.anonymous_username}
+                        </div>
+                        <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-0.5">
+                          {member.role === 'creator' ? 'MASTER_ENTITY' : member.role === 'admin' ? 'SYSTEM_OVERSEER' : 'GHOST_ENTITY'}
+                        </div>
+                      </div>
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="h-48 border-t border-white/5 pt-6">
+                 <div className="flex items-center gap-2 mb-4">
+                    <History className="w-4 h-4 text-slate-500" />
+                    <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Flux Log</h3>
+                 </div>
+                 <div className="space-y-3 opacity-50 grayscale hover:grayscale-0 hover:opacity-100 transition-all">
+                    <p className="text-[10px] font-medium leading-relaxed">
+                      <span className="text-emerald-400">Entity 748</span> manifested.
+                    </p>
+                    <p className="text-[10px] font-medium leading-relaxed">
+                      <span className="text-violet-400">Catalyst</span> initiated protocol.
+                    </p>
+                 </div>
+              </div>
+            </motion.aside>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div className="fixed inset-0 z-[100] flex items-center justify-center px-4 bg-black/80 backdrop-blur-md"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
+            <motion.div className="glass-premium border border-white/10 rounded-[2rem] sm:rounded-[2.5rem] p-6 sm:p-10 w-full max-w-lg shadow-[0_0_100px_rgba(0,0,0,0.5)]"
+              initial={{ scale: 0.9, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, y: 20, opacity: 0 }}>
+              <h2 className="text-xl sm:text-2xl font-black text-white mb-6 sm:mb-8 tracking-tighter uppercase">Chamber configuration</h2>
+              <div className="space-y-6">
+                <div className="glass-premium p-4 rounded-xl sm:rounded-2xl border-white/5">
+                  <label className="flex items-center justify-between cursor-pointer group">
+                    <div className="space-y-1">
+                      <span className="text-sm font-bold text-white group-hover:text-violet-400 transition-colors">Restrict Transmission</span>
+                      <p className="text-[10px] text-slate-500 font-medium">Only Masters and Overseers.</p>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={onlyAdminsCanMessage}
+                        onChange={async (e) => {
+                          const newValue = e.target.checked;
+                          if (!roomId) return;
+                          await updateDoc(doc(db, 'chat_rooms', roomId), { only_admins_can_message: newValue });
+                          setOnlyAdminsCanMessage(newValue);
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-white/5 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-400 after:border-slate-400 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-600 peer-checked:after:bg-white peer-checked:after:border-white"></div>
+                    </div>
+                  </label>
+                </div>
+                {(userRole === 'creator' || profile?.is_admin) && !isArchived && (
+                  <div className="pt-6 border-t border-white/5 space-y-4">
+                    <h3 className="text-[10px] font-black text-red-500 uppercase tracking-[0.2em]">Danger Zone</h3>
+                    <button 
+                      onClick={async () => {
+                        if(window.confirm('Initiate deactivation?')) {
+                          if (!roomId) return;
+                          try {
+                            await updateDoc(doc(db, 'chat_rooms', roomId), { is_archived: true });
+                            navigate('/chat-center');
+                          } catch (error) {
+                            toast.error('Failed to archive chamber');
+                          }
+                        }
+                      }}
+                      className="w-full bg-red-500/10 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/20 py-3 sm:py-4 rounded-xl sm:rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all">
+                      DEACTIVATE CHAMBER
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button onClick={() => setShowSettings(false)} className="mt-8 w-full py-3 sm:py-4 rounded-xl sm:rounded-2xl font-black text-[10px] uppercase tracking-widest glass-premium border-white/10 hover:bg-white/5 transition-all">
+                ABORT CONFIG
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <ReportModal 
+        isOpen={!!reportingContent}
+        onClose={() => setReportingContent(null)}
+        targetType={reportingContent?.type || 'message'}
+        targetId={reportingContent?.id || ''}
+      />
     </div>
   );
 }

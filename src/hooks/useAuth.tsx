@@ -24,6 +24,13 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
 });
 
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: 'http://localhost:4000',
+  withCredentials: true,
+});
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -32,43 +39,32 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     let unsubscribeProfile: (() => void) | null = null;
 
-    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      
-      if (unsubscribeProfile) {
-        unsubscribeProfile();
-        unsubscribeProfile = null;
-      }
-
+    const checkSession = async (firebaseUser: User | null) => {
       if (firebaseUser) {
-        // Listen to profile changes in real-time
-        const profileRef = doc(db, 'users', firebaseUser.uid);
-        
-        // Safety timeout to prevent infinite loading if Firebase hangs
-        const timeout = setTimeout(() => {
-          setLoading(false);
-        }, 8000);
-
-        unsubscribeProfile = onSnapshot(profileRef, 
-          (docSnap) => {
-            clearTimeout(timeout);
+        try {
+          // If we have a Firebase user, ensure we have a backend session
+          // In a real app, we might check /auth/session here
+          const profileRef = doc(db, 'users', firebaseUser.uid);
+          
+          unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
             if (docSnap.exists()) {
               setProfile({ id: docSnap.id, ...docSnap.data() } as UserProfile);
-            } else {
-              setProfile(null);
             }
             setLoading(false);
-          },
-          (error) => {
-            console.error("Profile listener error:", error);
-            clearTimeout(timeout);
-            setLoading(false);
-          }
-        );
+          });
+        } catch (err) {
+          console.error("Session check error:", err);
+          setLoading(false);
+        }
       } else {
         setProfile(null);
         setLoading(false);
       }
+    };
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser);
+      checkSession(firebaseUser);
     });
 
     return () => {
@@ -78,9 +74,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const signOut = async () => {
-    await firebaseSignOut(auth);
-    setUser(null);
-    setProfile(null);
+    try {
+      await api.post('/auth/logout');
+      await firebaseSignOut(auth);
+      setUser(null);
+      setProfile(null);
+    } catch (err) {
+      console.error("Sign out error:", err);
+    }
   };
 
   return (
