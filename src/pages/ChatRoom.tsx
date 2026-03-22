@@ -78,16 +78,21 @@ export default function ChatRoom() {
   const [showMembers, setShowMembers] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [reportingContent, setReportingContent] = useState<{ type: 'message' | 'user'; id: string } | null>(null);
 
   // Auto-show sidebar on desktop
   useEffect(() => {
     const checkWidth = () => {
-      if (window.innerWidth >= 1024) {
-        setShowInfo(true);
-      }
       if (window.innerWidth >= 1280) {
+        setShowInfo(true);
         setShowMembers(true);
+      } else if (window.innerWidth >= 1024) {
+        setShowInfo(true);
+        setShowMembers(false);
+      } else {
+        setShowInfo(false);
+        setShowMembers(false);
       }
     };
     checkWidth();
@@ -319,7 +324,7 @@ export default function ChatRoom() {
   }
 
   return (
-    <div className="h-screen flex flex-col relative overflow-hidden bg-[#07070f] text-slate-200" onClick={() => setPicker(null)}>
+    <div className="h-screen flex flex-col relative overflow-hidden bg-[#07070f] text-slate-200" onClick={() => { setPicker(null); setShowEmojiPicker(false); }}>
       <VoidBackground />
       
       {/* Top Header */}
@@ -423,7 +428,7 @@ export default function ChatRoom() {
         <main className="flex-1 flex flex-col items-center relative z-10 px-4">
           <div className="w-full max-w-2xl flex-col h-full flex pt-6 pb-4">
             {/* Scrollable Area */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar-voice space-y-6 pb-24 pr-2">
+            <div className="flex-1 overflow-y-auto custom-scrollbar-voice pb-24 pr-2">
               <AnimatePresence initial={false}>
                 {messages.length === 0 ? (
                   <motion.div 
@@ -436,7 +441,7 @@ export default function ChatRoom() {
                     <p className="font-bold tracking-widest text-[10px] uppercase text-center">The void is silent...</p>
                   </motion.div>
                 ) : (
-                  grouped.map((msg) => {
+                  grouped.map((msg, index) => {
                     const isMe = msg.user_id === user?.uid;
                     const color = getColor(msg.anonymous_username);
                     const msgReactions = reactions[msg.id] ?? {};
@@ -445,72 +450,89 @@ export default function ChatRoom() {
                     return (
                       <motion.div 
                         key={msg.id}
-                        initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        className={`flex gap-2 sm:gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${msg.isFirst ? 'mt-6 sm:mt-8' : 'mt-1'}`}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        className={`flex gap-2.5 px-1 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${msg.isFirst ? 'mt-1.5' : 'mt-[2px]'}`}
                       >
                         {/* Avatar Column */}
-                        <div className="w-8 sm:w-10 shrink-0 self-end mb-1">
-                          {msg.isLast && (
+                        <div className="w-7 shrink-0">
+                          {msg.isFirst ? (
                             <div 
-                              className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl flex items-center justify-center text-[10px] sm:text-sm font-black text-white relative transition-transform hover:scale-110"
-                              style={{ background: `linear-gradient(135deg, ${color}, ${color}dd)`, boxShadow: `0 4px 15px ${color}44` }}
+                              className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black text-white relative group transition-all ring-1 ring-white/10"
+                              style={{ background: `linear-gradient(135deg, ${color}, ${color}dd)` }}
                             >
                               {getInitials(msg.anonymous_username)}
-                              {!isMe && <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#07070f]" />}
+                              {!isMe && (
+                                <div className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full border border-[#07070f]" />
+                              )}
                             </div>
+                          ) : (
+                            <div className="w-7" />
                           )}
                         </div>
 
-                        {/* Content Column */}
-                        <div className={`flex flex-col max-w-[85%] ${isMe ? 'items-end' : 'items-start'}`}>
+                        {/* Message Block Column */}
+                        <div className={`flex flex-col max-w-[65%] ${isMe ? 'items-end' : 'items-start'}`}>
                           {msg.isFirst && (
-                            <div className="flex items-center gap-2 mb-1 px-1 sm:px-2">
-                              <span className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${isMe ? 'text-violet-400 glow-text-violet' : 'text-slate-400'}`}>
-                                {isMe ? 'YOU' : msg.anonymous_username}
+                            <div className={`flex items-center gap-1.5 mb-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                              <span className={`text-[10px] font-bold uppercase tracking-widest ${isMe ? 'text-violet-400/80' : 'text-slate-500'}`}>
+                                {isMe ? 'You' : msg.anonymous_username}
                               </span>
-                              {role === 'creator' && <span className="bg-yellow-500/20 text-yellow-400 text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded border border-yellow-500/20">VOID_LORD</span>}
-                              {role === 'admin' && <span className="bg-blue-500/20 text-blue-400 text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded border border-blue-500/20">CATALYST</span>}
+                              {role === 'creator' && <span className="text-[6px] font-black px-1 py-0.5 rounded bg-yellow-400/5 text-yellow-400/60 border border-yellow-400/10">MASTER_ENTITY</span>}
                             </div>
                           )}
 
                           <div className="group relative">
-                            <div
-                              onClick={(e) => { e.stopPropagation(); setPicker(picker === msg.id ? null : msg.id); }}
-                              className={`rounded-2xl sm:rounded-3xl px-4 py-2 sm:px-5 sm:py-3 text-sm sm:text-[15px] leading-relaxed shadow-lg backdrop-blur-3xl transition-all duration-300
+                            <motion.div
+                              className={`
+                                px-3 py-1.5 text-[13px] leading-[1.4] relative transition-all duration-150
                                 ${isMe
-                                  ? `bg-gradient-to-br from-violet-600/90 to-violet-800/90 text-white border border-violet-400/30 hover:shadow-violet-500/20 ${msg.isFirst ? 'rounded-tr-sm' : ''}`
-                                  : `glass-premium text-slate-100 border-white/10 hover:border-white/20 hover:shadow-white/5 ${msg.isFirst ? 'rounded-tl-sm' : ''}`
+                                  ? 'bg-[#8b5cf6]/10 border border-[#8b5cf6]/20 text-[#ede9fe] backdrop-blur-md'
+                                  : 'bg-white/5 border border-white/10 text-slate-100 backdrop-blur-md'
                                 }
-                                ${msg.optimistic ? 'opacity-50' : 'opacity-100'}`}
-                              dangerouslySetInnerHTML={{ __html: sanitizeContent(msg.content) }}
-                            />
+                                ${msg.optimistic ? 'opacity-50' : 'opacity-100'}
+                                ${isMe 
+                                  ? 'rounded-[14px_10px_10px_14px]' 
+                                  : 'rounded-[10px_14px_14px_10px]'
+                                }
+                                hover:border-white/20
+                              `}
+                            >
+                              <div 
+                                dangerouslySetInnerHTML={{ __html: sanitizeContent(msg.content) }}
+                                className="break-words select-text"
+                              />
+                            </motion.div>
 
-                            {/* Hover Actions */}
-                            <div className={`absolute top-0 ${isMe ? 'right-full mr-2' : 'left-full ml-2'} opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1`}>
-                              <button onClick={(e) => { e.stopPropagation(); setPicker(msg.id); }} className="w-7 h-7 sm:w-8 sm:h-8 rounded-full glass-premium flex items-center justify-center hover:bg-violet-500/20 hover:text-violet-400 transition-colors">
-                                <Smile className="w-3.5 h-3.5 sm:w-4 h-4" />
-                              </button>
-                              <button className="w-7 h-7 sm:w-8 sm:h-8 rounded-full glass-premium flex items-center justify-center hover:bg-cyan-500/20 hover:text-cyan-400 transition-colors">
-                                <ReplyIcon className="w-3.5 h-3.5 sm:w-4 h-4" />
+                            {/* Hover Actions Dock - Even more compact */}
+                            <div className={`
+                              absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-150 z-20 flex items-center gap-1 scale-90 group-hover:scale-100
+                              ${isMe ? 'right-full mr-2' : 'left-full ml-2'}
+                            `}>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); setPicker(msg.id); }}
+                                className="w-6 h-6 rounded-md glass-premium border border-white/5 flex items-center justify-center hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
+                              >
+                                <Smile className="w-3.5 h-3.5" />
                               </button>
                             </div>
 
-                            {/* Reaction Picker Popover */}
+                            {/* Reaction Picker - Faster transition */}
                             <AnimatePresence>
                               {picker === msg.id && (
                                 <motion.div
-                                  initial={{ opacity: 0, scale: 0.9, y: 10 }}
-                                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                                  exit={{ opacity: 0, scale: 0.9 }}
-                                  className={`absolute bottom-full mb-3 z-50 p-1.5 sm:p-2 glass-premium rounded-xl sm:rounded-2xl flex gap-1.5 sm:gap-2 shadow-2xl ${isMe ? 'right-0' : 'left-0'}`}
+                                  initial={{ opacity: 0, scale: 0.98 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  exit={{ opacity: 0, scale: 0.98 }}
+                                  className={`absolute z-30 -top-10 glass-premium border border-white/10 rounded-lg p-1 flex gap-0.5 shadow-2xl ${isMe ? 'right-0' : 'left-0'}`}
                                   onClick={e => e.stopPropagation()}
                                 >
                                   {EMOJI_REACTIONS.map(emoji => (
                                     <button 
                                       key={emoji} 
                                       onClick={() => reactToMessage(msg.id, emoji)}
-                                      className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center hover:bg-white/10 rounded-lg sm:rounded-xl transition-all hover:scale-125 hover:-rotate-12"
+                                      className="w-7 h-7 flex items-center justify-center hover:bg-white/10 rounded-md transition-transform hover:scale-110"
                                     >
                                       {emoji}
                                     </button>
@@ -520,37 +542,34 @@ export default function ChatRoom() {
                             </AnimatePresence>
                           </div>
 
-                          {/* Reactions Display */}
+                          {/* Reactions Display - Compact */}
                           {Object.keys(msgReactions).length > 0 && (
-                            <div className={`flex flex-wrap gap-1 mt-1.5 sm:mt-2 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                               {Object.entries(msgReactions).map(([emoji, who]) => {
                                 const hasReacted = (who as string[]).includes(user?.uid || '');
                                 return (
                                   <button
                                     key={emoji}
                                     onClick={(e) => { e.stopPropagation(); reactToMessage(msg.id, emoji); }}
-                                    className={`flex items-center gap-1 sm:gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all border
+                                    className={`
+                                      flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold transition-all border
                                       ${hasReacted 
-                                        ? 'bg-violet-500/20 border-violet-500/30 text-violet-300' 
-                                        : 'glass-premium border-white/10 text-slate-400 hover:border-white/20'}`}
+                                        ? 'bg-violet-500/10 border-violet-500/20 text-violet-300' 
+                                        : 'bg-white/5 border-white/10 text-slate-500 hover:border-white/20'}
+                                    `}
                                   >
                                     <span>{emoji}</span>
-                                    <span>{(who as string[]).length}</span>
+                                    <span className="opacity-60">{(who as string[]).length}</span>
                                   </button>
                                 );
                               })}
                             </div>
                           )}
 
-                          {msg.isLast && (
-                            <div className="mt-1 flex items-center gap-2 px-1 sm:px-2 text-[8px] sm:text-[9px] font-black text-slate-500">
-                              <span>{msg.created_at?.toDate ? msg.created_at.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'TRANSMITTING...'}</span>
-                              {isMe && (
-                                <div className="flex items-center gap-0.5">
-                                  <div className={`w-1 h-1 rounded-full ${msg.optimistic ? 'bg-slate-700' : 'bg-violet-400 glow-violet'}`} />
-                                  <div className={`w-1 h-1 rounded-full ${msg.optimistic ? 'bg-slate-700' : 'bg-violet-400 glow-violet'}`} />
-                                </div>
-                              )}
+                          {/* Simplified Delivered Check */}
+                          {isMe && msg.isLast && !msg.optimistic && (
+                            <div className="mt-0.5 px-1 text-[8px] font-bold text-slate-600 uppercase tracking-tighter">
+                              Delivered
                             </div>
                           )}
                         </div>
@@ -604,10 +623,40 @@ export default function ChatRoom() {
                     className="flex-1 bg-transparent border-0 outline-none text-sm sm:text-[15px] placeholder:text-slate-600 py-2 sm:py-3"
                     disabled={safeMode || isArchived}
                   />
-                  <div className="flex items-center gap-0.5 sm:gap-1">
-                    <button className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-slate-500 hover:text-yellow-400 transition-colors">
+                  <div className="flex items-center gap-0.5 sm:gap-1 relative">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(!showEmojiPicker); }}
+                      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-colors ${showEmojiPicker ? 'text-yellow-400 bg-yellow-400/10' : 'text-slate-500 hover:text-yellow-400'}`}
+                    >
                       <Smile className="w-4 h-4 sm:w-5 sm:h-5" />
                     </button>
+                    
+                    <AnimatePresence>
+                      {showEmojiPicker && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                          className="absolute bottom-full right-0 mb-4 z-50 p-2 glass-premium border border-white/10 rounded-2xl shadow-2xl min-w-[200px]"
+                        >
+                          <div className="grid grid-cols-6 gap-1">
+                            {['❤️', '😂', '🔥', '👀', '😮', '👍', '✨', '🙌', '💯', '🚀', '💀', '🎉', '💜', '💙', '✅', '❌', '🤔', '😎'].map(emoji => (
+                              <button
+                                key={emoji}
+                                onClick={() => {
+                                  setText(prev => prev + emoji);
+                                  setShowEmojiPicker(false);
+                                }}
+                                className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-lg transition-transform hover:scale-125 active:scale-90 text-lg"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
                     <motion.button
                       onClick={sendMessage}
                       whileTap={{ scale: 0.9 }}

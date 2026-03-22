@@ -115,6 +115,7 @@ export default function Polls() {
 
   const [sortBy, setSortBy] = useState<'new' | 'popular'>('new');
   const [filterTag, setFilterTag] = useState('all');
+  const [view, setView] = useState<'live' | 'winners'>('live');
 
   useEffect(() => {
     if (!loading && !user) navigate('/join');
@@ -207,6 +208,7 @@ export default function Polls() {
   const sortedPolls = useMemo(() => {
     return [...polls]
       .filter((poll) => filterTag === 'all' || poll.tag === filterTag)
+      .filter((poll) => poll.closed === (view === 'winners'))
       .sort((a, b) => {
         if (sortBy === 'popular') {
           return (voteBuckets.get(b.id)?.total ?? 0) - (voteBuckets.get(a.id)?.total ?? 0);
@@ -215,7 +217,7 @@ export default function Polls() {
         const bTime = b.created_at?.toDate ? b.created_at.toDate().getTime() : new Date(b.created_at || 0).getTime();
         return bTime - aTime;
       });
-  }, [filterTag, polls, sortBy, voteBuckets]);
+  }, [filterTag, polls, sortBy, view, voteBuckets]);
 
   const createPoll = async () => {
     if (!user || creating) return;
@@ -399,14 +401,40 @@ export default function Polls() {
                 Hosts can post a poll, users can switch their pick while it stays open, and the leaderboard updates for everyone.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 min-w-[220px]">
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 min-w-[220px] w-full md:w-auto">
+              <button 
+                onClick={() => setView('winners')}
+                className={`text-left rounded-2xl border transition-all px-4 py-3 relative overflow-hidden group cursor-pointer ${
+                  view === 'winners' 
+                    ? 'border-amber-400/50 bg-amber-400/10 ring-1 ring-amber-400/20' 
+                    : 'border-white/10 bg-white/5 hover:bg-white/10 active:scale-95'
+                }`}
+              >
+                <div className="flex justify-between items-start">
+                  <div className="text-xs text-slate-400">Winners</div>
+                  <Trophy className={`h-3 w-3 ${view === 'winners' ? 'text-amber-400' : 'text-slate-500'}`} />
+                </div>
+                <div className="mt-1 text-2xl font-semibold text-white">{polls.filter((poll) => poll.closed).length}</div>
+                {view === 'winners' && <motion.div layoutId="activeView" className="absolute bottom-0 left-0 w-full h-0.5 bg-amber-400" />}
+              </button>
+              <button 
+                onClick={() => setView('live')}
+                className={`text-left rounded-2xl border transition-all px-4 py-3 relative overflow-hidden group cursor-pointer ${
+                  view === 'live' 
+                    ? 'border-cyan-400/50 bg-cyan-400/10 ring-1 ring-cyan-400/20' 
+                    : 'border-white/10 bg-white/5 hover:bg-white/10 active:scale-95'
+                }`}
+              >
+                <div className="flex justify-between items-start">
+                  <div className="text-xs text-slate-400">Open polls</div>
+                  <Clock3 className={`h-3 w-3 ${view === 'live' ? 'text-cyan-400' : 'text-slate-500'}`} />
+                </div>
+                <div className="mt-1 text-2xl font-semibold text-white">{polls.filter((poll) => !poll.closed).length}</div>
+                {view === 'live' && <motion.div layoutId="activeView" className="absolute bottom-0 left-0 w-full h-0.5 bg-cyan-400" />}
+              </button>
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 col-span-2 md:col-span-1">
                 <div className="text-xs text-slate-400">Total votes</div>
                 <div className="mt-1 text-2xl font-semibold text-white">{totalVotes}</div>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <div className="text-xs text-slate-400">Open polls</div>
-                <div className="mt-1 text-2xl font-semibold text-white">{polls.filter((poll) => !poll.closed).length}</div>
               </div>
             </div>
           </div>
