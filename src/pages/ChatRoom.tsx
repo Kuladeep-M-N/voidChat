@@ -203,24 +203,30 @@ export default function ChatRoom() {
   }, [roomId, user]);
 
   const [onlineUsers, setOnlineUsers] = useState<TypingUser[]>([]);
-  const [fluxLogs, setFluxLogs] = useState<{ id: string; text: string; color: string }[]>([]);
+  const [fluxLogs, setFluxLogs] = useState<{ id: string; text: string; color: string; timestamp: number }[]>([]);
 
+  // Flux Log: Manifested (Run once per join)
   useEffect(() => {
     if (!roomId || !user || !profile || isArchived) return;
-    const presenceRef = ref(rtdb, `rooms/${roomId}/presence/${user.uid}`);
-    const typingRef = ref(rtdb, `rooms/${roomId}/typing/${user.uid}`);
-    const roomPresenceRef = ref(rtdb, `rooms/${roomId}/presence`);
-    const roomTypingRef = ref(rtdb, `rooms/${roomId}/typing`);
-    const roomReactionsRef = ref(rtdb, `rooms/${roomId}/reactions`);
-    const fluxRef = ref(rtdb, `rooms/${roomId}/flux`);
-    
-    // Manifested Log
+    const fluxRef = ref(rtdb, `flux/${roomId}`);
     const manifestRef = push(fluxRef);
     rtdbSet(manifestRef, {
       text: `${profile.anonymous_username} manifested.`,
       color: 'text-emerald-400',
       timestamp: Date.now()
     });
+  }, [roomId, user?.uid, profile?.id, isArchived]);
+
+  // Presence & Typing & Flux Listeners
+  useEffect(() => {
+    if (!roomId || !user || !profile || isArchived) return;
+    
+    const presenceRef = ref(rtdb, `presence/${roomId}/${user.uid}`);
+    const typingRef = ref(rtdb, `typing/${roomId}/${user.uid}`);
+    const roomPresenceRef = ref(rtdb, `presence/${roomId}`);
+    const roomTypingRef = ref(rtdb, `typing/${roomId}`);
+    const roomReactionsRef = ref(rtdb, `reactions/${roomId}`);
+    const fluxRef = ref(rtdb, `flux/${roomId}`);
 
     rtdbSet(presenceRef, {
       user_id: user.uid,
@@ -236,7 +242,7 @@ export default function ChatRoom() {
         username: val.username
       }));
       setOnlineUsers(online);
-      setOnlineCount(online.length || 1);
+      setOnlineCount(online.length);
     });
 
     const unsubTyping = onValue(roomTypingRef, (snapshot) => {
@@ -272,7 +278,7 @@ export default function ChatRoom() {
       unsubReactions();
       unsubFlux();
     };
-  }, [roomId, user, profile, isArchived]);
+  }, [roomId, user?.uid, profile?.id, isArchived]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -280,7 +286,7 @@ export default function ChatRoom() {
 
   const emitTyping = useCallback(() => {
     if (!roomId || !user || !profile || isArchived) return;
-    const typingRef = ref(rtdb, `rooms/${roomId}/typing/${user.uid}`);
+    const typingRef = ref(rtdb, `typing/${roomId}/${user.uid}`);
     rtdbSet(typingRef, { username: profile.anonymous_username });
     if (typingTimer.current) clearTimeout(typingTimer.current);
     typingTimer.current = setTimeout(() => {
@@ -313,7 +319,7 @@ export default function ChatRoom() {
       });
 
       // Flux Log: Transmission
-      const fluxRef = ref(rtdb, `rooms/${roomId}/flux`);
+      const fluxRef = ref(rtdb, `flux/${roomId}`);
       const transmissionRef = push(fluxRef);
       rtdbSet(transmissionRef, {
         text: `${profile.anonymous_username} transmitted.`,
@@ -332,7 +338,7 @@ export default function ChatRoom() {
   const reactToMessage = useCallback((msgId: string, emoji: string) => {
     if (!user || !roomId || isArchived || safeMode) return;
     setPicker(null);
-    const reactionRef = ref(rtdb, `rooms/${roomId}/reactions/${msgId}/${emoji}`);
+    const reactionRef = ref(rtdb, `reactions/${roomId}/${msgId}/${emoji}`);
     onValue(reactionRef, (snapshot) => {
       const uids = snapshot.val() || [];
       if (!uids.includes(user.uid)) {

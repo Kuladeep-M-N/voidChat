@@ -36,9 +36,43 @@
     "reactions": {
       "$roomId": {
         ".read": "auth != null",
-        ".write": "auth != null",
-        "$reactionId": {
-          ".validate": "newData.hasChildren(['emoji', 'userId', 'timestamp'])"
+        ".write": "auth != null"
+      }
+    },
+    "flux": {
+      "$roomId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "typing": {
+      "$roomId": {
+        ".read": "auth != null",
+        "$uid": {
+          ".write": "auth != null && $uid === auth.uid"
+        }
+      }
+    },
+    "rooms": {
+      "$roomId": {
+        ".read": "auth != null",
+        "presence": {
+          "$uid": {
+            ".write": "auth != null && $uid === auth.uid"
+          }
+        },
+        "typing": {
+          "$uid": {
+            ".write": "auth != null && $uid === auth.uid"
+          }
+        },
+        "flux": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        },
+        "reactions": {
+          ".read": "auth != null",
+          ".write": "auth != null"
         }
       }
     },
