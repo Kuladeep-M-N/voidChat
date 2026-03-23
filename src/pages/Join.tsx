@@ -17,12 +17,23 @@ import {
   limit
 } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import axios from 'axios';
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000',
-  withCredentials: true,
-});
+const api = {
+  post: async (endpoint: string, data?: any) => {
+    const response = await fetch(`${apiBaseUrl}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: data ? JSON.stringify(data) : undefined,
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Request failed with status ${response.status}`);
+    }
+    return response.json();
+  }
+};
 
 // Floating particle
 interface Particle { x: number; y: number; vx: number; vy: number; size: number; opacity: number; color: string; }

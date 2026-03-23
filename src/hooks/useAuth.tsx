@@ -24,12 +24,23 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
 });
 
-import axios from 'axios';
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000',
-  withCredentials: true,
-});
+const api = {
+  post: async (endpoint: string, data?: any) => {
+    const response = await fetch(`${apiBaseUrl}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: data ? JSON.stringify(data) : undefined,
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Request failed with status ${response.status}`);
+    }
+    return response.json();
+  }
+};
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
