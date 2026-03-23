@@ -27,11 +27,14 @@ const api = {
       body: data ? JSON.stringify(data) : undefined,
       credentials: 'include',
     });
+    
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.message || `Request failed with status ${response.status}`);
     }
-    return response.json();
+
+    const text = await response.text();
+    return text ? JSON.parse(text) : { status: 'success' };
   }
 };
 
