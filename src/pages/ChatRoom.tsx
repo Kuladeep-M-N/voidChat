@@ -202,6 +202,9 @@ export default function ChatRoom() {
     });
   }, [roomId, user]);
 
+  const [onlineUsers, setOnlineUsers] = useState<TypingUser[]>([]);
+  const [fluxLogs, setFluxLogs] = useState<{ id: string; text: string; color: string }[]>([]);
+
   useEffect(() => {
     if (!roomId || !user || !profile || isArchived) return;
     const presenceRef = ref(rtdb, `rooms/${roomId}/presence/${user.uid}`);
@@ -209,16 +212,33 @@ export default function ChatRoom() {
     const roomPresenceRef = ref(rtdb, `rooms/${roomId}/presence`);
     const roomTypingRef = ref(rtdb, `rooms/${roomId}/typing`);
     const roomReactionsRef = ref(rtdb, `rooms/${roomId}/reactions`);
+    const fluxRef = ref(rtdb, `rooms/${roomId}/flux`);
+    
+    // Manifested Log
+    const manifestRef = push(fluxRef);
+    rtdbSet(manifestRef, {
+      text: `${profile.anonymous_username} manifested.`,
+      color: 'text-emerald-400',
+      timestamp: Date.now()
+    });
+
     rtdbSet(presenceRef, {
       user_id: user.uid,
       username: profile.anonymous_username,
       online_at: new Date().toISOString()
     });
     onDisconnect(presenceRef).remove();
+    
     const unsubPresence = onValue(roomPresenceRef, (snapshot) => {
       const data = snapshot.val() || {};
-      setOnlineCount(Object.keys(data).length || 1);
+      const online: TypingUser[] = Object.entries(data).map(([uid, val]: [string, any]) => ({
+        id: uid,
+        username: val.username
+      }));
+      setOnlineUsers(online);
+      setOnlineCount(online.length || 1);
     });
+
     const unsubTyping = onValue(roomTypingRef, (snapshot) => {
       const data = snapshot.val() || {};
       const typers: TypingUser[] = [];
@@ -229,16 +249,28 @@ export default function ChatRoom() {
       });
       setTypingUsers(typers);
     });
+
     const unsubReactions = onValue(roomReactionsRef, (snapshot) => {
       const data = snapshot.val() || {};
       setReactions(data);
     });
+
+    const unsubFlux = onValue(fluxRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      const logs = Object.entries(data)
+        .map(([id, val]: [string, any]) => ({ id, ...val }))
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, 5);
+      setFluxLogs(logs);
+    });
+
     return () => {
       rtdbRemove(presenceRef);
       rtdbRemove(typingRef);
       unsubPresence();
       unsubTyping();
       unsubReactions();
+      unsubFlux();
     };
   }, [roomId, user, profile, isArchived]);
 
@@ -278,6 +310,15 @@ export default function ChatRoom() {
       await addDoc(collection(db, 'messages'), {
         content, user_id: user.uid, room_id: roomId,
         anonymous_username: profile.anonymous_username, created_at: serverTimestamp()
+      });
+
+      // Flux Log: Transmission
+      const fluxRef = ref(rtdb, `rooms/${roomId}/flux`);
+      const transmissionRef = push(fluxRef);
+      rtdbSet(transmissionRef, {
+        text: `${profile.anonymous_username} transmitted.`,
+        color: 'text-violet-400',
+        timestamp: Date.now()
       });
     } catch (error) {
       toast.error("Failed to send message");
@@ -477,7 +518,7 @@ export default function ChatRoom() {
                           {msg.isFirst && (
                             <div className={`flex items-center gap-1.5 mb-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                               <span className={`text-[10px] font-bold uppercase tracking-widest ${isMe ? 'text-violet-400/80' : 'text-slate-500'}`}>
-                                {isMe ? 'You' : msg.anonymous_username}
+                                {msg.anonymous_username}
                               </span>
                               {role === 'creator' && <span className="text-[6px] font-black px-1 py-0.5 rounded bg-yellow-400/5 text-yellow-400/60 border border-yellow-400/10">MASTER_ENTITY</span>}
                             </div>
@@ -691,23 +732,20 @@ export default function ChatRoom() {
                   <Activity className="hidden lg:block w-3 h-3 text-emerald-400 animate-pulse" />
                 </div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar-voice space-y-3">
-                  {members.map(member => (
+                  {onlineUsers.map(online => (
                     <motion.div 
-                      key={member.user_id}
+                      key={online.id}
                       initial={{ opacity: 0, x: 10 }}
                       animate={{ opacity: 1, x: 0 }}
                       className="flex items-center gap-3 p-2.5 rounded-2xl glass-premium border-white/5 hover:bg-white/5 transition-colors group cursor-default"
                     >
                       <div className="w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-black text-white"
-                        style={{ background: getColor(member.anonymous_username) }}>
-                        {getInitials(member.anonymous_username)}
+                        style={{ background: getColor(online.username) }}>
+                        {getInitials(online.username)}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors">
-                          {member.anonymous_username}
-                        </div>
-                        <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-0.5">
-                          {member.role === 'creator' ? 'MASTER_ENTITY' : member.role === 'admin' ? 'SYSTEM_OVERSEER' : 'GHOST_ENTITY'}
+                          {online.username}
                         </div>
                       </div>
                       <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
@@ -722,12 +760,14 @@ export default function ChatRoom() {
                     <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Flux Log</h3>
                  </div>
                  <div className="space-y-3 opacity-50 grayscale hover:grayscale-0 hover:opacity-100 transition-all">
-                    <p className="text-[10px] font-medium leading-relaxed">
-                      <span className="text-emerald-400">Entity 748</span> manifested.
-                    </p>
-                    <p className="text-[10px] font-medium leading-relaxed">
-                      <span className="text-violet-400">Catalyst</span> initiated protocol.
-                    </p>
+                    {fluxLogs.map(log => (
+                      <p key={log.id} className="text-[10px] font-medium leading-relaxed">
+                        {log.text.split(' ').map((word, i) => (
+                           <span key={i} className={i === 0 ? log.color : ''}>{word} </span>
+                        ))}
+                      </p>
+                    ))}
+                    {fluxLogs.length === 0 && <p className="text-[10px] text-slate-600 italic">No recent activity</p>}
                  </div>
               </div>
             </motion.aside>
