@@ -61,16 +61,18 @@ interface ChatMessage {
   isSystem?: boolean;
 }
 
+const METERED_DOMAIN_PREFIX = (import.meta.env.VITE_METERED_DOMAIN || 'global').split('.')[0];
+
 const METERED_ICE_SERVERS = [
   {
-    urls: [`stun:${import.meta.env.VITE_METERED_DOMAIN || 'global'}.relay.metered.ca:80`]
+    urls: [`stun:${METERED_DOMAIN_PREFIX}.relay.metered.ca:443`]
   },
   {
     urls: [
-      `turn:${import.meta.env.VITE_METERED_DOMAIN || 'global'}.relay.metered.ca:80`,
-      `turn:${import.meta.env.VITE_METERED_DOMAIN || 'global'}.relay.metered.ca:80?transport=tcp`,
-      `turn:${import.meta.env.VITE_METERED_DOMAIN || 'global'}.relay.metered.ca:443`,
-      `turns:${import.meta.env.VITE_METERED_DOMAIN || 'global'}.relay.metered.ca:443?transport=tcp`
+      `turn:${METERED_DOMAIN_PREFIX}.relay.metered.ca:443`,
+      `turn:${METERED_DOMAIN_PREFIX}.relay.metered.ca:443?transport=tcp`,
+      `turns:${METERED_DOMAIN_PREFIX}.relay.metered.ca:443`,
+      `turns:${METERED_DOMAIN_PREFIX}.relay.metered.ca:443?transport=tcp`
     ],
     username: import.meta.env.VITE_METERED_API_KEY,
     credential: import.meta.env.VITE_METERED_API_KEY
