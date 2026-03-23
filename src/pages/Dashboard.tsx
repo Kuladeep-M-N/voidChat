@@ -32,6 +32,7 @@ const features = [
   { id: 'voice', emoji: '🎙️', label: 'Voice Rooms', desc: 'Talk live with others', path: '/voice', color: 'from-green-600/30 to-emerald-600/20', border: 'border-green-500/20' },
   { id: 'shoutouts', emoji: '📣', label: 'Shoutouts', desc: 'Send anonymous shoutouts', path: '/shoutouts', color: 'from-pink-600/30 to-rose-600/20', border: 'border-pink-500/20' },
   { id: 'debate', emoji: '⚔️', label: 'Debate Arena', desc: 'Join anonymous debates', path: '/debate-arena', color: 'from-slate-600/30 to-slate-800/20', border: 'border-slate-500/20' },
+  { id: 'whisper', emoji: '🤫', label: 'Whisper Space', desc: 'Stories, Theories & Situations', path: '/whisper', color: 'from-fuchsia-600/30 to-purple-600/20', border: 'border-fuchsia-500/20' },
 ];
 
 export default function Dashboard() {

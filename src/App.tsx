@@ -14,6 +14,7 @@ import AdminModeration from './pages/AdminModeration';
 import ChatCenter from './pages/ChatCenter';
 import DebateArena from './pages/DebateArena';
 import DebateThread from './pages/DebateThread';
+import Whisper from './pages/Whisper';
 
 
 const Spinner = () => (
@@ -71,6 +72,7 @@ function App() {
             <Route path="/chat-center" element={<ProtectedRoute><ChatCenter /></ProtectedRoute>} />
             <Route path="/debate-arena" element={<ProtectedRoute><DebateArena /></ProtectedRoute>} />
             <Route path="/debate-arena/:id" element={<ProtectedRoute><DebateThread /></ProtectedRoute>} />
+            <Route path="/whisper/*" element={<ProtectedRoute><Whisper /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute><AdminModeration /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

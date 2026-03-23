@@ -86,6 +86,35 @@ service cloud.firestore {
       allow update, delete: if isModerator();
     }
     
+    // Whisper Features
+    match /whisper_stories/{storyId} {
+      allow read: if isAuthenticated();
+      allow create: if canCreateContent();
+      allow update: if isAuthenticated(); // for follows/likes
+      allow delete: if isModerator() || (isAuthenticated() && resource.data.authorId == request.auth.uid);
+    }
+    match /whisper_story_parts/{partId} {
+      allow read: if isAuthenticated();
+      allow create: if canCreateContent();
+      allow update: if isAuthenticated(); // for reactions
+    }
+    match /whisper_theories/{theoryId} {
+      allow read: if isAuthenticated();
+      allow create: if canCreateContent();
+      allow update: if isAuthenticated(); // for upvotes
+      allow delete: if isModerator() || (isAuthenticated() && resource.data.authorId == request.auth.uid);
+    }
+    match /whisper_situations/{situationId} {
+      allow read: if isAuthenticated();
+      allow create: if isModerator() || isAdmin(); // Only admins/mods create situations
+    }
+    match /whisper_situation_responses/{responseId} {
+      allow read: if isAuthenticated();
+      allow create: if canCreateContent();
+      allow update: if isAuthenticated(); // for agrees/upvotes
+      allow delete: if isModerator() || (isAuthenticated() && resource.data.authorId == request.auth.uid);
+    }
+    
     // System Config
     match /system_config/{configId} {
       allow read: if true;
