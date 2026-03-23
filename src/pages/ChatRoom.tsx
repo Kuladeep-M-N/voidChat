@@ -472,10 +472,10 @@ export default function ChatRoom() {
         </AnimatePresence>
 
         {/* Center: Chat Window */}
-        <main className="flex-1 flex flex-col items-center relative z-10 px-4">
-          <div className="w-full max-w-2xl flex-col h-full flex pt-6 pb-4">
-            {/* Scrollable Area */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar-voice pb-24 pr-2">
+        <main className="flex-1 flex flex-col relative z-10">
+          {/* Scrollable Area - Spans full width for edge scrollbar */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar-voice pt-6 pb-32 px-4">
+            <div className="max-w-2xl mx-auto">
               <AnimatePresence initial={false}>
                 {messages.length === 0 ? (
                   <motion.div 
@@ -626,9 +626,11 @@ export default function ChatRoom() {
               </AnimatePresence>
               <div ref={bottomRef} />
             </div>
+          </div>
 
-            {/* Floating Input Dock */}
-            <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 flex flex-col gap-2 z-20">
+          {/* Floating Input Dock */}
+          <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 flex flex-col gap-2 z-20 px-4">
+            <div className="max-w-2xl mx-auto w-full">
               <AnimatePresence>
                 {typingText && (
                   <motion.div 

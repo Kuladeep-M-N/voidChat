@@ -317,7 +317,7 @@ function CommentPanel({
                 {meta.label} thread
               </span>
               <h3 className="mt-3 text-lg font-semibold text-white">Anonymous replies</h3>
-              <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300" dangerouslySetInnerHTML={{ __html: sanitizeContent(confession.content) }}></p>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300 break-all overflow-hidden" dangerouslySetInnerHTML={{ __html: sanitizeContent(confession.content) }}></p>
             </div>
             <button
               onClick={onClose}
@@ -362,7 +362,7 @@ function CommentPanel({
                         {timeAgo(comment.created_at)}
                       </span>
                     </div>
-                    <p className="text-sm leading-6 text-slate-200" dangerouslySetInnerHTML={{ __html: sanitizeContent(comment.content) }}></p>
+                    <p className="text-sm leading-6 text-slate-200 break-all overflow-hidden" dangerouslySetInnerHTML={{ __html: sanitizeContent(comment.content) }}></p>
                     <div className="mt-2 flex items-center gap-3">
                       {(!isMe || profile?.is_admin) && (
                         <button 
@@ -781,12 +781,24 @@ export default function Confessions() {
                   </div>
                 </div>
 
-                <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="mt-8 grid grid-cols-2 gap-3 sm:gap-4">
                   {/* Trending Box */}
                   <motion.div
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md transition-all hover:border-orange-500/30"
+                    className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 p-3 sm:p-4 backdrop-blur-md transition-all hover:border-orange-500/30 cursor-pointer"
+                    onClick={() => {
+                      if (trendingPost) {
+                        const element = document.getElementById(trendingPost.id);
+                        if (element) {
+                          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          element.classList.add('ring-2', 'ring-orange-500', 'ring-offset-8', 'ring-offset-[#09060d]');
+                          setTimeout(() => {
+                            element.classList.remove('ring-2', 'ring-orange-500', 'ring-offset-8', 'ring-offset-[#09060d]');
+                          }, 3000);
+                        }
+                      }
+                    }}
                   >
                     <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
                     <div className="relative z-10">
@@ -799,7 +811,7 @@ export default function Confessions() {
                       
                       {trendingPost ? (
                         <div className="mt-3">
-                          <p className="line-clamp-2 text-xs italic leading-relaxed text-slate-300">
+                          <p className="line-clamp-2 text-xs italic leading-relaxed text-slate-300 break-all overflow-hidden">
                             "{trendingPost.content}"
                           </p>
                           <div className="mt-3 flex items-center justify-between text-[10px]">
@@ -827,7 +839,7 @@ export default function Confessions() {
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: 0.1 }}
-                    className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md transition-all hover:border-purple-500/30"
+                    className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 p-3 sm:p-4 backdrop-blur-md transition-all hover:border-purple-500/30"
                   >
                     <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
                     <div className="relative z-10">
@@ -858,48 +870,65 @@ export default function Confessions() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-4">
-                <div className="confession-spotlight-card">
-                  <div className="mb-3 flex items-center justify-between">
-                    <span className="confession-tag" style={{ color: spotlightMeta.accent, borderColor: `${spotlightMeta.accent}45` }}>
-                      {spotlightMeta.label}
-                    </span>
-                    <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                      {spotlight ? timeAgo(spotlight.created_at) : 'waiting'}
-                    </span>
-                  </div>
-                  <p className="line-clamp-6 text-sm leading-7 text-slate-100">
-                    {spotlight?.content ?? 'Your next confession can become the spotlight.'}
-                  </p>
-                  <div className="mt-5 flex items-center gap-3 text-xs text-slate-400">
-                    <span className="flex items-center gap-1">
-                      <Flame size={14} />
-                      {spotlight?.likes ?? 0}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <MessageCircle size={14} />
-                      {spotlight ? commentCounts[spotlight.id] || 0 : 0}
-                    </span>
+              <div className="grid grid-cols-3 gap-3 lg:flex lg:flex-col lg:gap-4">
+                {/* Spotlight Card: Mini on mobile, detailed on desktop */}
+                <div className="col-span-1 lg:col-span-full">
+                  <div className="lg:hidden confession-mini-panel h-full flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-widest block mb-1" style={{ color: spotlightMeta.accent }}>{spotlightMeta.label}</span>
+                      <p className="text-[11px] leading-relaxed text-slate-300 line-clamp-2 break-all overflow-hidden">{spotlight?.content ?? 'Spotlight'}</p>
+                    </div>
                     {spotlight && (
                       <button
                         onClick={() => setCommentTarget(spotlight)}
-                        className="rounded-full border border-white/10 px-3 py-1.5 text-slate-200 transition hover:bg-white/10"
+                        className="mt-2 text-[10px] font-bold uppercase tracking-widest text-orange-400/80 hover:text-orange-400 transition-colors"
                       >
                         Open thread
                       </button>
                     )}
                   </div>
+                  <div className="hidden lg:block confession-spotlight-card">
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="confession-tag" style={{ color: spotlightMeta.accent, borderColor: `${spotlightMeta.accent}45` }}>
+                        {spotlightMeta.label}
+                      </span>
+                      <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                        {spotlight ? timeAgo(spotlight.created_at) : 'waiting'}
+                      </span>
+                    </div>
+                    <div className="max-h-[220px] overflow-y-auto custom-scrollbar-voice pr-2">
+                      <p className="text-sm leading-7 text-slate-100 break-all">
+                        {spotlight?.content ?? 'Your next confession can become the spotlight.'}
+                      </p>
+                    </div>
+                    <div className="mt-5 flex items-center gap-3 text-xs text-slate-400">
+                      <span className="flex items-center gap-1">
+                        <Flame size={14} />
+                        {spotlight?.likes ?? 0}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <MessageCircle size={14} />
+                        {spotlight ? commentCounts[spotlight.id] || 0 : 0}
+                      </span>
+                      {spotlight && (
+                        <button
+                          onClick={() => setCommentTarget(spotlight)}
+                          className="rounded-full border border-white/10 px-3 py-1.5 text-slate-200 transition hover:bg-white/10"
+                        >
+                          Open thread
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                  <div className="confession-mini-panel">
-                    <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Freshest drop</p>
-                    <p className="mt-2 text-sm text-slate-200">{latestDrop ? latestDrop.content.slice(0, 88) : 'No confessions yet.'}</p>
-                  </div>
-                  <div className="confession-mini-panel">
-                    <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Collections</p>
-                    <p className="mt-2 text-sm text-slate-200">{bookmarkedIds.size} confession{bookmarkedIds.size === 1 ? '' : 's'} saved for later.</p>
-                  </div>
+                <div className="confession-mini-panel h-full flex flex-col justify-between">
+                  <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Freshest drop</p>
+                  <p className="mt-1 text-[11px] text-slate-200 line-clamp-2 break-all overflow-hidden">{latestDrop ? latestDrop.content.slice(0, 88) : 'No confessions yet.'}</p>
+                </div>
+                <div className="confession-mini-panel h-full flex flex-col justify-between">
+                  <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Collections</p>
+                  <p className="mt-1 text-[11px] text-slate-200 line-clamp-2">{bookmarkedIds.size} saved.</p>
                 </div>
               </div>
             </div>
@@ -1127,7 +1156,9 @@ export default function Confessions() {
                         </span>
                       </div>
 
-                      <p className="text-[15px] leading-7 text-slate-100 sm:text-base">{confession.content}</p>
+                      <div className="max-h-[300px] overflow-y-auto custom-scrollbar-voice pr-2">
+                        <p className="text-[15px] leading-7 text-slate-100 sm:text-base break-all">{confession.content}</p>
+                      </div>
 
                       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
                         <div className="flex flex-wrap items-center gap-2">

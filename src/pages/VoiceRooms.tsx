@@ -156,6 +156,32 @@ export default function VoiceRooms() {
   const pendingCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const joiningRef = useRef<boolean>(false);
   const [peerStatuses, setPeerStatuses] = useState<Record<string, string>>({});
+  const [dynamicIceServers, setDynamicIceServers] = useState<RTCIceServer[]>(METERED_ICE_SERVERS);
+
+  // Fetch dynamic ICE servers from Metered
+  useEffect(() => {
+    const fetchIceServers = async () => {
+      try {
+        const domain = import.meta.env.VITE_METERED_DOMAIN;
+        const apiKey = import.meta.env.VITE_METERED_API_KEY;
+        if (!domain || !apiKey) {
+          console.warn("[VoiceRooms] Metered config missing, using static fallbacks");
+          return;
+        }
+        
+        console.log("[VoiceRooms] Fetching dynamic ICE servers...");
+        const response = await fetch(`https://${domain}/api/v1/turn/credentials?apiKey=${apiKey}`);
+        const servers = await response.json();
+        if (Array.isArray(servers) && servers.length > 0) {
+          console.log("[VoiceRooms] Successfully fetched ICE servers from Metered");
+          setDynamicIceServers(servers);
+        }
+      } catch (err) {
+        console.error("[VoiceRooms] Failed to fetch dynamic ICE servers:", err);
+      }
+    };
+    fetchIceServers();
+  }, []);
 
   const isSpeaking = useSpeakingDetector(localStreamRef.current);
 
@@ -213,7 +239,7 @@ export default function VoiceRooms() {
     if (existing) return existing;
 
     console.log(`[WebRTC] Creating peer for ${remoteUserId}, initiator: ${isInitiator}`);
-    const pc = new RTCPeerConnection({ iceServers: METERED_ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: dynamicIceServers });
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
@@ -1814,14 +1840,13 @@ export default function VoiceRooms() {
       </AnimatePresence>
 
       {/* Hidden container for remote WebRTC audio elements (Fallback) */}
-      <div id="remote-audio-container" style={{ display: 'none' }} />
     </div>
     );
   };
 
   return (
     <>
-      <div id="remote-audio-container" style={{ display: 'none' }} />
+      <div id="remote-audio-container" className="hidden" aria-hidden="true" />
       {renderContent()}
       {isVoiceRoute && activeRoom ? renderFullView() : (isVoiceRoute ? renderLobbyView() : null)}
     </>
