@@ -526,7 +526,6 @@ export default function ChatRoom() {
                               <span className={`text-[10px] font-bold uppercase tracking-widest ${isMe ? 'text-violet-400/80' : 'text-slate-500'}`}>
                                 {msg.anonymous_username}
                               </span>
-                              {role === 'creator' && <span className="text-[6px] font-black px-1 py-0.5 rounded bg-yellow-400/5 text-yellow-400/60 border border-yellow-400/10">MASTER_ENTITY</span>}
                             </div>
                           )}
 

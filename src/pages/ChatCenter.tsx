@@ -392,13 +392,13 @@ export default function ChatCenter() {
                           <div className="px-2 py-0.5 bg-orange-500/20 border border-orange-500/30 rounded-full text-[9px] font-black text-orange-400 uppercase tracking-widest animate-pulse">
                             Active
                           </div>
-                          {unreadCounts[trending.id] > 0 && (
+                          {unreadCounts?.[trending.id] > 0 && (
                             <motion.div 
                               initial={{ scale: 0 }} 
                               animate={{ scale: 1 }} 
                               className="px-2 py-0.5 bg-violet-500 border border-violet-400 rounded-full text-[9px] font-black text-white uppercase tracking-widest shadow-[0_0_15px_rgba(139,92,246,0.6)]"
                             >
-                              {unreadCounts[trending.id]} PENDING
+                              {unreadCounts?.[trending.id]} PENDING
                             </motion.div>
                           )}
                         </div>
@@ -522,7 +522,7 @@ export default function ChatCenter() {
                         transition={{ duration: 0.25, delay: i * 0.04 }}
                         layout
                         whileHover={{ scale: 1.02, y: -4 }}>
-                        {unreadCounts[room.id] > 0 && (
+                        {unreadCounts?.[room.id] > 0 && (
                           <div className="absolute top-3 right-3 z-30">
                             <motion.div 
                               initial={{ scale: 0, rotate: -10 }}
@@ -530,7 +530,7 @@ export default function ChatCenter() {
                               className="bg-violet-600 text-white text-[10px] font-black px-2 py-1 rounded-lg border border-violet-400 shadow-[0_0_20px_rgba(139,92,246,0.5)] flex items-center gap-1"
                             >
                               <Sparkles size={10} className="animate-pulse" />
-                              {unreadCounts[room.id] || 0}
+                              {unreadCounts?.[room.id] || 0}
                             </motion.div>
                           </div>
                         )}
