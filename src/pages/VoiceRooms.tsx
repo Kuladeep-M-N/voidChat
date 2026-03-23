@@ -63,14 +63,14 @@ interface ChatMessage {
 
 const METERED_ICE_SERVERS = [
   {
-    urls: ["stun:stun.relay.metered.ca:80"]
+    urls: [`stun:${import.meta.env.VITE_METERED_DOMAIN || 'global'}.relay.metered.ca:80`]
   },
   {
     urls: [
-      "turn:global.relay.metered.ca:80",
-      "turn:global.relay.metered.ca:80?transport=tcp",
-      "turn:global.relay.metered.ca:443",
-      "turns:global.relay.metered.ca:443?transport=tcp"
+      `turn:${import.meta.env.VITE_METERED_DOMAIN || 'global'}.relay.metered.ca:80`,
+      `turn:${import.meta.env.VITE_METERED_DOMAIN || 'global'}.relay.metered.ca:80?transport=tcp`,
+      `turn:${import.meta.env.VITE_METERED_DOMAIN || 'global'}.relay.metered.ca:443`,
+      `turns:${import.meta.env.VITE_METERED_DOMAIN || 'global'}.relay.metered.ca:443?transport=tcp`
     ],
     username: import.meta.env.VITE_METERED_API_KEY,
     credential: import.meta.env.VITE_METERED_API_KEY
