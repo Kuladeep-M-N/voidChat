@@ -498,7 +498,13 @@ export default function Polls() {
               const isOwn = poll.created_by === user?.uid || profile?.is_admin;
               const tagInfo = TAGS.find((item) => item.key === poll.tag);
               const winningVotes = Math.max(...(bucket?.counts ?? [0]));
-              const leadingIndex = (bucket?.counts ?? []).findIndex((count) => count === winningVotes);
+              const winnersIndices = (bucket?.counts ?? []).reduce((acc, count, idx) => {
+                if (count > 0 && count === winningVotes) acc.push(idx);
+                return acc;
+              }, [] as number[]);
+              const isDraw = winnersIndices.length > 1;
+              const leadingIndex = winnersIndices.length > 0 ? winnersIndices[0] : -1;
+              
               const lastVoteLabel = bucket?.latestVoteAt ? timeAgo(bucket.latestVoteAt) : 'quiet right now';
               const isHot = bucket?.latestVoteAt ? Date.now() - new Date(bucket.latestVoteAt).getTime() < 30000 : false;
 
@@ -517,7 +523,7 @@ export default function Polls() {
                   <div className={`absolute inset-0 opacity-80 bg-gradient-to-br ${tagInfo?.accent ?? TAGS[4].accent}`} />
                   <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.12),rgba(2,6,23,0.82))]" />
                   
-                  {poll.closed && total > 0 && leadingIndex >= 0 && (
+                  {poll.closed && total > 0 && winnersIndices.length > 0 && (
                     <motion.div 
                       className="relative z-10 mb-4 overflow-hidden rounded-2xl border border-amber-400/20 bg-white/5 backdrop-blur-xl p-4 md:p-5 text-center group cursor-default"
                       initial={{ opacity: 0, scale: 0.98 }}
@@ -525,32 +531,38 @@ export default function Polls() {
                     >
                       {/* Header Section */}
                       <div className="flex items-center justify-center gap-2.5 mb-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-400/15 text-amber-300">
-                          <Trophy className="h-4 w-4" />
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${isDraw ? 'bg-cyan-400/15 text-cyan-300' : 'bg-amber-400/15 text-amber-300'}`}>
+                          {isDraw ? <VoteIcon className="h-4 w-4" /> : <Trophy className="h-4 w-4" />}
                         </div>
                         <div className="text-left">
-                          <p className="text-[8px] font-black uppercase tracking-[0.2em] text-amber-200/60 leading-none">Winner</p>
+                          <p className={`text-[8px] font-black uppercase tracking-[0.2em] leading-none ${isDraw ? 'text-cyan-200/60' : 'text-amber-200/60'}`}>
+                            {isDraw ? 'Result' : 'Winner'}
+                          </p>
                           <h4 className="text-[10px] font-medium text-slate-500 mt-0.5 max-w-[150px] truncate">{poll.question}</h4>
                         </div>
                       </div>
 
-                      {/* Main Winner Typography */}
+                      {/* Main Typography */}
                       <motion.h2 
-                        className="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-[linear-gradient(135deg,#f6c453,#ff9f43)] mb-4"
+                        className={`text-xl md:text-2xl font-black text-transparent bg-clip-text mb-4 ${
+                          isDraw 
+                            ? 'bg-[linear-gradient(135deg,#22d3ee,#818cf8)]' 
+                            : 'bg-[linear-gradient(135deg,#f6c453,#ff9f43)]'
+                        }`}
                       >
-                        {poll.options[leadingIndex]}
+                        {isDraw ? 'It\'s a Draw!' : poll.options[leadingIndex]}
                       </motion.h2>
 
                       {/* Info & Progress - Compact Row */}
                       <div className="flex items-center justify-center gap-4 border-t border-white/5 pt-3">
                         <div className="flex gap-2">
-                          <div className="flex items-center gap-1.5 text-[10px] text-amber-100/70">
+                          <div className={`flex items-center gap-1.5 text-[10px] ${isDraw ? 'text-cyan-100/70' : 'text-amber-100/70'}`}>
                             <span className="font-bold">{winningVotes}</span>
-                            <span className="opacity-50 uppercase tracking-tighter">Votes</span>
+                            <span className="opacity-50 uppercase tracking-tighter">Votes each</span>
                           </div>
                           <div className="w-px h-3 bg-white/10" />
-                          <div className="text-[10px] font-bold text-amber-400">
-                            {Math.round((winningVotes / total) * 100)}% Lead
+                          <div className={`text-[10px] font-bold ${isDraw ? 'text-cyan-400' : 'text-amber-400'}`}>
+                            {isDraw ? 'Tied' : `${Math.round((winningVotes / total) * 100)}% Lead`}
                           </div>
                         </div>
                       </div>
@@ -628,7 +640,11 @@ export default function Polls() {
                       </div>
                       <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
                         <div className="text-slate-400">Lead</div>
-                        <div className="mt-1 font-semibold text-white">{leadingIndex >= 0 ? `${winningVotes} votes` : 'No votes'}</div>
+                        <div className="mt-1 font-semibold text-white">
+                          {winnersIndices.length > 0 
+                            ? isDraw ? 'Tied' : `${winningVotes} votes` 
+                            : 'No votes'}
+                        </div>
                       </div>
                     </div>
 
@@ -637,7 +653,7 @@ export default function Polls() {
                         const count = bucket?.counts[optionIndex] ?? 0;
                         const percent = total > 0 ? Math.round((count / total) * 100) : 0;
                         const isMyVote = myOptionIndex === optionIndex;
-                        const isLeader = leadingIndex === optionIndex && count > 0;
+                        const isLeader = winnersIndices.includes(optionIndex) && count > 0;
                         const showResults = voted || poll.closed || total > 0;
 
                         return (
