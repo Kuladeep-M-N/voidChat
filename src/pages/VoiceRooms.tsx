@@ -160,8 +160,10 @@ export default function VoiceRooms() {
   // Stable refs to avoid stale closures in WebRTC callbacks
   const activeRoomRef = useRef<VoiceRoom | null>(null);
   const userRef = useRef<typeof user>(null);
+  const iceCacheRef = useRef<RTCIceServer[] | null>(null); // Cache last good ICE servers (includes TURN)
 
-  // getIceServers: fetches fresh credentials every time a peer is created
+  // getIceServers: fetches fresh credentials every time a peer is created.
+  // Caches the last successful result so TURN servers survive transient API failures.
   const getIceServers = useCallback(async (): Promise<RTCIceServer[]> => {
     try {
       const domain = import.meta.env.VITE_METERED_DOMAIN;
@@ -171,15 +173,22 @@ export default function VoiceRooms() {
         if (response.ok) {
           const servers = await response.json();
           if (Array.isArray(servers) && servers.length > 0) {
-            console.log('[WebRTC] Fetched fresh ICE servers:', servers.length);
+            console.log('[WebRTC] Fetched fresh ICE servers (STUN + TURN):', servers.length);
+            iceCacheRef.current = servers; // cache for fallback
             return servers;
           }
         }
       }
     } catch (e) {
-      console.warn('[WebRTC] ICE server fetch failed, using fallback:', e);
+      console.warn('[WebRTC] ICE server fetch failed:', e);
     }
-    return METERED_ICE_SERVERS; // public STUN fallback
+    // Use cached result if available (has TURN) — better than STUN-only for corporate networks
+    if (iceCacheRef.current) {
+      console.log('[WebRTC] Using cached ICE servers (STUN + TURN)');
+      return iceCacheRef.current;
+    }
+    console.warn('[WebRTC] No cached ICE servers, falling back to public STUN only');
+    return METERED_ICE_SERVERS;
   }, []);
 
   // Keep refs in sync at render time
