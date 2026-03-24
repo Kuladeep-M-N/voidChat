@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Send, Users, ShieldAlert, GitBranch, Copy, Check, Heart, Trash2 } from 'lucide-react';
+import { ArrowLeft, Send, Users, ShieldAlert, GitBranch, Copy, Check, Heart, Trash2, MessageCircle } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import {
   doc, getDoc, collection, query, where, orderBy, onSnapshot,
@@ -19,6 +19,7 @@ interface Story {
   authorName: string;
   authorId: string;
   followers: number;
+  likes?: number;
   tags?: string[];
 }
 
@@ -481,9 +482,14 @@ export default function StoryView() {
                   <button onClick={toggleFollow} disabled={togglingFollow} className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all border ${isFollowing ? 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30 hover:bg-fuchsia-500/30' : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'}`}>
                     {isFollowing ? '✓ Following' : '+ Follow'}
                   </button>
-                  <button onClick={toggleLike} disabled={togglingLike} className={`px-2 py-0.5 rounded-md flex items-center gap-1 text-[10px] font-bold transition-all border ${isLiked ? 'bg-pink-500/20 text-pink-400 border-pink-500/40 hover:bg-pink-500/30' : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'}`}>
-                    <Heart size={10} className={isLiked ? 'fill-current' : ''} />
-                    {isLiked ? 'Liked' : 'Like'}
+                  <button 
+                    onClick={toggleLike} 
+                    disabled={togglingLike} 
+                    className={`h-9 px-4 rounded-xl flex items-center gap-2 text-xs font-bold transition-all border shadow-[0_4px_12px_rgba(0,0,0,0.5)] ${isLiked ? 'bg-pink-500/20 text-pink-400 border-pink-500/40 hover:bg-pink-500/30' : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'}`}
+                  >
+                    <Heart size={14} className={isLiked ? 'fill-current' : ''} />
+                    {isLiked ? 'Story Liked' : 'Like this Story'}
+                    <span className="ml-1 opacity-60">· {story.likes || 0}</span>
                   </button>
                   {profile?.is_admin && (
                     <button 
@@ -581,13 +587,21 @@ export default function StoryView() {
                 {part.branchOptions && part.branchOptions.length > 0 && id && (
                   <StoryBranchVote storyId={id} partId={part.id} options={part.branchOptions} />
                 )}
-
-                {/* Inline Nested Comments */}
-                <StoryComments partId={part.id} />
               </div>
             </div>
           </motion.div>
         ))}
+
+        {/* Global Story Comments */}
+        <div className="mt-12 pt-8 border-t border-white/5">
+          <div className="flex items-center gap-2 mb-6 text-fuchsia-400">
+            <MessageCircle size={20} />
+            <h3 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              Discussion
+            </h3>
+          </div>
+          {id && <StoryComments storyId={id} />}
+        </div>
 
         {/* Author Controls */}
         {isAuthor && (

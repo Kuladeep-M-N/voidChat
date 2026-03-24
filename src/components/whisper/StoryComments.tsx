@@ -12,7 +12,8 @@ import { containsInappropriateContent } from '../../lib/filter';
 
 interface Comment {
   id: string;
-  partId: string;
+  partId?: string;
+  storyId: string;
   parentId: string | null;
   content: string;
   authorName: string;
@@ -51,56 +52,57 @@ function CommentItem({ comment, allComments, depth, onReply, onLike, onDelete, l
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
-      className={`${depth > 0 ? 'whisper-comment-nested' : 'whisper-comment'} mt-2`}
+      className="mt-2"
+      style={{ marginLeft: depth > 0 ? `${Math.min(depth * 14, 40)}px` : 0 }}
     >
-      <div className="flex items-start gap-2">
-        <div className="w-6 h-6 rounded-full bg-fuchsia-500/20 flex items-center justify-center shrink-0 text-[10px] font-bold text-fuchsia-300 border border-fuchsia-500/20 mt-0.5">
-          {comment.authorName.charAt(0).toUpperCase()}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-bold text-slate-300">@{comment.authorName}</span>
-            <span className="text-[10px] text-slate-600">{timeAgo(comment.createdAt)}</span>
+      <div className={`${depth > 0 ? 'whisper-comment-nested' : 'whisper-comment'}`}>
+        <div className="flex items-start gap-2">
+          <div className="w-6 h-6 rounded-full bg-fuchsia-500/20 flex items-center justify-center shrink-0 text-[10px] font-bold text-fuchsia-300 border border-fuchsia-500/20 mt-0.5">
+            {comment.authorName.charAt(0).toUpperCase()}
           </div>
-          <p className="text-sm text-slate-300 leading-relaxed break-words">{comment.content}</p>
-          <div className="flex items-center gap-3 mt-2">
-            <button
-              onClick={() => onLike(comment.id)}
-              className={`flex items-center gap-1 text-[11px] font-semibold transition-colors ${likedIds.has(comment.id) ? 'text-fuchsia-400' : 'text-slate-500 hover:text-slate-300'}`}
-            >
-              ♥ {comment.likes || 0}
-            </button>
-            {depth === 0 && (
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-bold text-slate-300">@{comment.authorName}</span>
+              <span className="text-[10px] text-slate-600">{timeAgo(comment.createdAt)}</span>
+            </div>
+            <p className="text-sm text-slate-300 leading-relaxed break-words">{comment.content}</p>
+            <div className="flex items-center gap-3 mt-2">
+              <button
+                onClick={() => onLike(comment.id)}
+                className={`flex items-center gap-1 text-[11px] font-semibold transition-colors ${likedIds.has(comment.id) ? 'text-fuchsia-400' : 'text-slate-500 hover:text-slate-300'}`}
+              >
+                ♥ {comment.likes || 0}
+              </button>
               <button
                 onClick={() => onReply(comment.id, comment.authorName)}
                 className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-cyan-400 transition-colors"
               >
                 <CornerDownRight size={11} /> Reply
               </button>
-            )}
-            {replies.length > 0 && (
-              <button
-                onClick={() => setExpanded(e => !e)}
-                className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-300 transition-colors ml-auto"
-              >
-                {expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
-              </button>
-            )}
-            {isAdmin && (
-              <button
-                onClick={() => onDelete(comment.id)}
-                className="text-[11px] font-semibold text-slate-600 hover:text-red-400 transition-colors ml-1"
-                title="Admin: Delete Comment"
-              >
-                <Trash2 size={11} />
-              </button>
-            )}
+              {replies.length > 0 && (
+                <button
+                  onClick={() => setExpanded(e => !e)}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-300 transition-colors ml-auto"
+                >
+                  {expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                  {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
+                </button>
+              )}
+              {isAdmin && (
+                <button
+                  onClick={() => onDelete(comment.id)}
+                  className="text-[11px] font-semibold text-slate-600 hover:text-red-400 transition-colors ml-1"
+                  title="Admin: Delete Comment"
+                >
+                  <Trash2 size={11} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Nested replies (max depth 1) */}
+      {/* Recursive Nested replies */}
       {expanded && replies.length > 0 && (
         <div className="mt-1 space-y-1">
           {replies.map(reply => (
@@ -123,11 +125,12 @@ function CommentItem({ comment, allComments, depth, onReply, onLike, onDelete, l
 }
 
 interface StoryCommentsProps {
-  partId: string;
+  partId?: string;
+  storyId: string;
   onCommentCountChange?: (count: number) => void;
 }
 
-export default function StoryComments({ partId, onCommentCountChange }: StoryCommentsProps) {
+export default function StoryComments({ partId, storyId, onCommentCountChange }: StoryCommentsProps) {
   const { user, profile } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
   const [text, setText] = useState('');
@@ -139,7 +142,7 @@ export default function StoryComments({ partId, onCommentCountChange }: StoryCom
     if (!user?.uid) return;
     const q = query(
       collection(db, 'whisper_story_comments'),
-      where('partId', '==', partId)
+      partId ? where('partId', '==', partId) : where('storyId', '==', storyId)
     );
     const unsub = onSnapshot(q, snap => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Comment[];
@@ -155,7 +158,7 @@ export default function StoryComments({ partId, onCommentCountChange }: StoryCom
       if (onCommentCountChange) onCommentCountChange(data.length);
     });
     return () => unsub();
-  }, [partId, onCommentCountChange, user?.uid]);
+  }, [partId, storyId, onCommentCountChange, user?.uid]);
 
   const handleDeleteComment = async (commentId: string) => {
     if (!profile?.is_admin) return;
@@ -178,7 +181,8 @@ export default function StoryComments({ partId, onCommentCountChange }: StoryCom
     setSubmitting(true);
     try {
       await addDoc(collection(db, 'whisper_story_comments'), {
-        partId,
+        partId: partId || null,
+        storyId,
         parentId: replyingTo?.id || null,
         content: text.trim(),
         authorName: user.displayName || profile?.anonymous_username || 'Void Reader',

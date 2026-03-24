@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen, User, Users, ChevronRight, PenTool, X,
-  Flame, Gem, TrendingUp, Search, Tag, Hash, Trash2
+  Flame, Gem, TrendingUp, Search, Tag, Hash, Trash2, Heart
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/firebase';
@@ -180,6 +180,10 @@ function StoryCard({ story, index, onClick, onDelete, isAdmin }: {
           <div className="flex items-center gap-1 text-xs text-slate-500">
             <Users size={12} className="text-cyan-400/70" />
             <span>{story.followers.toLocaleString()}</span>
+          </div>
+          <div className="flex items-center gap-1 text-xs text-slate-500">
+            <Heart size={11} className="text-pink-400/70" />
+            <span>{story.likes || 0}</span>
           </div>
           <ReactionMini reactions={story.reactions} />
         </div>
@@ -540,10 +544,14 @@ export default function StoriesTab() {
         >
           <BookOpen className="mx-auto text-slate-600 mb-4" size={36} />
           <p className="text-slate-400 font-bold mb-1" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            {searchQuery || activeFilter ? 'No stories match your filter.' : 'No stories yet in the void.'}
+            {activeFilter === 'Following' 
+              ? "You aren't following any authors yet." 
+              : (searchQuery || activeFilter ? 'No stories match your filter.' : 'No stories yet in the void.')}
           </p>
           <p className="text-slate-600 text-sm">
-            {searchQuery || activeFilter ? 'Try a different tag or search term.' : 'Be the first to start a thread.'}
+            {activeFilter === 'Following'
+              ? 'Explore the void to find inspiration and follow creators!'
+              : (searchQuery || activeFilter ? 'Try a different tag or search term.' : 'Be the first to start a thread.')}
           </p>
         </motion.div>
       ) : (
