@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Flame, MessageCircle, ArrowUp, Send, Network } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Flame, MessageCircle, ArrowUp, Send, Network, Hash, ChevronDown, ChevronUp } from 'lucide-react';
 import { db } from '../../lib/firebase';
-import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, increment } from 'firebase/firestore';
+import {
+  collection, query, orderBy, onSnapshot, addDoc,
+  updateDoc, doc, serverTimestamp, increment
+} from 'firebase/firestore';
 import { useAuth } from '../../hooks/useAuth';
 import { toast } from 'sonner';
 import { containsInappropriateContent } from '../../lib/filter';
+import TheoryComments from './TheoryComments';
 
 interface Theory {
   id: string;
@@ -14,157 +18,280 @@ interface Theory {
   authorId: string;
   upvotes: number;
   comments: number;
+  tags: string[];
   createdAt: any;
+}
+
+const THEORY_TAGS = [
+  { label: '#conspiracy',    style: 'neon-tag neon-tag-red' },
+  { label: '#mind-bending',  style: 'neon-tag neon-tag-purple' },
+  { label: '#dark',          style: 'neon-tag neon-tag-pink' },
+  { label: '#sci-fi',        style: 'neon-tag neon-tag-cyan' },
+  { label: '#psychology',    style: 'neon-tag neon-tag-amber' },
+  { label: '#occult',        style: 'neon-tag neon-tag-red' },
+];
+
+const TAG_STYLE_MAP: Record<string, string> = {
+  '#conspiracy':  'neon-tag neon-tag-red',
+  '#mind-bending':'neon-tag neon-tag-purple',
+  '#dark':        'neon-tag neon-tag-pink',
+  '#sci-fi':      'neon-tag neon-tag-cyan',
+  '#psychology':  'neon-tag neon-tag-amber',
+  '#occult':      'neon-tag neon-tag-red',
+};
+
+function timeAgo(date: any) {
+  if (!date) return 'just now';
+  const d = date?.toDate ? date.toDate() : new Date(date);
+  const diff = (Date.now() - d.getTime()) / 1000;
+  if (isNaN(diff) || diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
 }
 
 export default function TheoriesTab() {
   const [theories, setTheories] = useState<Theory[]>([]);
   const [newTheory, setNewTheory] = useState('');
-  const { user, profile } = useAuth();
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [upvotedIds, setUpvotedIds] = useState<Set<string>>(new Set());
+  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const { user, profile } = useAuth();
 
   useEffect(() => {
     const q = query(collection(db, 'whisper_theories'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Theory[];
-      
-      // Sort by a mix of recent and hot
+    const unsub = onSnapshot(q, snap => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Theory[];
       data.sort((a, b) => {
-         const scoreA = a.upvotes + (a.comments * 2);
-         const scoreB = b.upvotes + (b.comments * 2);
-         return scoreB - scoreA;
+        const sa = a.upvotes + (a.comments * 2);
+        const sb = b.upvotes + (b.comments * 2);
+        return sb - sa;
       });
-      
       setTheories(data);
     });
-    return () => unsubscribe();
+    return () => unsub();
   }, []);
 
   const handlePost = async () => {
     if (!newTheory.trim() || !user) return;
-    
-    if (containsInappropriateContent(newTheory).matches) {
-       toast.error("Keep it clean in the void.");
-       return;
-    }
-
+    if (containsInappropriateContent(newTheory).matches) { toast.error('Keep it clean.'); return; }
     try {
+      const tags = selectedTags.length > 0 ? selectedTags : ['#mind-bending'];
       await addDoc(collection(db, 'whisper_theories'), {
         content: newTheory.trim(),
         authorName: profile?.anonymous_username || 'Anonymous',
         authorId: user.uid,
         upvotes: 0,
         comments: 0,
-        createdAt: serverTimestamp()
+        tags,
+        createdAt: serverTimestamp(),
       });
       setNewTheory('');
+      setSelectedTags([]);
       toast.success('Theory dropped.');
-    } catch(err) {
-      toast.error('Failed to post theory.');
-      console.error(err);
-    }
-  };
-
-  const handleUpvote = async (theoryId: string) => {
-    if (!user || upvotedIds.has(theoryId)) return;
-    try {
-      setUpvotedIds(prev => new Set(prev).add(theoryId));
-      await updateDoc(doc(db, 'whisper_theories', theoryId), {
-        upvotes: increment(1)
-      });
     } catch (err) {
-      console.error(err);
+      toast.error('Failed to post theory.');
     }
   };
 
-  const timeAgo = (date: any) => {
-    if (!date) return 'just now';
-    const d = date?.toDate ? date.toDate() : new Date(date);
-    const diff = (Date.now() - d.getTime()) / 1000;
-    if (isNaN(diff)) return 'just now';
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
+  const handleUpvote = async (id: string) => {
+    if (!user || upvotedIds.has(id)) return;
+    setUpvotedIds(prev => new Set(prev).add(id));
+    await updateDoc(doc(db, 'whisper_theories', id), { upvotes: increment(1) });
   };
+
+  const toggleTag = (tag: string) =>
+    setSelectedTags(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : prev.length < 2 ? [...prev, tag] : prev
+    );
+
+  const toggleComments = (id: string) =>
+    setExpandedComments(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const updateCommentCount = useCallback((theoryId: string, count: number) => {
+    setCommentCounts(prev => ({ ...prev, [theoryId]: count }));
+  }, []);
+
+  const filtered = activeFilter
+    ? theories.filter(t => t.tags?.includes(activeFilter))
+    : theories;
+
+  const hot = filtered.filter(t => t.upvotes > 3 || t.comments > 2);
 
   return (
-    <div className="p-6 md:p-8 flex flex-col h-full bg-[#070d1f]">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center border border-cyan-500/30">
+    <div className="pb-16">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 rounded-2xl bg-cyan-500/15 border border-cyan-500/25 flex items-center justify-center">
           <Network className="text-cyan-400" size={20} />
         </div>
         <div>
-          <h2 className="text-2xl font-bold text-white font-['Manrope']">Theories</h2>
-          <p className="text-sm text-cyan-400/80">Connect the dots. Uncover the truth.</p>
+          <h2 className="text-xl font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Theories</h2>
+          <p className="text-xs text-cyan-400/70" style={{ fontFamily: "'Manrope', sans-serif" }}>Connect the dots. Uncover the truth.</p>
         </div>
       </div>
 
-      <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-8 backdrop-blur-xl relative z-10 focus-within:border-cyan-500/50 focus-within:shadow-[0_0_30px_rgba(6,182,212,0.1)] transition-all">
+      {/* Compose Box */}
+      <div
+        className="rounded-2xl border border-white/8 p-5 mb-6 transition-all focus-within:border-cyan-500/40"
+        style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(16px)' }}
+      >
         <textarea
           value={newTheory}
-          onChange={(e) => setNewTheory(e.target.value)}
+          onChange={e => setNewTheory(e.target.value)}
           placeholder="Drop a theory... What's really going on?"
-          className="w-full bg-transparent border-none outline-none text-white placeholder-slate-500 resize-none h-20 text-lg font-medium"
+          className="w-full bg-transparent border-none outline-none text-white placeholder-slate-600 resize-none h-20 text-base"
+          style={{ fontFamily: "'Manrope', sans-serif" }}
         />
-        <div className="flex justify-between items-center mt-2 border-t border-white/5 pt-3">
-          <span className="text-xs text-slate-500 font-medium tracking-wide uppercase">Anonymous Submission • @{profile?.anonymous_username}</span>
-          <button 
+
+        {/* Tag picker */}
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {THEORY_TAGS.map(t => (
+            <button
+              key={t.label}
+              onClick={() => toggleTag(t.label)}
+              className={`${t.style} ${selectedTags.includes(t.label) ? 'active' : ''}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex justify-between items-center border-t border-white/5 pt-3">
+          <span className="text-xs text-slate-600 font-medium">@{profile?.anonymous_username || 'Anonymous'}</span>
+          <button
             onClick={handlePost}
             disabled={!newTheory.trim()}
-            className="bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm disabled:opacity-40 transition-all"
+            style={{ background: 'linear-gradient(135deg, #0891b2, #06cefd)', color: '#050505' }}
           >
-            <Send size={16} />
-            Post
+            <Send size={14} />
+            Drop Theory
           </button>
         </div>
       </div>
 
-      <div className="space-y-4">
-        {theories.length === 0 && (
-           <div className="text-center py-10 text-slate-500 font-bold">No theories yet. Start the conspiracy.</div>
-        )}
-        {theories.map((theory, i) => (
-          <motion.div
-            key={theory.id}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.05 }}
-            className="p-5 rounded-2xl bg-[#0c1326] border border-[#1c253e] hover:border-cyan-500/20 transition-colors"
+      {/* Tag filter bar */}
+      <div className="flex gap-1.5 mb-6 overflow-x-auto scrollbar-hide">
+        <button
+          onClick={() => setActiveFilter(null)}
+          className={`neon-tag whitespace-nowrap ${!activeFilter ? 'neon-tag-cyan active' : 'neon-tag-cyan'}`}
+        >
+          All
+        </button>
+        {THEORY_TAGS.map(t => (
+          <button
+            key={t.label}
+            onClick={() => setActiveFilter(activeFilter === t.label ? null : t.label)}
+            className={`${t.style} whitespace-nowrap ${activeFilter === t.label ? 'active' : ''}`}
           >
-            <div className="flex items-center gap-2 mb-3">
-              <span className="w-2 h-2 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
-              <span className="text-sm font-bold text-slate-300">@{theory.authorName}</span>
-              <span className="text-xs text-slate-500 ml-auto">{timeAgo(theory.createdAt)}</span>
-            </div>
-            
-            <p className="text-slate-200 text-lg leading-relaxed mb-5 font-['Inter'] whitespace-pre-wrap">
-               "{theory.content}"
-            </p>
-            
-            <div className="flex items-center gap-4 border-t border-white/5 pt-4">
-              <button 
-                onClick={() => handleUpvote(theory.id)}
-                className={`flex items-center gap-1.5 text-sm font-bold transition-colors bg-white/5 px-3 py-1.5 rounded-lg border hover:border-cyan-500/20 ${upvotedIds.has(theory.id) ? 'text-cyan-400 border-cyan-500/30' : 'text-slate-400 border-transparent hover:text-cyan-400'}`}
-              >
-                <ArrowUp size={16} />
-                {theory.upvotes}
-              </button>
-              <button disabled className="flex items-center opacity-50 cursor-not-allowed gap-1.5 text-sm font-bold text-slate-400 transition-colors bg-white/5 px-3 py-1.5 rounded-lg border border-transparent">
-                <MessageCircle size={16} />
-                {theory.comments || 0} Discuss (Soon)
-              </button>
-              {(theory.upvotes > 5) && (
-                <div className="ml-auto text-amber-500/70 hover:text-amber-400 cursor-pointer flex items-center gap-1 text-xs font-bold uppercase tracking-widest">
-                  <Flame size={14} /> Hot
-                </div>
-              )}
-            </div>
-          </motion.div>
+            {t.label}
+          </button>
         ))}
+      </div>
+
+      {/* Theory list */}
+      {filtered.length === 0 && (
+        <div className="text-center py-20 text-slate-600 font-bold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+          No theories yet. Start the conspiracy.
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {filtered.map((theory, i) => {
+          const isHot = theory.upvotes > 3 || theory.comments > 2;
+          const commentExpanded = expandedComments.has(theory.id);
+          const liveCommentCount = commentCounts[theory.id] ?? theory.comments;
+
+          return (
+            <motion.div
+              key={theory.id}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.04 }}
+              className={`whisper-card whisper-card-glow-cyan relative overflow-hidden ${isHot ? 'border-cyan-500/20' : ''}`}
+            >
+              {isHot && (
+                <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/60 to-transparent" />
+              )}
+              <div className="p-5">
+                {/* Author + time */}
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-7 h-7 rounded-full bg-cyan-500/15 border border-cyan-500/20 flex items-center justify-center text-[11px] font-bold text-cyan-300">
+                    {theory.authorName.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-sm font-bold text-slate-300">@{theory.authorName}</span>
+                  {isHot && (
+                    <span className="ml-1 flex items-center gap-1 neon-tag neon-tag-amber">
+                      <Flame size={9} /> Hot
+                    </span>
+                  )}
+                  <span className="text-xs text-slate-600 ml-auto">{timeAgo(theory.createdAt)}</span>
+                </div>
+
+                {/* Tags */}
+                {theory.tags && theory.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {theory.tags.map(tag => (
+                      <span key={tag} className={TAG_STYLE_MAP[tag] || 'neon-tag neon-tag-purple'}>{tag}</span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Content */}
+                <p
+                  className="text-slate-200 text-base leading-relaxed mb-4"
+                  style={{ fontFamily: "'Manrope', sans-serif" }}
+                >
+                  "{theory.content}"
+                </p>
+
+                {/* Actions */}
+                <div className="flex items-center gap-3 pt-3 border-t border-white/5">
+                  <button
+                    onClick={() => handleUpvote(theory.id)}
+                    className={`reaction-btn ${upvotedIds.has(theory.id) ? 'reacted' : ''}`}
+                  >
+                    <span className="emoji">▲</span>
+                    <span>{theory.upvotes}</span>
+                  </button>
+
+                  <button
+                    onClick={() => toggleComments(theory.id)}
+                    className="reaction-btn"
+                  >
+                    <span className="emoji"><MessageCircle size={14} /></span>
+                    <span>{liveCommentCount}</span>
+                    {commentExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                  </button>
+                </div>
+
+                {/* Nested comment section */}
+                <AnimatePresence>
+                  {commentExpanded && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <TheoryComments
+                        theoryId={theory.id}
+                        onCommentCountChange={(count) => updateCommentCount(theory.id, count)}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          );
+        })}
       </div>
     </div>
   );

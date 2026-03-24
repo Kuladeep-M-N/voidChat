@@ -114,6 +114,24 @@ service cloud.firestore {
       allow update: if isAuthenticated(); // for agrees/upvotes
       allow delete: if isModerator() || (isAuthenticated() && resource.data.authorId == request.auth.uid);
     }
+    // Whisper Theory Comments (nested Reddit-style)
+    match /whisper_theory_comments/{commentId} {
+      allow read: if isAuthenticated();
+      allow create: if canCreateContent();
+      allow update: if isAuthenticated(); // for likes
+      allow delete: if isModerator() || (isAuthenticated() && resource.data.authorId == request.auth.uid);
+    }
+    // Whisper Story Part Comments (inline comments on episodes)
+    match /whisper_story_comments/{commentId} {
+      allow read: if isAuthenticated();
+      allow create: if canCreateContent();
+      allow delete: if isModerator() || (isAuthenticated() && resource.data.authorId == request.auth.uid);
+    }
+    // Whisper Story Branching Votes (one per user per part)
+    match /whisper_branch_votes/{voteId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+    }
     
     // System Config
     match /system_config/{configId} {
