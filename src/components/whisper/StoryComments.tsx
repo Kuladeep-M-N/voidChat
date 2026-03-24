@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, ChevronDown, ChevronUp, Send, CornerDownRight } from 'lucide-react';
+import { MessageCircle, ChevronDown, ChevronUp, Send, CornerDownRight, Trash2 } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import {
   collection, query, where, orderBy, onSnapshot,
-  addDoc, updateDoc, doc, serverTimestamp, increment
+  addDoc, updateDoc, doc, serverTimestamp, increment, deleteDoc
 } from 'firebase/firestore';
 import { useAuth } from '../../hooks/useAuth';
 import { toast } from 'sonner';
@@ -37,10 +37,12 @@ interface CommentItemProps {
   depth: number;
   onReply: (id: string, name: string) => void;
   onLike: (id: string) => void;
+  onDelete: (id: string) => void;
   likedIds: Set<string>;
+  isAdmin?: boolean;
 }
 
-function CommentItem({ comment, allComments, depth, onReply, onLike, likedIds }: CommentItemProps) {
+function CommentItem({ comment, allComments, depth, onReply, onLike, onDelete, likedIds, isAdmin }: CommentItemProps) {
   const [expanded, setExpanded] = useState(true);
   const replies = allComments.filter(c => c.parentId === comment.id);
 
@@ -85,6 +87,15 @@ function CommentItem({ comment, allComments, depth, onReply, onLike, likedIds }:
                 {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
               </button>
             )}
+            {isAdmin && (
+              <button
+                onClick={() => onDelete(comment.id)}
+                className="text-[11px] font-semibold text-slate-600 hover:text-red-400 transition-colors ml-1"
+                title="Admin: Delete Comment"
+              >
+                <Trash2 size={11} />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -100,7 +111,9 @@ function CommentItem({ comment, allComments, depth, onReply, onLike, likedIds }:
               depth={depth + 1}
               onReply={onReply}
               onLike={onLike}
+              onDelete={onDelete}
               likedIds={likedIds}
+              isAdmin={isAdmin}
             />
           ))}
         </div>
@@ -143,6 +156,18 @@ export default function StoryComments({ partId, onCommentCountChange }: StoryCom
     });
     return () => unsub();
   }, [partId, onCommentCountChange, user?.uid]);
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!profile?.is_admin) return;
+    if (!window.confirm('Delete this comment?')) return;
+
+    try {
+      await deleteDoc(doc(db, 'whisper_story_comments', commentId));
+      toast.success('Comment removed');
+    } catch (err) {
+      toast.error('Failed to remove comment');
+    }
+  };
 
   const handleSubmit = async () => {
     if (!text.trim() || !user || submitting) return;
@@ -225,7 +250,9 @@ export default function StoryComments({ partId, onCommentCountChange }: StoryCom
               depth={0}
               onReply={(id, name) => setReplyingTo({ id, name })}
               onLike={handleLike}
+              onDelete={handleDeleteComment}
               likedIds={likedIds}
+              isAdmin={profile?.is_admin}
             />
           ))}
         </div>

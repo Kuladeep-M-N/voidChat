@@ -2,13 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen, User, Users, ChevronRight, PenTool, X,
-  Flame, Gem, TrendingUp, Search, Tag, Hash
+  Flame, Gem, TrendingUp, Search, Tag, Hash, Trash2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/firebase';
 import {
   collection, query, orderBy, onSnapshot, addDoc, serverTimestamp,
-  where, getDocs
+  where, getDocs, doc, deleteDoc
 } from 'firebase/firestore';
 import { useAuth } from '../../hooks/useAuth';
 import { toast } from 'sonner';
@@ -107,7 +107,13 @@ function ReactionMini({ reactions }: { reactions?: Story['reactions'] }) {
   );
 }
 
-function StoryCard({ story, index, onClick }: { story: Story; index: number; onClick: () => void }) {
+function StoryCard({ story, index, onClick, onDelete, isAdmin }: { 
+  story: Story; 
+  index: number; 
+  onClick: () => void;
+  onDelete?: (e: React.MouseEvent) => void;
+  isAdmin?: boolean;
+}) {
   return (
     <motion.div
       onClick={onClick}
@@ -126,9 +132,20 @@ function StoryCard({ story, index, onClick }: { story: Story; index: number; onC
             <span key={tag} className={getTagStyle(tag)}>{tag}</span>
           ))}
         </div>
-        <div className="flex items-center gap-1 text-[11px] font-bold text-fuchsia-400 bg-fuchsia-500/10 border border-fuchsia-500/20 px-2 py-0.5 rounded-full shrink-0">
-          <BookOpen size={10} />
-          {story.episodes} {story.episodes === 1 ? 'part' : 'parts'}
+        <div className="flex items-center gap-2">
+          {isAdmin && onDelete && (
+            <button
+              onClick={onDelete}
+              className="p-1.5 rounded-lg hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-all"
+              title="Admin: Delete Story"
+            >
+              <Trash2 size={12} />
+            </button>
+          )}
+          <div className="flex items-center gap-1 text-[11px] font-bold text-fuchsia-400 bg-fuchsia-500/10 border border-fuchsia-500/20 px-2 py-0.5 rounded-full shrink-0">
+            <BookOpen size={10} />
+            {story.episodes} {story.episodes === 1 ? 'part' : 'parts'}
+          </div>
         </div>
       </div>
 
@@ -269,6 +286,19 @@ export default function StoriesTab() {
       toast.error('Failed to start story.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteStory = async (e: React.MouseEvent, storyId: string) => {
+    e.stopPropagation();
+    if (!profile?.is_admin) return;
+    if (!window.confirm('Admin: DELETE THIS STORY PERMANENTLY?')) return;
+
+    try {
+      await deleteDoc(doc(db, 'whisper_stories', storyId));
+      toast.success('Story removed by admin');
+    } catch (err) {
+      toast.error('Failed to delete story');
     }
   };
 
@@ -524,6 +554,8 @@ export default function StoriesTab() {
               story={story}
               index={i}
               onClick={() => navigate(`/whisper/story/${story.id}`)}
+              isAdmin={profile?.is_admin}
+              onDelete={(e) => handleDeleteStory(e, story.id)}
             />
           ))}
         </div>
