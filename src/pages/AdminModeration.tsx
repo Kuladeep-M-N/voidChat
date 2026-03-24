@@ -786,6 +786,8 @@ export default function AdminModeration() {
               <div className="flex h-12 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 focus-within:border-amber-500/50 transition">
                 <Search size={18} className="text-slate-500" />
                 <input 
+                  id="adminReportSearchInput"
+                  name="adminReportSearchInput"
                   type="text" 
                   placeholder="Search reports..."
                   className="bg-transparent outline-none text-sm w-full md:w-64"
@@ -1808,6 +1810,8 @@ export default function AdminModeration() {
 
                           <div className="relative">
                              <textarea 
+                                id="globalAnnouncementInput"
+                                name="globalAnnouncementInput"
                                 value={announcementText}
                                 onChange={(e) => setAnnouncementText(e.target.value)}
                                 placeholder="Type your global message here..."
@@ -1896,8 +1900,10 @@ export default function AdminModeration() {
                       <label className="text-[10px] font-black uppercase tracking-[0.2em] text-red-500/60 ml-1">
                         Type <span className="text-red-500">{CONFIRMATION_PHRASE}</span> to confirm
                       </label>
-                      <input 
-                        type="text" 
+                      <input
+                        id="nuclearConfirmationInput"
+                        name="nuclearConfirmationInput"
+                        type="text"
                         placeholder="Type confirm phrase..."
                         className="w-full h-16 rounded-2xl border border-white/10 bg-white/5 px-6 text-center text-lg font-bold text-white outline-none focus:border-red-500/50 transition caret-red-500"
                         value={nuclearConfirmText}
@@ -1909,7 +1915,7 @@ export default function AdminModeration() {
                     {isErasing && (
                       <div className="space-y-4">
                         <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
-                          <motion.div 
+                          <motion.div
                             className="h-full bg-red-500"
                             initial={{ width: 0 }}
                             animate={{ width: `${(erasureProgress / erasureTotal) * 100}%` }}

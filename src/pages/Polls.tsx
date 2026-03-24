@@ -765,6 +765,8 @@ export default function Polls() {
                 <div>
                   <label className="text-xs text-slate-500 uppercase tracking-wider mb-2 block">Question</label>
                   <textarea
+                    id="pollQuestionInput"
+                    name="pollQuestionInput"
                     className="input-field resize-none"
                     placeholder="Ask something interesting..."
                     value={question}

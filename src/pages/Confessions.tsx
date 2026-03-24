@@ -408,6 +408,8 @@ function CommentPanel({
               {getInitials(profile?.anonymous_username ?? 'me')}
             </div>
             <input
+              id="confessionReplyInput"
+              name="confessionReplyInput"
               className="input-field flex-1 border-0 bg-transparent px-2 py-2 text-sm shadow-none focus:bg-transparent focus:shadow-none"
               placeholder="Drop a reply..."
               value={text}

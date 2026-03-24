@@ -618,9 +618,18 @@ export default function ChatCenter() {
               initial={{ scale: 0.9, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.9, y: 20, opacity: 0 }}>
               <h2 className="text-xl font-semibold text-white mb-6">Create a Chat Room</h2>
-              <input type="text" className="input-field mb-4" placeholder="Room name..." value={newRoomName}
-                onChange={e => setNewRoomName(e.target.value)} onKeyDown={e => e.key === 'Enter' && createRoom()}
-                autoFocus maxLength={40} />
+              <input 
+                id="newRoomNameInput"
+                name="newRoomNameInput"
+                type="text" 
+                className="input-field mb-4" 
+                placeholder="Room name..." 
+                value={newRoomName}
+                onChange={e => setNewRoomName(e.target.value)} 
+                onKeyDown={e => e.key === 'Enter' && createRoom()}
+                autoFocus 
+                maxLength={40} 
+              />
               <div className="flex gap-3">
                 <button onClick={createRoom} className="btn-primary rounded-xl px-6 py-2" disabled={creating || !newRoomName.trim()}>
                   {creating ? 'Creating...' : 'Create Room'}

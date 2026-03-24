@@ -1099,6 +1099,8 @@ export default function VoiceRooms() {
               <div className="relative flex items-center">
                 <input 
                   type="text"
+                  id="voiceChatInput"
+                  name="voiceChatInput"
                   value={chatInput}
                   onChange={e => setChatInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && sendChat()}
@@ -1750,6 +1752,8 @@ export default function VoiceRooms() {
                   <div className="relative group">
                     <input 
                       type="text" 
+                      id="voiceRoomName"
+                      name="voiceRoomName"
                       className="w-full bg-black/40 border-2 border-white/5 rounded-2xl py-4 flex items-center justify-center text-center font-bold text-white placeholder-slate-700 focus:outline-none focus:border-violet-500/50 transition-all"
                       placeholder="e.g. Late Night Philosophies"
                       value={newName} 

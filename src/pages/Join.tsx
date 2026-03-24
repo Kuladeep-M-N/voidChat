@@ -303,7 +303,7 @@ export default function Join() {
                       </label>
                       <div className="relative">
                         <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm font-mono">ID</span>
-                        <input type="text" className="input-field pl-10" placeholder="johndoe"
+                        <input type="text" id="realUsername" name="realUsername" className="input-field pl-10" placeholder="johndoe"
                           value={realUsername} onChange={e => { setRealUsername(e.target.value); setError(''); }}
                           maxLength={30} autoComplete="off" />
                       </div>
@@ -316,7 +316,7 @@ export default function Join() {
                     </label>
                     <div className="relative">
                       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm font-mono">@</span>
-                      <input type="text" className="input-field pl-8" placeholder="ghost_123"
+                      <input type="text" id="anonymousUsername" name="anonymousUsername" className="input-field pl-8" placeholder="ghost_123"
                         value={anonymousUsername} onChange={e => { setAnonymousUsername(e.target.value); setError(''); }}
                         maxLength={20} autoFocus autoComplete="off" />
                     </div>
@@ -328,7 +328,7 @@ export default function Join() {
                     </label>
                     <div className="relative">
                       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">🔐</span>
-                      <input type={showPassword ? "text" : "password"} className="input-field pl-10 pr-10" placeholder="••••••••"
+                      <input type={showPassword ? "text" : "password"} id="password" name="password" className="input-field pl-10 pr-10" placeholder="••••••••"
                         value={password} onChange={e => { setPassword(e.target.value); setError(''); }}
                         maxLength={32} autoComplete="off" />
                       <button type="button" onClick={() => setShowPassword(!showPassword)}
@@ -345,7 +345,7 @@ export default function Join() {
                       </label>
                       <div className="relative">
                         <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">🔑</span>
-                        <input type={showInviteCode ? "text" : "password"} className="input-field pl-10 pr-10 font-mono tracking-widest uppercase"
+                        <input type={showInviteCode ? "text" : "password"} id="inviteCode" name="inviteCode" className="input-field pl-10 pr-10 font-mono tracking-widest uppercase"
                           placeholder="••••••••" value={inviteCode}
                           onChange={e => { setInviteCode(e.target.value.toUpperCase()); setError(''); }}
                           maxLength={20} autoComplete="off" />

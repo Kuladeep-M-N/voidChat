@@ -52,7 +52,7 @@ function App() {
     <AuthProvider>
       <SystemConfigProvider>
         <NotificationProvider>
-          <BrowserRouter>
+          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <AnimatedBackground />
           <Toaster position="top-right" richColors />
           <SafeModeBanner />

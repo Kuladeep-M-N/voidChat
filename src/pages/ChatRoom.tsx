@@ -663,6 +663,8 @@ export default function ChatRoom() {
                     <Paperclip className="w-4 h-4 sm:w-5 sm:h-5" />
                   </button>
                   <input
+                    id="chatMessageInput"
+                    name="chatMessageInput"
                     type="text"
                     value={text}
                     onChange={e => { setText(e.target.value); if (e.target.value) emitTyping(); }}
