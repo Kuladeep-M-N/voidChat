@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Send, Users, ShieldAlert, GitBranch, Copy, Check, Heart } from 'lucide-react';
+import { ArrowLeft, Send, Users, ShieldAlert, GitBranch, Copy, Check, Heart, Trash2 } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import {
   doc, getDoc, collection, query, where, orderBy, onSnapshot,
@@ -388,6 +388,45 @@ export default function StoryView() {
     finally { setIsSubmitting(false); }
   };
 
+  const handleDeleteStory = async () => {
+    if (!story || !id || !profile?.is_admin) return;
+    if (!window.confirm('PERMANENTLY DELETE STORY? This removes all parts, comments, and interactions.')) return;
+
+    try {
+      setIsSubmitting(true);
+      await deleteDoc(doc(db, 'whisper_stories', id));
+      
+      // Cleanup parts
+      const partsQuery = query(collection(db, 'whisper_story_parts'), where('storyId', '==', id));
+      const partsSnap = await getDocs(partsQuery);
+      await Promise.all(partsSnap.docs.map(d => deleteDoc(d.ref)));
+
+      toast.success('Story deleted');
+      navigate('/whisper/stories');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to delete story');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeletePart = async (partId: string) => {
+    if (!profile?.is_admin) return;
+    if (!window.confirm('Delete this episode?')) return;
+
+    try {
+      await deleteDoc(doc(db, 'whisper_story_parts', partId));
+      if (story) {
+        await updateDoc(doc(db, 'whisper_stories', story.id), { episodes: increment(-1) });
+      }
+      toast.success('Part deleted');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to delete part');
+    }
+  };
+
   if (loading) return (
     <div className="flex justify-center items-center h-64">
       <div className="w-8 h-8 rounded-full border-2 border-fuchsia-500 border-t-transparent animate-spin" />
@@ -446,6 +485,14 @@ export default function StoryView() {
                     <Heart size={10} className={isLiked ? 'fill-current' : ''} />
                     {isLiked ? 'Liked' : 'Like'}
                   </button>
+                  {profile?.is_admin && (
+                    <button 
+                      onClick={handleDeleteStory}
+                      className="px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 border border-red-500/30 text-[10px] font-bold hover:bg-red-500/20 transition-all ml-1 flex items-center gap-1"
+                    >
+                      <Trash2 size={10} /> Delete
+                    </button>
+                  )}
                 </>
               )}
             </span>
@@ -486,9 +533,20 @@ export default function StoryView() {
               <div className="flex-1 whisper-card p-6">
                 <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-fuchsia-500/30 to-transparent rounded-t-2xl" />
 
-                <h4 className="text-lg font-bold text-white mb-4" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                  Part {part.number}{part.title ? `: ${part.title}` : ''}
-                </h4>
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-lg font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                    Part {part.number}{part.title ? `: ${part.title}` : ''}
+                  </h4>
+                  {profile?.is_admin && (
+                    <button
+                      onClick={() => handleDeletePart(part.id)}
+                      className="p-1.5 rounded-lg hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-all"
+                      title="Admin: Delete Part"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
 
                 <p
                   className="text-slate-200 text-base leading-relaxed mb-6 whitespace-pre-wrap select-text"
