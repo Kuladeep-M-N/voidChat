@@ -13,7 +13,8 @@ dotenv.config({ path: path.join(__dirname, '../../.env') });
 // Note: In local development, we use the FIREBASE_AUTH_EMULATOR_HOST or a service account key
 if (!admin.apps.length) {
   admin.initializeApp({
-    projectId: process.env.VITE_FIREBASE_PROJECT_ID
+    projectId: process.env.VITE_FIREBASE_PROJECT_ID,
+    databaseURL: process.env.VITE_FIREBASE_DATABASE_URL
   });
 }
 
