@@ -65,7 +65,7 @@ const METERED_DOMAIN_PREFIX = (import.meta.env.VITE_METERED_DOMAIN || 'global').
 
 const METERED_ICE_SERVERS = [
   {
-    urls: [`stun:${METERED_DOMAIN_PREFIX}.relay.metered.live:443`]
+    urls: [`stun:relay.metered.live:443`]
   },
   {
     urls: [
@@ -256,9 +256,10 @@ export default function VoiceRooms() {
     }
 
     pc.ontrack = ({ streams }) => {
-      console.log(`[WebRTC] Receiving remote track from ${remoteUserId}`);
+      console.log(`[WebRTC] Receiving remote track from ${remoteUserId}. Stream count: ${streams.length}`);
       let audio = remoteAudiosRef.current.get(remoteUserId);
       if (!audio) {
+        console.log(`[WebRTC] Creating new audio element for ${remoteUserId}`);
         audio = new Audio();
         audio.id = `audio-${remoteUserId}`;
         audio.autoplay = true;
@@ -269,9 +270,17 @@ export default function VoiceRooms() {
       }
       
       if (audio.srcObject !== streams[0]) {
+        console.log(`[WebRTC] Attaching stream to audio element for ${remoteUserId}`);
         audio.srcObject = streams[0];
+        audio.muted = false; // Ensure not muted
+        audio.volume = 1.0;
         // Explicit play call as some browsers block autoplay
-        audio.play().catch(e => console.warn(`[WebRTC] Autoplay blocked for ${remoteUserId}:`, e));
+        audio.play().then(() => {
+          console.log(`[WebRTC] Playback started successfully for ${remoteUserId}`);
+        }).catch(e => {
+          console.warn(`[WebRTC] Autoplay blocked for ${remoteUserId}:`, e);
+          toast.error("Audio blocked by browser. Click anywhere to enable.", { id: 'autoplay-warn' });
+        });
       }
     };
 
@@ -539,7 +548,20 @@ export default function VoiceRooms() {
       console.log(`[VoiceRooms] Participants updated: ${users.length}`, users);
       setParticipants(users);
 
-      // Deterministic Peer Creation: Only create peer if we are the initiator (UID < Remote UID)
+      // 1. Cleanup stale peers (users who left)
+      peersRef.current.forEach((pc, uid) => {
+        if (!users.some(u => u.userId === uid)) {
+          console.log(`[WebRTC] Peer ${uid} left. Closing connection.`);
+          pc.close();
+          peersRef.current.delete(uid);
+          pendingCandidatesRef.current.delete(uid);
+          const audio = remoteAudiosRef.current.get(uid);
+          if (audio) { audio.srcObject = null; audio.remove(); }
+          remoteAudiosRef.current.delete(uid);
+        }
+      });
+
+      // 2. Deterministic Peer Creation: Only create peer if we are the initiator (UID < Remote UID)
       users.forEach(p => {
         if (p.userId !== user.uid && !peersRef.current.has(p.userId)) {
           const isInitiator = user.uid < p.userId;
