@@ -166,6 +166,10 @@ export default function VoiceRooms() {
   const [peerStatuses, setPeerStatuses] = useState<Record<string, string>>({});
   const [dynamicIceServers, setDynamicIceServers] = useState<RTCIceServer[]>(METERED_ICE_SERVERS);
   const audioContainerRef = useRef<HTMLDivElement>(null);
+  // Stable refs to avoid stale closures in WebRTC callbacks
+  const activeRoomRef = useRef<VoiceRoom | null>(null);
+  const userRef = useRef<typeof user>(null);
+  const iceServersRef = useRef<RTCIceServer[]>(METERED_ICE_SERVERS);
 
   // Fetch dynamic ICE servers from Metered
   useEffect(() => {
@@ -191,6 +195,11 @@ export default function VoiceRooms() {
     };
     fetchIceServers();
   }, []);
+
+  // Keep refs in sync with latest state/props
+  useEffect(() => { activeRoomRef.current = activeRoom; }, [activeRoom]);
+  useEffect(() => { userRef.current = user; }, [user]);
+  useEffect(() => { iceServersRef.current = dynamicIceServers; }, [dynamicIceServers]);
 
   const isSpeaking = useSpeakingDetector(localStreamRef.current);
 
@@ -241,80 +250,82 @@ export default function VoiceRooms() {
       .slice(0, 4);
   }, [roomsWithCounts]);
 
-  // Create Peer Connection
+  // Create Peer Connection — uses refs only, no stale closure risk
   const createPeer = useCallback(async (remoteUserId: string, isInitiator: boolean) => {
-    // Double check if peer already exists to prevent racing
     const existing = peersRef.current.get(remoteUserId);
     if (existing) return existing;
 
+    const room = activeRoomRef.current;
+    const currentUser = userRef.current;
+    if (!room || !currentUser) {
+      console.warn(`[WebRTC] createPeer called but room/user not set`);
+      return null as any;
+    }
+
     console.log(`[WebRTC] Creating peer for ${remoteUserId}, initiator: ${isInitiator}`);
-    const pc = new RTCPeerConnection({ iceServers: dynamicIceServers });
+    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         pc.addTrack(track, localStreamRef.current!);
       });
+      console.log(`[WebRTC] Added ${localStreamRef.current.getTracks().length} local track(s) to peer`);
+    } else {
+      console.warn(`[WebRTC] No local stream when creating peer for ${remoteUserId}`);
     }
 
     pc.ontrack = (event) => {
       const { streams, track } = event;
-      console.log(`[WebRTC] Receiving remote track from ${remoteUserId}. Stream count: ${streams?.length || 0}`);
-      
+      console.log(`[WebRTC] ontrack fired from ${remoteUserId}. Streams: ${streams?.length}, Track: ${track.kind}`);
+
       let audio = remoteAudiosRef.current.get(remoteUserId);
       if (!audio) {
-        console.log(`[WebRTC] Creating new audio element for ${remoteUserId}`);
+        console.log(`[WebRTC] Creating audio element for ${remoteUserId}`);
         audio = new Audio();
         audio.id = `audio-${remoteUserId}`;
         audio.autoplay = true;
-        // Keep it hidden but in DOM
         audio.style.display = 'none';
-        
-        const container = audioContainerRef.current || document.getElementById('remote-audio-container') || document.body;
+        const container = audioContainerRef.current || document.body;
         container.appendChild(audio);
         remoteAudiosRef.current.set(remoteUserId, audio);
       }
-      
-      const currentStream = (streams && streams.length > 0) ? streams[0] : new MediaStream([track]);
 
-      if (audio.srcObject !== currentStream) {
-        console.log(`[WebRTC] Attaching stream to audio element for ${remoteUserId}`);
-        audio.srcObject = currentStream;
-        audio.muted = false; // Ensure not muted
-        audio.volume = 1.0;
-        // Explicit play call as some browsers block autoplay
-        audio.play().then(() => {
-          console.log(`[WebRTC] Playback started successfully for ${remoteUserId}`);
-        }).catch(e => {
-          console.warn(`[WebRTC] Autoplay blocked for ${remoteUserId}:`, e);
-          toast.error("Audio blocked by browser. Click anywhere to enable.", { id: 'autoplay-warn' });
-        });
-      }
+      const stream = (streams && streams.length > 0) ? streams[0] : new MediaStream([track]);
+      audio.srcObject = stream;
+      audio.muted = false;
+      audio.volume = 1.0;
+      audio.play().then(() => {
+        console.log(`[WebRTC] Playback started for ${remoteUserId}`);
+      }).catch(e => {
+        console.warn(`[WebRTC] Autoplay blocked for ${remoteUserId}:`, e);
+        toast.error('Audio blocked. Click anywhere to enable.', { id: 'autoplay-warn' });
+      });
     };
 
     pc.onicecandidate = ({ candidate }) => {
-      if (candidate && activeRoom) {
-        console.log(`[WebRTC] Sending candidate to ${remoteUserId}`);
-        const outRef = ref(rtdb, `signaling/${activeRoom.id}/${remoteUserId}`);
-        // FIX: Serialize the candidate using .toJSON()
-        push(outRef, { from: user!.uid, type: 'candidate', data: candidate.toJSON() });
+      if (!candidate) return;
+      const r = activeRoomRef.current;
+      const u = userRef.current;
+      if (r && u) {
+        console.log(`[WebRTC] Sending ICE candidate to ${remoteUserId}`);
+        const outRef = ref(rtdb, `signaling/${r.id}/${remoteUserId}`);
+        push(outRef, { from: u.uid, type: 'candidate', data: candidate.toJSON() });
       }
     };
 
     pc.oniceconnectionstatechange = () => {
-      console.log(`[WebRTC] ICE state with ${remoteUserId}: ${pc.iceConnectionState}`);
+      console.log(`[WebRTC] ICE state → ${remoteUserId}: ${pc.iceConnectionState}`);
       setPeerStatuses(prev => ({ ...prev, [remoteUserId]: pc.iceConnectionState }));
     };
 
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
-      console.log(`[WebRTC] Connection state with ${remoteUserId}: ${state}`);
+      console.log(`[WebRTC] Connection state → ${remoteUserId}: ${state}`);
       setPeerStatuses(prev => ({ ...prev, [remoteUserId]: state }));
-
-      if (state === 'failed' || state === 'disconnected') {
-        console.warn(`Connection to ${remoteUserId} ${state}. Attempting cleanup.`);
-        // Don't immediately close if it might reconnect, but for now we follow strict cleanup
+      if (state === 'failed') {
         setTimeout(() => {
           if (pc.connectionState === 'failed') {
+            console.warn(`[WebRTC] Peer ${remoteUserId} failed; cleaning up`);
             pc.close();
             peersRef.current.delete(remoteUserId);
             pendingCandidatesRef.current.delete(remoteUserId);
@@ -328,20 +339,20 @@ export default function VoiceRooms() {
 
     peersRef.current.set(remoteUserId, pc);
 
-    if (isInitiator && activeRoom) {
+    if (isInitiator) {
       try {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        const outRef = ref(rtdb, `signaling/${activeRoom.id}/${remoteUserId}`);
-        // FIX: Serialize the offer
-        push(outRef, { from: user!.uid, type: 'offer', data: { type: offer.type, sdp: offer.sdp } });
+        const outRef = ref(rtdb, `signaling/${room.id}/${remoteUserId}`);
+        push(outRef, { from: currentUser.uid, type: 'offer', data: { type: offer.type, sdp: offer.sdp } });
+        console.log(`[WebRTC] Offer sent to ${remoteUserId}`);
       } catch (err) {
-        console.error("Failed to create offer:", err);
+        console.error('[WebRTC] Failed to create offer:', err);
       }
     }
 
     return pc;
-  }, [user, activeRoom, dynamicIceServers]);
+  }, []); // No deps — everything is accessed via refs
 
 
   // RTDB Connection monitor
