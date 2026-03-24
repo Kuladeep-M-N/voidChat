@@ -165,6 +165,7 @@ export default function VoiceRooms() {
   const joiningRef = useRef<boolean>(false);
   const [peerStatuses, setPeerStatuses] = useState<Record<string, string>>({});
   const [dynamicIceServers, setDynamicIceServers] = useState<RTCIceServer[]>(METERED_ICE_SERVERS);
+  const audioContainerRef = useRef<HTMLDivElement>(null);
 
   // Fetch dynamic ICE servers from Metered
   useEffect(() => {
@@ -255,8 +256,10 @@ export default function VoiceRooms() {
       });
     }
 
-    pc.ontrack = ({ streams }) => {
-      console.log(`[WebRTC] Receiving remote track from ${remoteUserId}. Stream count: ${streams.length}`);
+    pc.ontrack = (event) => {
+      const { streams, track } = event;
+      console.log(`[WebRTC] Receiving remote track from ${remoteUserId}. Stream count: ${streams?.length || 0}`);
+      
       let audio = remoteAudiosRef.current.get(remoteUserId);
       if (!audio) {
         console.log(`[WebRTC] Creating new audio element for ${remoteUserId}`);
@@ -265,13 +268,17 @@ export default function VoiceRooms() {
         audio.autoplay = true;
         // Keep it hidden but in DOM
         audio.style.display = 'none';
-        document.getElementById('remote-audio-container')?.appendChild(audio);
+        
+        const container = audioContainerRef.current || document.getElementById('remote-audio-container') || document.body;
+        container.appendChild(audio);
         remoteAudiosRef.current.set(remoteUserId, audio);
       }
       
-      if (audio.srcObject !== streams[0]) {
+      const currentStream = (streams && streams.length > 0) ? streams[0] : new MediaStream([track]);
+
+      if (audio.srcObject !== currentStream) {
         console.log(`[WebRTC] Attaching stream to audio element for ${remoteUserId}`);
-        audio.srcObject = streams[0];
+        audio.srcObject = currentStream;
         audio.muted = false; // Ensure not muted
         audio.volume = 1.0;
         // Explicit play call as some browsers block autoplay
@@ -286,8 +293,10 @@ export default function VoiceRooms() {
 
     pc.onicecandidate = ({ candidate }) => {
       if (candidate && activeRoom) {
+        console.log(`[WebRTC] Sending candidate to ${remoteUserId}`);
         const outRef = ref(rtdb, `signaling/${activeRoom.id}/${remoteUserId}`);
-        push(outRef, { from: user!.uid, type: 'candidate', data: candidate });
+        // FIX: Serialize the candidate using .toJSON()
+        push(outRef, { from: user!.uid, type: 'candidate', data: candidate.toJSON() });
       }
     };
 
@@ -324,7 +333,8 @@ export default function VoiceRooms() {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         const outRef = ref(rtdb, `signaling/${activeRoom.id}/${remoteUserId}`);
-        push(outRef, { from: user!.uid, type: 'offer', data: offer });
+        // FIX: Serialize the offer
+        push(outRef, { from: user!.uid, type: 'offer', data: { type: offer.type, sdp: offer.sdp } });
       } catch (err) {
         console.error("Failed to create offer:", err);
       }
@@ -479,7 +489,8 @@ export default function VoiceRooms() {
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           const outRef = ref(rtdb, `signaling/${roomId}/${from}`);
-          push(outRef, { from: user.uid, type: 'answer', data: answer });
+          // FIX: Serialize the answer
+          push(outRef, { from: user.uid, type: 'answer', data: { type: answer.type, sdp: answer.sdp } });
           
           // Process queued candidates
           const queued = pendingCandidatesRef.current.get(from) || [];
@@ -1899,7 +1910,7 @@ export default function VoiceRooms() {
 
   return (
     <>
-      <div id="remote-audio-container" className="hidden" aria-hidden="true" />
+      <div ref={audioContainerRef} id="remote-audio-container" className="hidden" aria-hidden="true" />
       {renderContent()}
       {isVoiceRoute && activeRoom ? renderFullView() : (isVoiceRoute ? renderLobbyView() : null)}
     </>
