@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Send, Users, ShieldAlert, GitBranch, MessageCircle, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Send, Users, ShieldAlert, GitBranch, Copy, Check, Heart } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import {
   doc, getDoc, collection, query, where, orderBy, onSnapshot,
-  addDoc, updateDoc, serverTimestamp, increment
+  addDoc, updateDoc, serverTimestamp, increment, deleteDoc, getDocs
 } from 'firebase/firestore';
 import { useAuth } from '../../hooks/useAuth';
 import { toast } from 'sonner';
 import { containsInappropriateContent } from '../../lib/filter';
 import StoryBranchVote from './StoryBranchVote';
+import StoryComments from './StoryComments';
 
 interface Story {
   id: string;
@@ -58,92 +59,7 @@ function timeAgo(date: any) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-function PartCommentSection({ partId, profile }: { partId: string; profile: any }) {
-  const { user } = useAuth();
-  const [comments, setComments] = useState<PartComment[]>([]);
-  const [text, setText] = useState('');
-  const [expanded, setExpanded] = useState(false);
 
-  useEffect(() => {
-    if (!expanded) return;
-    const q = query(
-      collection(db, 'whisper_story_comments'),
-      where('partId', '==', partId),
-      orderBy('createdAt', 'asc')
-    );
-    const unsub = onSnapshot(q, snap => {
-      setComments(snap.docs.map(d => ({ id: d.id, ...d.data() })) as PartComment[]);
-    });
-    return () => unsub();
-  }, [partId, expanded]);
-
-  const submit = async () => {
-    if (!text.trim() || !user) return;
-    if (containsInappropriateContent(text).matches) { toast.error('Keep it clean.'); return; }
-    await addDoc(collection(db, 'whisper_story_comments'), {
-      partId,
-      content: text.trim(),
-      authorName: profile?.anonymous_username || 'Anonymous',
-      authorId: user.uid,
-      createdAt: serverTimestamp(),
-    });
-    setText('');
-  };
-
-  return (
-    <div className="mt-4 border-t border-white/5 pt-4">
-      <button
-        onClick={() => setExpanded(e => !e)}
-        className="flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-300 transition-colors"
-      >
-        <MessageCircle size={13} />
-        {expanded ? 'Hide' : 'Show'} comments
-        {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-      </button>
-
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mt-3 overflow-hidden"
-          >
-            <div className="space-y-2 mb-3 max-h-48 overflow-y-auto scrollbar-hide">
-              {comments.length === 0 && (
-                <p className="text-xs text-slate-600 italic pl-1">No comments yet. Be the first...</p>
-              )}
-              {comments.map(c => (
-                <div key={c.id} className="whisper-comment text-xs">
-                  <span className="font-bold text-slate-400">@{c.authorName}</span>
-                  <span className="text-slate-600 ml-1.5 text-[10px]">{timeAgo(c.createdAt)}</span>
-                  <p className="text-slate-300 mt-0.5">{c.content}</p>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input
-                value={text}
-                onChange={e => setText(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && submit()}
-                placeholder="Comment on this part..."
-                className="flex-1 bg-white/4 border border-white/8 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 outline-none focus:border-fuchsia-500/40 transition-colors"
-                maxLength={200}
-              />
-              <button
-                onClick={submit}
-                disabled={!text.trim()}
-                className="w-8 h-8 rounded-lg bg-fuchsia-500/20 border border-fuchsia-500/20 flex items-center justify-center text-fuchsia-400 hover:bg-fuchsia-500/30 disabled:opacity-40 transition-all"
-              >
-                <Send size={12} />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
 
 function QuoteHighlight({ storyTitle }: { storyTitle: string }) {
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
@@ -193,7 +109,7 @@ function QuoteHighlight({ storyTitle }: { storyTitle: string }) {
   );
 }
 
-function PlotTwistRating({ partId, existingRatings }: { partId: string; existingRatings?: number[] }) {
+function PlotRating({ partId, existingRatings }: { partId: string; existingRatings?: number[] }) {
   const { user } = useAuth();
   const [localRating, setLocalRating] = useState<number | null>(null);
   const [submitted, setSubmitted] = useState(false);
@@ -215,42 +131,48 @@ function PlotTwistRating({ partId, existingRatings }: { partId: string; existing
       });
       localStorage.setItem(`plot_twist_${partId}`, String(localRating));
       setSubmitted(true);
-      toast.success('Plot Twist Rating saved!');
+      toast.success('Plot Rating saved!');
     } catch (err) { console.error(err); }
   };
 
   return (
     <div className="mt-4 p-4 rounded-xl bg-white/3 border border-white/6">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">🌀 Plot Twist Rating</span>
-        {avg && <span className="text-sm font-black text-fuchsia-400">{avg}/10</span>}
+        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">🌀 Plot Rating</span>
+        {avg ? (
+          <div className="flex items-center gap-1">
+            <span className="text-xl font-black text-fuchsia-400">{avg}</span>
+            <span className="text-xs text-slate-500 font-bold mt-1">/ 10 avg</span>
+          </div>
+        ) : (
+          <span className="text-xs text-slate-500 italic">No ratings yet</span>
+        )}
       </div>
       {!submitted ? (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <input
             type="range" min={1} max={10}
             value={localRating ?? 5}
             onChange={e => setLocalRating(parseInt(e.target.value))}
-            className="plot-twist-slider"
+            className="plot-twist-slider w-full"
           />
           <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-600">Predictable</span>
-            <span className="text-sm font-bold text-white">{localRating ?? 5} / 10</span>
-            <span className="text-xs text-slate-600">Mind-bending</span>
+            <span className="text-xs text-slate-600 font-medium">Predictable</span>
+            <span className="text-sm font-bold text-white bg-white/10 px-2 py-0.5 rounded">{localRating ?? 5}</span>
+            <span className="text-xs text-slate-600 font-medium">Mind-bending</span>
           </div>
           <button
             onClick={handleSubmit}
             disabled={localRating === null}
-            className="w-full py-1.5 rounded-lg text-xs font-bold text-fuchsia-300 border border-fuchsia-500/30 hover:bg-fuchsia-500/10 transition-all disabled:opacity-40"
+            className="w-full mt-2 py-2 rounded-lg text-xs font-bold text-fuchsia-300 border border-fuchsia-500/30 hover:bg-fuchsia-500/10 transition-all disabled:opacity-40"
           >
-            Rate this part
+            Submit Rating
           </button>
         </div>
       ) : (
-        <div className="text-center py-1">
-          <span className="text-xs text-slate-500">
-            Your rating: <span className="text-fuchsia-400 font-bold">{localRating}/10</span>
-            {avg && ` · Community avg: ${avg}/10`}
+        <div className="text-center py-2 bg-white/5 rounded-lg border border-white/10">
+          <span className="text-sm text-slate-400">
+            You rated it <span className="text-fuchsia-400 font-bold">{localRating}</span> / 10
           </span>
         </div>
       )}
@@ -270,26 +192,102 @@ export default function StoryView() {
   const [branchInputs, setBranchInputs] = useState(['', '', '']);
   const [useBranching, setUseBranching] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [reactedIds, setReactedIds] = useState<Set<string>>(new Set());
+  
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followId, setFollowId] = useState<string | null>(null);
+  const [togglingFollow, setTogglingFollow] = useState(false);
+
+  const [isLiked, setIsLiked] = useState(false);
+  const [likeId, setLikeId] = useState<string | null>(null);
+  const [togglingLike, setTogglingLike] = useState(false);
+
+  // 1. Fetch Story Metadata
+  useEffect(() => {
+    if (!id || !user?.uid) return;
+    
+    // Use onSnapshot for story metadata too, for real-time follower/episodes/likes counts
+    const unsub = onSnapshot(doc(db, 'whisper_stories', id), 
+      (snap) => {
+        if (snap.exists()) {
+          setStory({ id: snap.id, ...snap.data() } as Story);
+        } else {
+          toast.error('Story not found');
+          navigate('/whisper/stories');
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Story metadata listener error:', err);
+        setLoading(false);
+      }
+    );
+
+    return () => unsub();
+  }, [id, user?.uid, navigate]);
+
+  // 2. Real-time Parts Listener
+  useEffect(() => {
+    if (!id || !user?.uid) return;
+
+    // Remove orderBy from query to avoid index issues and fix instant optimistic updates
+    const q = query(
+      collection(db, 'whisper_story_parts'), 
+      where('storyId', '==', id)
+    );
+
+    const unsub = onSnapshot(q, 
+      { includeMetadataChanges: true }, 
+      (snap) => {
+        const data = snap.docs.map(d => ({ 
+          id: d.id, 
+          ...d.data({ serverTimestamps: 'estimate' }) 
+        })) as StoryPart[];
+        
+        // Sort locally by number
+        data.sort((a, b) => (a.number || 0) - (b.number || 0));
+        
+        setParts(data);
+        localStorage.setItem(`whisper_total_${id}`, String(data.length));
+      },
+      (err) => {
+        console.error('Story parts listener error:', err);
+      }
+    );
+
+    return () => unsub();
+  }, [id, user?.uid]);
 
   useEffect(() => {
-    if (!id) return;
-    (async () => {
-      const snap = await getDoc(doc(db, 'whisper_stories', id));
-      if (snap.exists()) setStory({ id: snap.id, ...snap.data() } as Story);
-      else { toast.error('Story not found'); navigate('/whisper/stories'); }
-      setLoading(false);
-    })();
-
-    const q = query(collection(db, 'whisper_story_parts'), where('storyId', '==', id), orderBy('number', 'asc'));
-    const unsub = onSnapshot(q, snap => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as StoryPart[];
-      setParts(data);
-      // Store total for progress tracking
-      localStorage.setItem(`whisper_total_${id}`, String(data.length));
+    if (!id || !user?.uid) return;
+    const qFollow = query(collection(db, 'whisper_story_follows'), where('storyId', '==', id), where('userId', '==', user.uid));
+    const unsubFollow = onSnapshot(qFollow, snap => {
+      if (!snap.empty) {
+        setIsFollowing(true);
+        setFollowId(snap.docs[0].id);
+      } else {
+        setIsFollowing(false);
+        setFollowId(null);
+      }
     });
-    return () => unsub();
-  }, [id, navigate]);
+
+    const qLike = query(collection(db, 'whisper_story_likes'), where('storyId', '==', id), where('userId', '==', user.uid));
+    const unsubLike = onSnapshot(qLike, snap => {
+      if (!snap.empty) {
+        setIsLiked(true);
+        setLikeId(snap.docs[0].id);
+      } else {
+        setIsLiked(false);
+        setLikeId(null);
+      }
+    });
+
+    return () => {
+      unsubFollow();
+      unsubLike();
+    };
+  }, [id, user]);
 
   // Track reading progress
   useEffect(() => {
@@ -308,9 +306,48 @@ export default function StoryView() {
     } catch (err) { console.error(err); }
   };
 
+  const toggleFollow = async () => {
+    if (!user || !story || togglingFollow) return;
+    setTogglingFollow(true);
+    try {
+      if (isFollowing && followId) {
+        await deleteDoc(doc(db, 'whisper_story_follows', followId));
+        await updateDoc(doc(db, 'whisper_stories', story.id), { followers: increment(-1) });
+      } else {
+        await addDoc(collection(db, 'whisper_story_follows'), {
+          storyId: story.id,
+          userId: user.uid,
+          createdAt: serverTimestamp()
+        });
+        await updateDoc(doc(db, 'whisper_stories', story.id), { followers: increment(1) });
+      }
+    } catch (e) { console.error(e); }
+    finally { setTogglingFollow(false); }
+  };
+
+  const toggleLike = async () => {
+    if (!user || !story || togglingLike) return;
+    setTogglingLike(true);
+    try {
+      if (isLiked && likeId) {
+        await deleteDoc(doc(db, 'whisper_story_likes', likeId));
+        await updateDoc(doc(db, 'whisper_stories', story.id), { likes: increment(-1) });
+      } else {
+        await addDoc(collection(db, 'whisper_story_likes'), {
+          storyId: story.id,
+          userId: user.uid,
+          createdAt: serverTimestamp()
+        });
+        await updateDoc(doc(db, 'whisper_stories', story.id), { likes: increment(1) });
+      }
+    } catch (e) { console.error(e); }
+    finally { setTogglingLike(false); }
+  };
+
   const handlePublishPart = async () => {
-    if (!newPartContent.trim() || !user || !story) return;
+    if (!newPartContent.trim() || !user || !story || isSubmitting) return;
     if (containsInappropriateContent(newPartContent).matches) { toast.error('Keep it clean.'); return; }
+    setIsSubmitting(true);
     try {
       const branchOptions = useBranching
         ? branchInputs.filter(b => b.trim()).map(b => ({ label: b.trim() }))
@@ -326,10 +363,29 @@ export default function StoryView() {
         branchOptions,
       });
       await updateDoc(doc(db, 'whisper_stories', story.id), { episodes: increment(1) });
+
+      // Notify followers
+      const followsSnap = await getDocs(query(collection(db, 'whisper_story_follows'), where('storyId', '==', story.id)));
+      const notificationPromises = followsSnap.docs.map(fDoc => {
+        const followerId = fDoc.data().userId;
+        if (followerId === user.uid) return Promise.resolve(); // Don't notify the author
+        return addDoc(collection(db, 'notifications'), {
+          user_id: followerId,
+          type: 'whisper_update',
+          title: `New episode in "${story.title}"`,
+          message: `Part ${parts.length + 1} has been published by @${story.authorName}`,
+          link: `/whisper/story/${story.id}`,
+          read: false,
+          created_at: serverTimestamp()
+        });
+      });
+      await Promise.all(notificationPromises);
+
       setNewPartTitle(''); setNewPartContent('');
       setBranchInputs(['', '', '']); setUseBranching(false);
       toast.success('Part published!');
     } catch (err) { toast.error('Failed to publish.'); }
+    finally { setIsSubmitting(false); }
   };
 
   if (loading) return (
@@ -379,8 +435,20 @@ export default function StoryView() {
           >
             {story.title}
           </h1>
-          <div className="flex items-center gap-3 mt-2 text-sm text-slate-500">
-            <span>By <span className="text-fuchsia-400 font-bold">@{story.authorName}</span></span>
+          <div className="flex items-center gap-3 mt-2 text-sm text-slate-500 flex-wrap">
+            <span className="flex items-center gap-2">By <span className="text-fuchsia-400 font-bold">@{story.authorName}</span>
+              {user && user.uid !== story.authorId && (
+                <>
+                  <button onClick={toggleFollow} disabled={togglingFollow} className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all border ${isFollowing ? 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30 hover:bg-fuchsia-500/30' : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'}`}>
+                    {isFollowing ? '✓ Following' : '+ Follow'}
+                  </button>
+                  <button onClick={toggleLike} disabled={togglingLike} className={`px-2 py-0.5 rounded-md flex items-center gap-1 text-[10px] font-bold transition-all border ${isLiked ? 'bg-pink-500/20 text-pink-400 border-pink-500/40 hover:bg-pink-500/30' : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'}`}>
+                    <Heart size={10} className={isLiked ? 'fill-current' : ''} />
+                    {isLiked ? 'Liked' : 'Like'}
+                  </button>
+                </>
+              )}
+            </span>
             <span className="flex items-center gap-1"><Users size={13} className="text-cyan-400" /> {story.followers} following</span>
             <span className="text-slate-700">·</span>
             <span className="text-slate-500">{parts.length} {parts.length === 1 ? 'part' : 'parts'}</span>
@@ -448,16 +516,16 @@ export default function StoryView() {
                   })}
                 </div>
 
-                {/* Plot Twist Rating */}
-                <PlotTwistRating partId={part.id} existingRatings={part.plotTwistRatings} />
+                {/* Plot Rating */}
+                <PlotRating partId={part.id} existingRatings={part.plotTwistRatings} />
 
                 {/* Branch Voting */}
                 {part.branchOptions && part.branchOptions.length > 0 && id && (
                   <StoryBranchVote storyId={id} partId={part.id} options={part.branchOptions} />
                 )}
 
-                {/* Inline Comments */}
-                <PartCommentSection partId={part.id} profile={profile} />
+                {/* Inline Nested Comments */}
+                <StoryComments partId={part.id} />
               </div>
             </div>
           </motion.div>
@@ -537,11 +605,11 @@ export default function StoryView() {
               <div className="flex justify-end">
                 <button
                   onClick={handlePublishPart}
-                  disabled={!newPartContent.trim()}
+                  disabled={!newPartContent.trim() || isSubmitting}
                   className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-white font-bold text-sm disabled:opacity-40 transition-all"
                   style={{ background: 'linear-gradient(135deg, #7c3aed, #bf5af2)', boxShadow: '0 0 20px rgba(124,58,237,0.4)' }}
                 >
-                  <Send size={15} />
+                  {isSubmitting ? <span className="w-4 h-4 rounded-full border-2 border-white/50 border-t-transparent animate-spin" /> : <Send size={15} />}
                   Publish Part {parts.length + 1}
                 </button>
               </div>

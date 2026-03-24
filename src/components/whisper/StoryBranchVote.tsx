@@ -4,7 +4,7 @@ import { GitBranch, CheckCircle2 } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import {
   collection, query, where, onSnapshot,
-  addDoc, serverTimestamp
+  addDoc, serverTimestamp, updateDoc, doc
 } from 'firebase/firestore';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -55,16 +55,26 @@ export default function StoryBranchVote({ storyId, partId, options }: StoryBranc
   }, [partId]);
 
   const handleVote = async (optionIndex: number) => {
-    if (!user || myVote !== null || voting) return;
+    if (!user || voting) return;
+    if (myVote === optionIndex) return; // Ignore if clicking same option
+    
     setVoting(true);
     try {
-      await addDoc(collection(db, 'whisper_branch_votes'), {
-        storyId,
-        partId,
-        optionIndex,
-        userId: user.uid,
-        createdAt: serverTimestamp(),
-      });
+      if (myVote !== null) {
+        // Find existing vote doc
+        const myVoteDoc = votes.find(v => v.userId === user.uid);
+        if (myVoteDoc) {
+          await updateDoc(doc(db, 'whisper_branch_votes', myVoteDoc.id), { optionIndex });
+        }
+      } else {
+        await addDoc(collection(db, 'whisper_branch_votes'), {
+          storyId,
+          partId,
+          optionIndex,
+          userId: user.uid,
+          createdAt: serverTimestamp(),
+        });
+      }
       setMyVote(optionIndex);
       localStorage.setItem(`branch_vote_${partId}`, String(optionIndex));
     } catch (err) {
@@ -118,7 +128,8 @@ export default function StoryBranchVote({ storyId, partId, options }: StoryBranc
                   key={`voted-${idx}`}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className={`flex flex-col gap-1.5 p-3 rounded-xl border transition-all ${isVoted ? 'border-fuchsia-500/40 bg-fuchsia-500/10' : 'border-white/5 bg-white/3'}`}
+                  onClick={() => handleVote(idx)}
+                  className={`flex flex-col gap-1.5 p-3 rounded-xl border transition-all cursor-pointer hover:border-white/20 ${isVoted ? 'border-fuchsia-500/40 bg-fuchsia-500/10' : 'border-white/5 bg-white/3'}`}
                 >
                   <div className="flex items-center gap-2">
                     <span className={`w-6 h-6 rounded-full border text-xs font-bold flex items-center justify-center shrink-0 ${isVoted ? 'border-fuchsia-500/50 text-fuchsia-300' : 'border-white/15 text-slate-500'}`}>

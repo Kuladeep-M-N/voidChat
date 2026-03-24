@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/firebase';
 import {
   collection, query, orderBy, onSnapshot, addDoc, serverTimestamp,
-  where
+  where, getDocs
 } from 'firebase/firestore';
 import { useAuth } from '../../hooks/useAuth';
 import { toast } from 'sonner';
@@ -22,6 +22,7 @@ interface Story {
   excerpt: string;
   episodes: number;
   followers: number;
+  likes?: number;
   tags: string[];
   color: string;
   reactions?: { mindBlown?: number; dark?: number; genius?: number; creepy?: number };
@@ -179,34 +180,80 @@ export default function StoriesTab() {
   const [newTitle, setNewTitle] = useState('');
   const [newExcerpt, setNewExcerpt] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [customTag, setCustomTag] = useState('');
+  const [penName, setPenName] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [followedIds, setFollowedIds] = useState<string[]>([]);
   const navigate = useNavigate();
   const { user, profile } = useAuth();
 
   useEffect(() => {
-    const q = query(collection(db, 'whisper_stories'), orderBy('createdAt', 'desc'));
+    if (!user?.uid) return;
+    const q = query(collection(db, 'whisper_stories'));
     const unsub = onSnapshot(q, snap => {
-      setStories(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Story[]);
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) })) as Story[];
+      
+      // Sort locally by date desc
+      data.sort((a, b) => {
+        const t1 = a.createdAt?.toMillis?.() || Date.now();
+        const t2 = b.createdAt?.toMillis?.() || Date.now();
+        return t2 - t1;
+      });
+
+      setStories(data);
     });
     return () => unsub();
-  }, []);
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const qFol = query(collection(db, 'whisper_story_follows'), where('userId', '==', user.uid));
+    const unsubFol = onSnapshot(qFol, snap => {
+      setFollowedIds(snap.docs.map(d => d.data().storyId));
+    });
+    return () => unsubFol();
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (isComposing && !penName) {
+      setPenName(localStorage.getItem('whisper_pen_name') || profile?.anonymous_username || 'Anonymous');
+    }
+  }, [isComposing, profile]);
 
   const handleCreate = async () => {
-    if (!newTitle.trim() || !newExcerpt.trim() || !user) return;
+    if (!newTitle.trim() || !newExcerpt.trim() || !penName.trim() || !user || isSubmitting) return;
     if (containsInappropriateContent(newTitle).matches || containsInappropriateContent(newExcerpt).matches) {
       toast.error('Keep it clean in the void.');
       return;
     }
+    setIsSubmitting(true);
     try {
+      // Check Pen Name uniqueness globally (case-insensitive)
+      const nameCheckQ = query(collection(db, 'whisper_stories'), where('authorNameLower', '==', penName.trim().toLowerCase()));
+      const nameCheckSnap = await getDocs(nameCheckQ);
+      if (!nameCheckSnap.empty && nameCheckSnap.docs.some(doc => doc.data().authorId !== user.uid)) {
+        toast.error('Pen name is already taken by someone else in the void.');
+        setIsSubmitting(false);
+        return;
+      }
+      localStorage.setItem('whisper_pen_name', penName.trim());
+
       const tags = selectedTags.length > 0 ? selectedTags : ['#dark'];
+      if (customTag.trim()) {
+         const formattedTag = customTag.startsWith('#') ? customTag.trim().toLowerCase() : '#' + customTag.trim().toLowerCase();
+         if (!tags.includes(formattedTag)) tags.push(formattedTag);
+      }
       await addDoc(collection(db, 'whisper_stories'), {
         title: newTitle.trim(),
         excerpt: newExcerpt.trim(),
-        authorName: profile?.anonymous_username || 'Anonymous',
+        authorName: penName.trim(),
+        authorNameLower: penName.trim().toLowerCase(),
         authorId: user.uid,
         episodes: 0,
         followers: 0,
+        likes: 0,
         tags,
         color: 'from-fuchsia-500/20 to-purple-500/20',
         reactions: { mindBlown: 0, dark: 0, genius: 0, creepy: 0 },
@@ -216,9 +263,12 @@ export default function StoriesTab() {
       setNewTitle('');
       setNewExcerpt('');
       setSelectedTags([]);
+      setCustomTag('');
       toast.success('Story thread started!');
     } catch (err) {
       toast.error('Failed to start story.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -229,13 +279,18 @@ export default function StoriesTab() {
 
   // Filtering & search
   const filteredStories = stories.filter(s => {
-    const matchTag = activeFilter ? s.tags?.includes(activeFilter) : true;
+    if (activeFilter === 'Following') return followedIds.includes(s.id);
+    const matchTag = (activeFilter && activeFilter !== 'Most Liked') ? s.tags?.includes(activeFilter) : true;
     const matchSearch = searchQuery
       ? s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         s.excerpt.toLowerCase().includes(searchQuery.toLowerCase())
       : true;
     return matchTag && matchSearch;
   });
+
+  if (activeFilter === 'Most Liked') {
+    filteredStories.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+  }
 
   const totalReactions = (s: Story) =>
     (s.reactions?.mindBlown ?? 0) + (s.reactions?.dark ?? 0) +
@@ -282,6 +337,14 @@ export default function StoriesTab() {
                 style={{ fontFamily: "'Space Grotesk', sans-serif" }}
                 maxLength={70}
               />
+              <input
+                value={penName}
+                onChange={e => setPenName(e.target.value)}
+                placeholder="Your Author Pen Name"
+                className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm font-medium mb-3 outline-none focus:border-fuchsia-500/60 transition-colors placeholder-emerald-600"
+                style={{ borderLeft: '3px solid #bf5af2' }}
+                maxLength={30}
+              />
               <textarea
                 value={newExcerpt}
                 onChange={e => setNewExcerpt(e.target.value)}
@@ -293,8 +356,8 @@ export default function StoriesTab() {
 
               {/* Tag selector */}
               <div className="mb-5">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Pick up to 3 tags</span>
-                <div className="flex flex-wrap gap-2">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">Pick up to 3 preset tags or add your own</span>
+                <div className="flex flex-wrap gap-2 mb-3">
                   {PRESET_TAGS.map(t => (
                     <button
                       key={t.label}
@@ -305,15 +368,23 @@ export default function StoriesTab() {
                     </button>
                   ))}
                 </div>
+                <input
+                  value={customTag}
+                  onChange={e => setCustomTag(e.target.value)}
+                  placeholder="Or add a custom tag (e.g. #space)"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-fuchsia-500/40 transition-colors placeholder-slate-600"
+                  maxLength={20}
+                />
               </div>
 
               <div className="flex justify-end">
                 <button
                   onClick={handleCreate}
-                  disabled={!newTitle.trim() || !newExcerpt.trim()}
-                  className="px-6 py-2.5 rounded-xl font-bold text-white text-sm disabled:opacity-40 transition-all"
+                  disabled={!newTitle.trim() || !newExcerpt.trim() || isSubmitting}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-white text-sm disabled:opacity-40 transition-all"
                   style={{ background: 'linear-gradient(135deg, #7c3aed, #bf5af2)', boxShadow: '0 0 24px rgba(124,58,237,0.4)' }}
                 >
+                  {isSubmitting && <span className="w-4 h-4 rounded-full border-2 border-white/50 border-t-transparent animate-spin" />}
                   Initialize Thread ✦
                 </button>
               </div>
@@ -339,6 +410,18 @@ export default function StoriesTab() {
             className={`neon-tag ${!activeFilter ? 'neon-tag-purple active' : 'neon-tag-purple'}`}
           >
             All
+          </button>
+          <button
+            onClick={() => setActiveFilter(activeFilter === 'Following' ? null : 'Following')}
+            className={`neon-tag ${activeFilter === 'Following' ? 'neon-tag-pink active' : 'neon-tag-pink'}`}
+          >
+            Following
+          </button>
+          <button
+            onClick={() => setActiveFilter(activeFilter === 'Most Liked' ? null : 'Most Liked')}
+            className={`neon-tag ${activeFilter === 'Most Liked' ? 'neon-tag-amber active' : 'neon-tag-amber'}`}
+          >
+            Most Liked
           </button>
           {PRESET_TAGS.slice(0, 5).map(t => (
             <button
