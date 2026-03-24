@@ -12,7 +12,7 @@ import { containsInappropriateContent } from '../../lib/filter';
 
 interface Comment {
   id: string;
-  theoryId: string;
+  partId: string;
   parentId: string | null;
   content: string;
   authorName: string;
@@ -109,12 +109,12 @@ function CommentItem({ comment, allComments, depth, onReply, onLike, likedIds }:
   );
 }
 
-interface TheoryCommentsProps {
-  theoryId: string;
-  onCommentCountChange: (count: number) => void;
+interface StoryCommentsProps {
+  partId: string;
+  onCommentCountChange?: (count: number) => void;
 }
 
-export default function TheoryComments({ theoryId, onCommentCountChange }: TheoryCommentsProps) {
+export default function StoryComments({ partId, onCommentCountChange }: StoryCommentsProps) {
   const { user, profile } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
   const [text, setText] = useState('');
@@ -123,18 +123,26 @@ export default function TheoryComments({ theoryId, onCommentCountChange }: Theor
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    if (!user?.uid) return;
     const q = query(
-      collection(db, 'whisper_theory_comments'),
-      where('theoryId', '==', theoryId),
-      orderBy('createdAt', 'asc')
+      collection(db, 'whisper_story_comments'),
+      where('partId', '==', partId)
     );
     const unsub = onSnapshot(q, snap => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Comment[];
+      
+      // Sort locally by date
+      data.sort((a, b) => {
+        const t1 = a.createdAt?.toMillis?.() || Date.now();
+        const t2 = b.createdAt?.toMillis?.() || Date.now();
+        return t1 - t2;
+      });
+
       setComments(data);
-      onCommentCountChange(data.length);
+      if (onCommentCountChange) onCommentCountChange(data.length);
     });
     return () => unsub();
-  }, [theoryId, onCommentCountChange]);
+  }, [partId, onCommentCountChange, user?.uid]);
 
   const handleSubmit = async () => {
     if (!text.trim() || !user || submitting) return;
@@ -144,18 +152,14 @@ export default function TheoryComments({ theoryId, onCommentCountChange }: Theor
     }
     setSubmitting(true);
     try {
-      await addDoc(collection(db, 'whisper_theory_comments'), {
-        theoryId,
+      await addDoc(collection(db, 'whisper_story_comments'), {
+        partId,
         parentId: replyingTo?.id || null,
         content: text.trim(),
-        authorName: profile?.anonymous_username || 'Anonymous',
+        authorName: user.displayName || profile?.anonymous_username || 'Void Reader',
         authorId: user.uid,
         likes: 0,
         createdAt: serverTimestamp(),
-      });
-      // Increment comment count on the theory doc
-      await updateDoc(doc(db, 'whisper_theories', theoryId), {
-        comments: increment(1),
       });
       setText('');
       setReplyingTo(null);
@@ -169,7 +173,7 @@ export default function TheoryComments({ theoryId, onCommentCountChange }: Theor
   const handleLike = async (commentId: string) => {
     if (!user || likedIds.has(commentId)) return;
     setLikedIds(prev => new Set(prev).add(commentId));
-    await updateDoc(doc(db, 'whisper_theory_comments', commentId), {
+    await updateDoc(doc(db, 'whisper_story_comments', commentId), {
       likes: increment(1),
     });
   };
@@ -181,7 +185,7 @@ export default function TheoryComments({ theoryId, onCommentCountChange }: Theor
       {/* Comment input */}
       <div className="flex gap-2 items-start">
         <div className="w-6 h-6 rounded-full bg-purple-500/20 border border-purple-500/20 flex items-center justify-center shrink-0 mt-1 text-[10px] font-bold text-purple-300">
-          {(profile?.anonymous_username || 'A').charAt(0).toUpperCase()}
+          {(user?.displayName || profile?.anonymous_username || 'V').charAt(0).toUpperCase()}
         </div>
         <div className="flex-1 relative">
           {replyingTo && (

@@ -5,8 +5,6 @@ import { BookOpen, Lightbulb, UserCheck, ArrowLeft, Sparkles } from 'lucide-reac
 import { useNotifications } from '../hooks/useNotifications';
 
 import StoriesTab from '../components/whisper/StoriesTab';
-import TheoriesTab from '../components/whisper/TheoriesTab';
-import SituationsTab from '../components/whisper/SituationsTab';
 import StoryView from '../components/whisper/StoryView';
 import WhisperBackground from '../components/whisper/WhisperBackground';
 
@@ -17,8 +15,6 @@ export default function Whisper() {
 
   const tabs = [
     { id: 'stories',   label: 'Stories',    icon: <BookOpen  className="w-4 h-4" />, color: 'from-fuchsia-500/20 to-purple-500/20' },
-    { id: 'theories',  label: 'Theories',   icon: <Lightbulb className="w-4 h-4" />, color: 'from-cyan-500/20 to-blue-500/20' },
-    { id: 'situations',label: 'Situations', icon: <UserCheck  className="w-4 h-4" />, color: 'from-emerald-500/20 to-teal-500/20' },
   ];
 
   const isInStoryView = location.pathname.includes('/story/');
@@ -78,7 +74,7 @@ export default function Whisper() {
                 </div>
 
                 <p className="text-slate-500 text-sm mt-1.5 max-w-lg leading-relaxed" style={{ fontFamily: "'Manrope', sans-serif" }}>
-                  The quiet corner of the void. Interactive stories, mind-bending theories, and brutal scenarios.
+                  The quiet corner of the void. Interactive stories.
                 </p>
               </div>
             </motion.div>
@@ -134,8 +130,6 @@ export default function Whisper() {
               <Route path="/"            element={<Navigate to="stories" replace />} />
               <Route path="stories"      element={<StoriesTab />} />
               <Route path="story/:id"    element={<StoryView />} />
-              <Route path="theories"     element={<TheoriesTab />} />
-              <Route path="situations"   element={<SituationsTab />} />
             </Routes>
           </AnimatePresence>
         </motion.div>
