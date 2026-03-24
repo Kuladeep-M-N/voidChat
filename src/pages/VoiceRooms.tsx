@@ -63,10 +63,14 @@ interface ChatMessage {
 
 const METERED_DOMAIN_PREFIX = (import.meta.env.VITE_METERED_DOMAIN || 'global').split('.')[0];
 
-const METERED_ICE_SERVERS = [
-  {
-    urls: [`stun:relay.metered.live:443`]
-  },
+const METERED_ICE_SERVERS: RTCIceServer[] = [
+  // Public STUN servers (reliable fallback, no credentials needed)
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  // Metered STUN
+  { urls: `stun:relay.metered.live:443` },
+  // Metered TURN (requires valid credentials from .env)
   {
     urls: [
       `turn:${METERED_DOMAIN_PREFIX}.relay.metered.live:443`,
@@ -164,42 +168,34 @@ export default function VoiceRooms() {
   const pendingCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const joiningRef = useRef<boolean>(false);
   const [peerStatuses, setPeerStatuses] = useState<Record<string, string>>({});
-  const [dynamicIceServers, setDynamicIceServers] = useState<RTCIceServer[]>(METERED_ICE_SERVERS);
   const audioContainerRef = useRef<HTMLDivElement>(null);
   // Stable refs to avoid stale closures in WebRTC callbacks
   const activeRoomRef = useRef<VoiceRoom | null>(null);
   const userRef = useRef<typeof user>(null);
-  const iceServersRef = useRef<RTCIceServer[]>(METERED_ICE_SERVERS);
 
-  // Fetch dynamic ICE servers from Metered
-  useEffect(() => {
-    const fetchIceServers = async () => {
-      try {
-        const domain = import.meta.env.VITE_METERED_DOMAIN;
-        const apiKey = import.meta.env.VITE_METERED_API_KEY;
-        if (!domain || !apiKey) {
-          console.warn("[VoiceRooms] Metered config missing, using static fallbacks");
-          return;
-        }
-        
-        console.log("[VoiceRooms] Fetching dynamic ICE servers...");
+  // getIceServers: fetches fresh credentials every time a peer is created
+  const getIceServers = useCallback(async (): Promise<RTCIceServer[]> => {
+    try {
+      const domain = import.meta.env.VITE_METERED_DOMAIN;
+      const apiKey = import.meta.env.VITE_METERED_API_KEY;
+      if (domain && apiKey) {
         const response = await fetch(`https://${domain}/api/v1/turn/credentials?apiKey=${apiKey}`);
-        const servers = await response.json();
-        if (Array.isArray(servers) && servers.length > 0) {
-          console.log("[VoiceRooms] Successfully fetched ICE servers from Metered");
-          setDynamicIceServers(servers);
+        if (response.ok) {
+          const servers = await response.json();
+          if (Array.isArray(servers) && servers.length > 0) {
+            console.log('[WebRTC] Fetched fresh ICE servers:', servers.length);
+            return servers;
+          }
         }
-      } catch (err) {
-        console.error("[VoiceRooms] Failed to fetch dynamic ICE servers:", err);
       }
-    };
-    fetchIceServers();
+    } catch (e) {
+      console.warn('[WebRTC] ICE server fetch failed, using fallback:', e);
+    }
+    return METERED_ICE_SERVERS; // public STUN fallback
   }, []);
 
-  // Keep refs in sync with latest state/props
-  useEffect(() => { activeRoomRef.current = activeRoom; }, [activeRoom]);
-  useEffect(() => { userRef.current = user; }, [user]);
-  useEffect(() => { iceServersRef.current = dynamicIceServers; }, [dynamicIceServers]);
+  // Keep refs in sync at render time
+  userRef.current = user;
 
   const isSpeaking = useSpeakingDetector(localStreamRef.current);
 
@@ -263,7 +259,8 @@ export default function VoiceRooms() {
     }
 
     console.log(`[WebRTC] Creating peer for ${remoteUserId}, initiator: ${isInitiator}`);
-    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
+    const iceServers = await getIceServers();
+    const pc = new RTCPeerConnection({ iceServers });
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
@@ -352,7 +349,7 @@ export default function VoiceRooms() {
     }
 
     return pc;
-  }, []); // No deps — everything is accessed via refs
+  }, [getIceServers]); // depends on getIceServers which is stable (useCallback([]))
 
 
   // RTDB Connection monitor
@@ -664,6 +661,7 @@ export default function VoiceRooms() {
     setPeerStatuses({});
 
     // Reset UI state
+    activeRoomRef.current = null;
     setActiveRoom(null);
     setParticipants([]);
     setChatMessages([]);
@@ -724,6 +722,8 @@ export default function VoiceRooms() {
       localStreamRef.current = stream;
       setMyRole('audience');
       setMuted(true);
+      // Set ref immediately so createPeer can use it
+      activeRoomRef.current = room;
       setActiveRoom(room);
       toast.success('Microphone connected. You are in the audience (muted).');
     } catch (err) {
@@ -731,6 +731,7 @@ export default function VoiceRooms() {
       toast.error('Microphone access denied. Joining as listener only.');
       setMyRole('audience');
       setMuted(true);
+      activeRoomRef.current = room;
       setActiveRoom(room);
     } finally {
       setJoining(false);
