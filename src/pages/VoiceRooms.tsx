@@ -63,24 +63,12 @@ interface ChatMessage {
 
 const METERED_DOMAIN_PREFIX = (import.meta.env.VITE_METERED_DOMAIN || 'global').split('.')[0];
 
+// Public STUN-only fallback (no credentials required)
+// TURN servers are only used when Metered credentials are successfully fetched
 const METERED_ICE_SERVERS: RTCIceServer[] = [
-  // Public STUN servers (reliable fallback, no credentials needed)
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
-  // Metered STUN
-  { urls: `stun:relay.metered.live:443` },
-  // Metered TURN (requires valid credentials from .env)
-  {
-    urls: [
-      `turn:${METERED_DOMAIN_PREFIX}.relay.metered.live:443`,
-      `turn:${METERED_DOMAIN_PREFIX}.relay.metered.live:443?transport=tcp`,
-      `turns:${METERED_DOMAIN_PREFIX}.relay.metered.live:443`,
-      `turns:${METERED_DOMAIN_PREFIX}.relay.metered.live:443?transport=tcp`
-    ],
-    username: METERED_DOMAIN_PREFIX,
-    credential: import.meta.env.VITE_METERED_API_KEY
-  }
 ];
 
 function useSpeakingDetector(stream: MediaStream | null): boolean {
@@ -260,7 +248,20 @@ export default function VoiceRooms() {
 
     console.log(`[WebRTC] Creating peer for ${remoteUserId}, initiator: ${isInitiator}`);
     const iceServers = await getIceServers();
-    const pc = new RTCPeerConnection({ iceServers });
+    console.log(`[WebRTC] Using ${iceServers.length} ICE server entries`);
+
+    let pc: RTCPeerConnection;
+    try {
+      pc = new RTCPeerConnection({ iceServers });
+    } catch (err) {
+      console.error('[WebRTC] Failed to construct RTCPeerConnection:', err);
+      // Mark as failed so we don't retry endlessly
+      peersRef.current.set(remoteUserId, null as any);
+      return null as any;
+    }
+
+    // Register before any async work
+    peersRef.current.set(remoteUserId, pc);
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
@@ -333,8 +334,6 @@ export default function VoiceRooms() {
         }, 3000);
       }
     };
-
-    peersRef.current.set(remoteUserId, pc);
 
     if (isInitiator) {
       try {
