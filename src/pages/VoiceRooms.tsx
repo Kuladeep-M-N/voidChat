@@ -65,16 +65,16 @@ const METERED_DOMAIN_PREFIX = (import.meta.env.VITE_METERED_DOMAIN || 'global').
 
 const METERED_ICE_SERVERS = [
   {
-    urls: [`stun:${METERED_DOMAIN_PREFIX}.relay.metered.ca:443`]
+    urls: [`stun:${METERED_DOMAIN_PREFIX}.relay.metered.live:443`]
   },
   {
     urls: [
-      `turn:${METERED_DOMAIN_PREFIX}.relay.metered.ca:443`,
-      `turn:${METERED_DOMAIN_PREFIX}.relay.metered.ca:443?transport=tcp`,
-      `turns:${METERED_DOMAIN_PREFIX}.relay.metered.ca:443`,
-      `turns:${METERED_DOMAIN_PREFIX}.relay.metered.ca:443?transport=tcp`
+      `turn:${METERED_DOMAIN_PREFIX}.relay.metered.live:443`,
+      `turn:${METERED_DOMAIN_PREFIX}.relay.metered.live:443?transport=tcp`,
+      `turns:${METERED_DOMAIN_PREFIX}.relay.metered.live:443`,
+      `turns:${METERED_DOMAIN_PREFIX}.relay.metered.live:443?transport=tcp`
     ],
-    username: import.meta.env.VITE_METERED_API_KEY,
+    username: METERED_DOMAIN_PREFIX,
     credential: import.meta.env.VITE_METERED_API_KEY
   }
 ];
@@ -87,6 +87,10 @@ function useSpeakingDetector(stream: MediaStream | null): boolean {
   useEffect(() => {
     if (!stream) { setSpeaking(false); return; }
     const ctx = new window.AudioContext();
+    // Resume context after creation as some browsers start it in suspended state
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(e => console.warn("[VoiceRooms] AudioContext resume failed:", e));
+    }
     const src = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 256;
@@ -95,6 +99,10 @@ function useSpeakingDetector(stream: MediaStream | null): boolean {
 
     const data = new Uint8Array(analyser.frequencyBinCount);
     const check = () => {
+      // Re-check state periodically in case it gets suspended again
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
       analyser.getByteFrequencyData(data);
       const avg = data.reduce((a, b) => a + b, 0) / data.length;
       setSpeaking(avg > 8);
@@ -314,7 +322,7 @@ export default function VoiceRooms() {
     }
 
     return pc;
-  }, [user, activeRoom]);
+  }, [user, activeRoom, dynamicIceServers]);
 
 
   // RTDB Connection monitor
@@ -340,6 +348,26 @@ export default function VoiceRooms() {
     };
     window.addEventListener('error', handleError);
     return () => window.removeEventListener('error', handleError);
+  }, []);
+
+  // Autoplay recovery: Play all remote audios on any user interaction
+  useEffect(() => {
+    const handleInteraction = () => {
+      remoteAudiosRef.current.forEach((audio, uid) => {
+        if (audio.paused && audio.srcObject) {
+          audio.play().catch(() => {});
+        }
+      });
+      // Also try to resume AudioContexts if they are suspended
+      // Note: we track ctx in useSpeakingDetector, but we can't easily access them all here.
+      // However, most browsers share the restriction.
+    };
+    window.addEventListener('click', handleInteraction);
+    window.addEventListener('keydown', handleInteraction, { capture: true });
+    return () => {
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('keydown', handleInteraction, { capture: true });
+    };
   }, []);
 
   useEffect(() => {
@@ -1199,7 +1227,6 @@ export default function VoiceRooms() {
               </button>
             )}
           </div>
-        <div id="remote-audio-container" style={{ display: 'none' }} />
         </main>
       </div>
     );
