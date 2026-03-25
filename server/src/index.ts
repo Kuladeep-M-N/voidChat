@@ -24,6 +24,17 @@ import { verifySession, checkRole, logAdminAction } from './middleware';
 const app = express();
 const port = process.env.PORT || 4000;
 
+// HTTPS Redirection Middleware
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    // Check if the request is already HTTPS (handle proxies like Firebase/Cloud Run)
+    if (req.headers['x-forwarded-proto'] !== 'https' && !req.secure) {
+      return res.redirect(`https://${req.get('host')}${req.url}`);
+    }
+    next();
+  });
+}
+
 // Security Middleware
 app.use(helmet({
   contentSecurityPolicy: {
@@ -51,20 +62,28 @@ app.use(cookieParser());
 
 // Rate Limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000, 
+  max: 100, 
   message: 'Too many requests from this IP, please try again after 15 minutes',
   standardHeaders: true,
   legacyHeaders: false,
+  handler: (req, res, next, options) => {
+    console.warn(`[RateLimit] Limit exceeded for IP: ${req.ip} on ${req.originalUrl}`);
+    res.status(options.statusCode).send(options.message);
+  },
 });
 
 app.use(limiter);
 
 // Auth Limiter for sensitive routes
 const authLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // Limit each IP to 10 attempts per hour
+  windowMs: 60 * 60 * 1000, 
+  max: 10, 
   message: 'Too many sensitive requests, please try again after an hour',
+  handler: (req, res, next, options) => {
+    console.warn(`[AuthLimit] Sensitive limit reached for IP: ${req.ip} on ${req.originalUrl}`);
+    res.status(options.statusCode).send(options.message);
+  },
 });
 
 // Routes
@@ -77,12 +96,33 @@ app.use('/admin', verifySession, checkRole(['admin', 'moderator']), logAdminActi
 
 // Health check
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
+  res.status(200).json({ 
+    status: 'ok',
+    env: process.env.NODE_ENV,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Global Error Handler
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const errorId = Math.random().toString(36).substring(7);
+  console.error(`[API Error ${errorId}] ${req.method} ${req.path}:`, {
+    message: err.message,
+    stack: process.env.NODE_ENV === 'production' ? 'MASKED' : err.stack,
+    ip: req.ip,
+    uid: (req as any).user?.uid
+  });
+  
+  res.status(err.status || 500).json({
+    error: 'Internal Server Error',
+    id: errorId,
+    message: process.env.NODE_ENV === 'production' ? undefined : err.message
+  });
 });
 
 // Start Server
 app.listen(port, () => {
-  console.log(`Security Backend running at http://localhost:${port}`);
+  console.log(`Security Backend running at http://localhost:${port} [${process.env.NODE_ENV || 'development'}]`);
 });
 
 export default app;

@@ -17,10 +17,12 @@ const sanitize = (text: string) => {
 
 router.post('/login', async (req: Request, res: Response) => {
   const { idToken } = req.body;
+  const ip = req.ip;
 
   try {
     // Create session cookie
     const sessionCookie = await admin.auth().createSessionCookie(idToken, { expiresIn });
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
     
     // Set cookie options
     const options = { 
@@ -31,15 +33,17 @@ router.post('/login', async (req: Request, res: Response) => {
     };
 
     res.cookie('session', sessionCookie, options);
+    console.info(`[AuthSuccess] Login for User: ${decodedToken.uid} from IP: ${ip}`);
     res.status(200).json({ status: 'success' });
-  } catch (error) {
-    console.error('Login error:', error);
+  } catch (error: any) {
+    console.warn(`[AuthFailure] Login failed from IP: ${ip}. Error: ${error.message}`);
     res.status(401).send('Unauthorized');
   }
 });
 
 router.post('/signup', async (req: Request, res: Response) => {
   const { realUsername, anonymousUsername, password } = req.body;
+  const ip = req.ip;
 
   try {
     const sanitizedReal = sanitize(realUsername);
@@ -66,9 +70,10 @@ router.post('/signup', async (req: Request, res: Response) => {
       role: 'user'
     });
 
+    console.info(`[AuthSuccess] Signup for User: ${userRecord.uid} (${sanitizedReal}) from IP: ${ip}`);
     res.status(201).json({ status: 'success', uid: userRecord.uid });
   } catch (error: any) {
-    console.error('Signup error:', error);
+    console.warn(`[AuthFailure] Signup failed from IP: ${ip}. Error: ${error.message}`);
     res.status(400).json({ error: error.message });
   }
 });
