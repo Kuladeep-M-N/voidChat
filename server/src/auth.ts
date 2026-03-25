@@ -1,30 +1,24 @@
 import { Request, Response, Router } from 'express';
 import * as admin from 'firebase-admin';
-import sanitizeHtml from 'sanitize-html';
+import { validateString, sanitize, handleValidationError } from './validation';
 
 const router = Router();
 
 // Session expiration: 30 minutes
 const expiresIn = 30 * 60 * 1000;
 
-// Helper to sanitize text
-const sanitize = (text: string) => {
-  return sanitizeHtml(text, {
-    allowedTags: [],
-    allowedAttributes: {},
-  });
-};
-
 router.post('/login', async (req: Request, res: Response) => {
   const { idToken } = req.body;
   const ip = req.ip;
 
+  // Validation
+  const tokenError = validateString(idToken, 'ID Token', { required: true, minLength: 20 });
+  if (tokenError) return handleValidationError(res, [tokenError]);
+
   try {
-    // Create session cookie
     const sessionCookie = await admin.auth().createSessionCookie(idToken, { expiresIn });
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     
-    // Set cookie options
     const options = { 
       maxAge: expiresIn, 
       httpOnly: true, 
@@ -45,10 +39,22 @@ router.post('/signup', async (req: Request, res: Response) => {
   const { realUsername, anonymousUsername, password } = req.body;
   const ip = req.ip;
 
+  // Strict Validation
+  const errors: string[] = [];
+  const realError = validateString(realUsername, 'Real Username', { required: true, minLength: 3, maxLength: 30 });
+  const anonError = validateString(anonymousUsername, 'Anonymous Username', { required: true, minLength: 3, maxLength: 30 });
+  const passError = validateString(password, 'Password', { required: true, minLength: 8, maxLength: 100 });
+
+  if (realError) errors.push(realError);
+  if (anonError) errors.push(anonError);
+  if (passError) errors.push(passError);
+
+  if (errors.length > 0) return handleValidationError(res, errors);
+
   try {
     const sanitizedReal = sanitize(realUsername);
     const sanitizedAnon = sanitize(anonymousUsername);
-    const virtualEmail = `${sanitizedReal.toLowerCase()}@voidchat.internal`;
+    const virtualEmail = `${sanitizedReal.toLowerCase().replace(/[^a-z0-9]/g, '')}@voidchat.internal`;
 
     // 1. Create User in Firebase Auth
     const userRecord = await admin.auth().createUser({
