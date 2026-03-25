@@ -166,18 +166,20 @@ export default function VoiceRooms() {
   // Caches the last successful result so TURN servers survive transient API failures.
   const getIceServers = useCallback(async (): Promise<RTCIceServer[]> => {
     try {
-      const domain = import.meta.env.VITE_METERED_DOMAIN;
-      const apiKey = import.meta.env.VITE_METERED_API_KEY;
-      if (domain && apiKey) {
-        const response = await fetch(`https://${domain}/api/v1/turn/credentials?apiKey=${apiKey}`);
-        if (response.ok) {
-          const servers = await response.json();
-          if (Array.isArray(servers) && servers.length > 0) {
-            console.log('[WebRTC] Fetched fresh ICE servers (STUN + TURN):', servers.length);
-            iceCacheRef.current = servers; // cache for fallback
-            return servers;
-          }
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiBaseUrl}/ice-servers`, {
+        credentials: 'include' // include session cookie for verification
+      });
+      
+      if (response.ok) {
+        const servers = await response.json();
+        if (Array.isArray(servers) && servers.length > 0) {
+          console.log('[WebRTC] Fetched fresh ICE servers via secure backend:', servers.length);
+          iceCacheRef.current = servers; // cache for fallback
+          return servers;
         }
+      } else {
+        console.warn(`[WebRTC] Backend ICE fetch failed with status: ${response.status}`);
       }
     } catch (e) {
       console.warn('[WebRTC] ICE server fetch failed:', e);

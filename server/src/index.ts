@@ -94,6 +94,30 @@ app.use('/admin', verifySession, checkRole(['admin', 'moderator']), logAdminActi
   res.status(200).json({ message: 'Welcome to the Secure Admin API' });
 });
 
+// Secure ICE Servers Proxy (Proxy for Metered TURN credentials)
+app.get('/ice-servers', verifySession, async (req, res) => {
+  try {
+    const domain = process.env.METERED_DOMAIN;
+    const apiKey = process.env.METERED_API_KEY;
+    
+    if (!domain || !apiKey) {
+      console.error('[ICE] Metered configuration missing in environment');
+      return res.status(500).json({ error: 'ICE configuration missing' });
+    }
+
+    const response = await fetch(`https://${domain}/api/v1/turn/credentials?apiKey=${apiKey}`);
+    if (!response.ok) {
+      throw new Error(`Metered API responded with ${response.status}`);
+    }
+    
+    const servers = await response.json();
+    res.status(200).json(servers);
+  } catch (error) {
+    console.error('[ICE Error]:', error);
+    res.status(500).json({ error: 'Failed to fetch connectivity credentials' });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.status(200).json({ 
