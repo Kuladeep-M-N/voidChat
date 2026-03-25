@@ -19,6 +19,7 @@ if (!admin.apps.length) {
 }
 
 import authRouter from './auth';
+import aiRouter from './ai';
 import { verifySession, checkRole, logAdminAction } from './middleware';
 
 const app = express();
@@ -60,34 +61,60 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+// Bot Detection Middleware
+const botCheck = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const ua = req.headers['user-agent'] || '';
+  const botPatterns = [
+    /bot/i, /spider/i, /crawl/i, /headless/i, /phantom/i, /selenium/i, 
+    /puppeteer/i, /node-fetch/i, /axios/i, /python/i, /curl/i
+  ];
+  
+  if (botPatterns.some(pattern => pattern.test(ua))) {
+    console.warn(`[BotBlocked] IP: ${req.ip}, UA: ${ua}, Path: ${req.originalUrl}`);
+    return res.status(403).json({ error: 'Automated access is restricted.' });
+  }
+  next();
+};
+
 // Rate Limiting
-const limiter = rateLimit({
+const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
   max: 100, 
   message: 'Too many requests from this IP, please try again after 15 minutes',
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res, next, options) => {
-    console.warn(`[RateLimit] Limit exceeded for IP: ${req.ip} on ${req.originalUrl}`);
+    console.warn(`[RateLimit] Global limit exceeded for IP: ${req.ip} on ${req.originalUrl}`);
     res.status(options.statusCode).send(options.message);
   },
 });
 
-app.use(limiter);
-
-// Auth Limiter for sensitive routes
 const authLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, 
-  max: 10, 
-  message: 'Too many sensitive requests, please try again after an hour',
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Too many authentication attempts, please try again after 15 minutes',
   handler: (req, res, next, options) => {
-    console.warn(`[AuthLimit] Sensitive limit reached for IP: ${req.ip} on ${req.originalUrl}`);
+    console.warn(`[AuthLimit] Limit reached for IP: ${req.ip} on ${req.originalUrl}`);
     res.status(options.statusCode).send(options.message);
   },
 });
+
+const aiLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: 'AI generation limit reached, please try again in an hour',
+  handler: (req, res, next, options) => {
+    console.warn(`[AILimit] Limit reached for IP: ${req.ip} on ${req.originalUrl}`);
+    res.status(options.statusCode).send(options.message);
+  },
+});
+
+app.use(botCheck);
+app.use(globalLimiter);
 
 // Routes
 app.use('/auth', authLimiter, authRouter);
+app.use('/ai', aiLimiter, aiRouter);
 
 // Protected Admin Routes
 app.use('/admin', verifySession, checkRole(['admin', 'moderator']), logAdminAction('Admin Access'), (req, res) => {
