@@ -338,13 +338,8 @@ export default function ChatRoom() {
   const reactToMessage = useCallback((msgId: string, emoji: string) => {
     if (!user || !roomId || isArchived || safeMode) return;
     setPicker(null);
-    const reactionRef = ref(rtdb, `reactions/${roomId}/${msgId}/${emoji}`);
-    onValue(reactionRef, (snapshot) => {
-      const uids = snapshot.val() || [];
-      if (!uids.includes(user.uid)) {
-        rtdbSet(reactionRef, [...uids, user.uid]);
-      }
-    }, { onlyOnce: true });
+    const reactionRef = ref(rtdb, `reactions/${roomId}/${msgId}/${emoji}/${user.uid}`);
+    rtdbSet(reactionRef, true);
   }, [user, roomId, isArchived, safeMode]);
 
   const grouped = messages.map((msg, i) => {
@@ -592,7 +587,8 @@ export default function ChatRoom() {
                           {Object.keys(msgReactions).length > 0 && (
                             <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                               {Object.entries(msgReactions).map(([emoji, who]) => {
-                                const hasReacted = (who as string[]).includes(user?.uid || '');
+                                const whoArr = Array.isArray(who) ? who : Object.keys(who || {});
+                                const hasReacted = whoArr.includes(user?.uid || '');
                                 return (
                                   <button
                                     key={emoji}
@@ -605,7 +601,7 @@ export default function ChatRoom() {
                                     `}
                                   >
                                     <span>{emoji}</span>
-                                    <span className="opacity-60">{(who as string[]).length}</span>
+                                    <span className="opacity-60">{whoArr.length}</span>
                                   </button>
                                 );
                               })}

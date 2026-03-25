@@ -60,73 +60,80 @@ service cloud.firestore {
     // Messages
     match /messages/{messageId} {
       allow read: if isAuthenticated() && isNotExpired();
-      allow create: if canCreateContent();
-      allow delete: if isModerator();
+      allow create: if canCreateContent() && request.resource.data.user_id == request.auth.uid;
+      allow delete: if isModerator() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
     }
 
     // Confessions
     match /confessions/{confessionId} {
       allow read: if isAuthenticated() && isNotExpired();
-      allow create: if canCreateContent();
-      allow update: if isAuthenticated(); // For likes
+      allow create: if canCreateContent() && request.resource.data.user_id == request.auth.uid;
+      allow update: if isAuthenticated() && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']);
       allow delete: if isModerator() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
     }
 
     // Shoutouts
     match /shoutouts/{shoutoutId} {
       allow read: if isAuthenticated() && isNotExpired();
-      allow create: if canCreateContent();
+      allow create: if canCreateContent() && request.resource.data.user_id == request.auth.uid;
       allow delete: if isModerator() || (isAuthenticated() && resource.data.user_id == request.auth.uid);
     }
 
     // Reports
     match /reports/{reportId} {
       allow read: if isModerator();
-      allow create: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.reporter_id == request.auth.uid;
       allow update, delete: if isModerator();
     }
     
     // Whisper Features
     match /whisper_stories/{storyId} {
       allow read: if isAuthenticated();
-      allow create: if canCreateContent();
-      allow update: if isAuthenticated() || isAdmin(); // for follows/likes/admin
+      allow create: if canCreateContent() && request.resource.data.authorId == request.auth.uid;
+      allow update: if isAdmin() || (isAuthenticated() && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasAny(['likes', 'followers', 'episodes']));
       allow delete: if isAdmin() || isModerator() || (isAuthenticated() && resource.data.authorId == request.auth.uid);
     }
     match /whisper_story_parts/{partId} {
       allow read: if isAuthenticated();
       allow create: if canCreateContent();
-      allow update: if isAuthenticated() || isAdmin(); // for reactions
+      allow update: if isAdmin() || (isAuthenticated() && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'votes']));
       allow delete: if isAdmin() || isModerator();
     }
     match /whisper_theories/{theoryId} {
       allow read: if isAuthenticated();
-      allow create: if canCreateContent();
-      allow update: if isAuthenticated(); // for upvotes
+      allow create: if canCreateContent() && request.resource.data.authorId == request.auth.uid;
+      allow update: if isAuthenticated() && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes']);
       allow delete: if isModerator() || (isAuthenticated() && resource.data.authorId == request.auth.uid);
     }
     match /whisper_situations/{situationId} {
       allow read: if isAuthenticated();
-      allow create: if isModerator() || isAdmin(); // Only admins/mods create situations
+      allow create: if isModerator() || isAdmin(); 
     }
     match /whisper_situation_responses/{responseId} {
       allow read: if isAuthenticated();
-      allow create: if canCreateContent();
-      allow update: if isAuthenticated(); // for agrees/upvotes
+      allow create: if canCreateContent() && request.resource.data.authorId == request.auth.uid;
+      allow update: if isAuthenticated() && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasAny(['agrees', 'upvotes']);
       allow delete: if isModerator() || (isAuthenticated() && resource.data.authorId == request.auth.uid);
     }
-    // Whisper Theory Comments (nested Reddit-style)
+    // Whisper Theory Comments
     match /whisper_theory_comments/{commentId} {
       allow read: if isAuthenticated();
-      allow create: if canCreateContent();
-      allow update: if isAuthenticated(); // for likes
+      allow create: if canCreateContent() && request.resource.data.authorId == request.auth.uid;
+      allow update: if isAuthenticated() && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']);
       allow delete: if isModerator() || (isAuthenticated() && resource.data.authorId == request.auth.uid);
     }
-    // Whisper Story Part Comments (inline comments on episodes)
+    // Whisper Story Part Comments
     match /whisper_story_comments/{commentId} {
       allow read: if isAuthenticated();
-      allow create: if canCreateContent();
-      allow update: if isAuthenticated() || isAdmin(); // for likes
+      allow create: if canCreateContent() && request.resource.data.authorId == request.auth.uid;
+      allow update: if isAdmin() || (isAuthenticated() && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']));
       allow delete: if isAdmin() || isModerator() || (isAuthenticated() && resource.data.authorId == request.auth.uid);
     }
     
