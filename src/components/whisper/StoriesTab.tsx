@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen, User, Users, ChevronRight, PenTool, X,
-  Flame, Gem, TrendingUp, Search, Tag, Hash, Trash2, Heart, MessageCircle
+  Flame, Gem, TrendingUp, Search, Tag, Hash, Trash2, Heart, MessageCircle, AlertTriangle
 } from 'lucide-react';
+import ReportModal from '../ReportModal';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { db } from '../../lib/firebase';
 import {
@@ -116,6 +117,7 @@ function StoryCard({ story, index, onClick, onDelete, isAdmin }: {
 }) {
   const navigate = useNavigate();
   const [avgRating, setAvgRating] = useState<string>('—');
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   useEffect(() => {
     if (!story.id) return;
@@ -164,6 +166,16 @@ function StoryCard({ story, index, onClick, onDelete, isAdmin }: {
               <Trash2 size={12} />
             </button>
           )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsReportModalOpen(true);
+            }}
+            className="p-1.5 rounded-lg hover:bg-amber-500/10 text-slate-500 hover:text-amber-400 transition-all"
+            title="Report Story"
+          >
+            <AlertTriangle size={12} />
+          </button>
           <div className="flex items-center gap-1 text-[11px] font-bold text-fuchsia-400 bg-fuchsia-500/10 border border-fuchsia-500/20 px-2 py-0.5 rounded-full shrink-0">
             <BookOpen size={10} />
             {story.episodes} {story.episodes === 1 ? 'part' : 'parts'}
@@ -217,6 +229,14 @@ function StoryCard({ story, index, onClick, onDelete, isAdmin }: {
           <span>{story.followers.toLocaleString()}</span>
         </div>
       </div>
+
+      <ReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        targetType="whisper_story"
+        targetId={story.id}
+        storyId={story.id}
+      />
     </motion.div>
   );
 }

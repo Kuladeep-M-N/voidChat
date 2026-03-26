@@ -81,7 +81,7 @@ import { toast } from 'sonner';
 interface Report {
   id: string;
   reporter_id: string;
-  target_type: 'shoutout' | 'shoutout_comment' | 'message' | 'confession' | 'confession_comment' | 'chat_room' | 'debate' | 'debate_argument' | 'question' | 'answer' | 'poll' | 'user';
+  target_type: 'shoutout' | 'shoutout_comment' | 'message' | 'confession' | 'confession_comment' | 'chat_room' | 'debate' | 'debate_argument' | 'question' | 'answer' | 'poll' | 'user' | 'whisper_story' | 'whisper_story_part' | 'whisper_story_comment';
   target_id: string;
   reason: string;
   description: string;
@@ -89,6 +89,8 @@ interface Report {
   created_at: any;
   reporter_name?: string;
   target_preview?: string;
+  story_id?: string;
+  room_id?: string;
 }
 
 export default function AdminModeration() {
@@ -98,6 +100,19 @@ export default function AdminModeration() {
   const [filter, setFilter] = useState<'all' | 'pending' | 'reviewed' | 'resolved' | 'ignored'>('pending');
   const [search, setSearch] = useState('');
   const [fetching, setFetching] = useState(true);
+
+  const formatSafeDate = (date: any) => {
+    if (!date) return '—';
+    try {
+      if (date?.toDate) return date.toDate().toLocaleString();
+      if (date?.seconds) return new Date(date.seconds * 1000).toLocaleString();
+      const d = new Date(date);
+      return isNaN(d.getTime()) ? 'Invalid Date' : d.toLocaleString();
+    } catch (e) {
+      return 'Invalid Date';
+    }
+  };
+
   const [nameCache] = useState<Map<string, string>>(new Map());
   
   // Nuclear Option State
@@ -618,6 +633,9 @@ export default function AdminModeration() {
       case 'question': collectionName = 'qna_questions'; break;
       case 'answer': collectionName = 'qna_answers'; break;
       case 'poll': collectionName = 'polls'; break;
+      case 'whisper_story': collectionName = 'whisper_stories'; break;
+      case 'whisper_story_part': collectionName = 'whisper_story_parts'; break;
+      case 'whisper_story_comment': collectionName = 'whisper_story_comments'; break;
       case 'user': 
         toast.error('Cannot delete users directly through this panel yet. Use Firebase dashboard.');
         return;
@@ -653,11 +671,41 @@ export default function AdminModeration() {
     }
   };
 
-  const navigateToContent = (type: string, id: string) => {
+  const getTargetUrl = (report: Report) => {
+    if (!report) return null;
+    const type = (report.target_type || '').toLowerCase().trim();
+    const id = report.target_id;
+    const storyId = report.story_id;
+    const roomId = report.room_id;
+
+    if (!id) return null;
+
     switch (type) {
-      case 'confession': navigate(`/confessions#${id}`); break;
-      case 'debate': navigate(`/debate-arena/${id}`); break;
-      case 'poll': navigate(`/polls#${id}`); break;
+      case 'confession':
+      case 'confession_comment':
+        return `/confessions#${id}`;
+      case 'debate':
+      case 'debate_argument':
+        return `/debate-arena/${id}`;
+      case 'poll':
+        return `/polls#${id}`;
+      case 'whisper_story':
+        return `/whisper/story/${id}`;
+      case 'whisper_story_part':
+      case 'whisper_story_comment':
+        return storyId ? `/whisper/story/${storyId}` : '/whisper/stories';
+      case 'shoutout':
+      case 'shoutout_comment':
+        return '/shoutouts';
+      case 'chat_room':
+        return `/room/${id}`;
+      case 'answer':
+        return `/qna#${id}`;
+      case 'message':
+        return roomId ? `/room/${roomId}` : '/chat-center';
+      default:
+        console.warn('Unknown report type for navigation:', type);
+        return null;
     }
   };
 
@@ -869,7 +917,7 @@ export default function AdminModeration() {
                       </span>
                       <div className="flex items-center gap-2 text-[10px] font-bold text-white/30">
                         <Clock size={12} />
-                        {new Date(report.created_at).toLocaleString()}
+                        {formatSafeDate(report.created_at)}
                       </div>
                     </div>
 
@@ -894,10 +942,21 @@ export default function AdminModeration() {
                         <Flag size={14} />
                         REP-ID: <span className="font-mono">{report.id.slice(0, 8)}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Eye size={14} />
-                        TARGET: <span className="font-mono">{report.target_id.slice(0, 8)}</span>
-                      </div>
+                      {getTargetUrl(report) ? (
+                        <Link 
+                          to={getTargetUrl(report)!}
+                          className="flex items-center gap-2 text-amber-500 transition-colors group/target"
+                          title="View reported content"
+                        >
+                          <Eye size={14} className="group-hover/target:scale-110 transition-transform" />
+                          TARGET: <span className="font-mono underline decoration-amber-500/50 underline-offset-4 group-hover/target:decoration-amber-500 transition-all">{report.target_id.slice(0, 8)}</span>
+                        </Link>
+                      ) : (
+                        <div className="flex items-center gap-2 opacity-40">
+                          <Eye size={14} />
+                          TARGET: <span className="font-mono">{report.target_id.slice(0, 8)}</span>
+                        </div>
+                      )}
                       <div className="flex items-center gap-2">
                         <UserX size={14} />
                         REPORTER: <span className="font-semibold text-white/60">{report.reporter_name || 'Anonymous'}</span>
@@ -1477,7 +1536,8 @@ export default function AdminModeration() {
                                 className="group p-5 rounded-3xl bg-black/40 border border-white/5 hover:border-sky-500/30 transition-all relative cursor-pointer"
                                 onClick={(e) => {
                                   if ((e.target as HTMLElement).closest('button')) return;
-                                  navigateToContent('confession', c.id);
+                                  const url = getTargetUrl({ target_type: 'confession', target_id: c.id } as Report);
+                                  if (url) navigate(url);
                                 }}
                               >
                                  <p className="text-sm text-slate-300 leading-relaxed line-clamp-3 mb-4">{c.content}</p>
@@ -1518,7 +1578,8 @@ export default function AdminModeration() {
                                 className="group p-5 rounded-3xl bg-black/40 border border-white/5 hover:border-amber-500/30 transition-all relative cursor-pointer"
                                 onClick={(e) => {
                                   if ((e.target as HTMLElement).closest('button')) return;
-                                  navigateToContent('debate', d.id);
+                                  const url = getTargetUrl({ target_type: 'debate', target_id: d.id } as Report);
+                                  if (url) navigate(url);
                                 }}
                               >
                                  <div className="mb-2">
@@ -1560,7 +1621,8 @@ export default function AdminModeration() {
                                 className="group p-5 rounded-3xl bg-black/40 border border-white/5 hover:border-emerald-500/30 transition-all relative cursor-pointer"
                                 onClick={(e) => {
                                   if ((e.target as HTMLElement).closest('button')) return;
-                                  navigateToContent('poll', p.id);
+                                  const url = getTargetUrl({ target_type: 'poll', target_id: p.id } as Report);
+                                  if (url) navigate(url);
                                 }}
                               >
                                  <h5 className="text-sm font-bold text-white mb-2 line-clamp-2">{p.question}</h5>

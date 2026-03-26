@@ -80,6 +80,7 @@ export default function ChatRoom() {
   const [showSettings, setShowSettings] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [reportingContent, setReportingContent] = useState<{ type: 'message' | 'user'; id: string } | null>(null);
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
 
   // Auto-show sidebar on desktop
   useEffect(() => {
@@ -366,7 +367,11 @@ export default function ChatRoom() {
   }
 
   return (
-    <div className="h-screen flex flex-col relative overflow-hidden bg-[#07070f] text-slate-200" onClick={() => { setPicker(null); setShowEmojiPicker(false); }}>
+    <div className="h-screen flex flex-col relative overflow-hidden bg-[#07070f] text-slate-200" onClick={() => { 
+      setPicker(null); 
+      setShowEmojiPicker(false); 
+      setSelectedMessageId(null);
+    }}>
       <VoidBackground />
       
       {/* Top Header */}
@@ -538,7 +543,12 @@ export default function ChatRoom() {
                                   : 'rounded-[10px_14px_14px_10px]'
                                 }
                                 hover:border-white/20
+                                ${selectedMessageId === msg.id ? 'border-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.1)]' : ''}
                               `}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedMessageId(selectedMessageId === msg.id ? null : msg.id);
+                              }}
                             >
                               <div 
                                 dangerouslySetInnerHTML={{ __html: sanitizeContent(msg.content) }}
@@ -548,7 +558,8 @@ export default function ChatRoom() {
 
                             {/* Hover Actions Dock - Even more compact */}
                             <div className={`
-                              absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-150 z-20 flex items-center gap-1 scale-90 group-hover:scale-100
+                              absolute top-1/2 -translate-y-1/2 transition-all duration-150 z-20 flex items-center gap-1 scale-90 group-hover:scale-100 group-hover:opacity-100
+                              ${selectedMessageId === msg.id ? 'opacity-100 scale-100' : 'opacity-0'}
                               ${isMe ? 'right-full mr-2' : 'left-full ml-2'}
                             `}>
                               <button 
@@ -557,6 +568,15 @@ export default function ChatRoom() {
                               >
                                 <Smile className="w-3.5 h-3.5" />
                               </button>
+                              {!isMe && (
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); setReportingContent({ type: 'message', id: msg.id }); }}
+                                  className="w-6 h-6 rounded-md glass-premium border border-white/5 flex items-center justify-center hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors"
+                                  title="Report message"
+                                >
+                                  <ShieldAlert className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </div>
 
                             {/* Reaction Picker - Faster transition */}
@@ -846,6 +866,7 @@ export default function ChatRoom() {
         onClose={() => setReportingContent(null)}
         targetType={reportingContent?.type || 'message'}
         targetId={reportingContent?.id || ''}
+        roomId={roomId}
       />
     </div>
   );

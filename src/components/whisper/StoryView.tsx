@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Send, Users, ShieldAlert, GitBranch, Copy, Check, Heart, Trash2, MessageCircle, TrendingUp, Sparkles } from 'lucide-react';
+import { ArrowLeft, Send, Users, ShieldAlert, GitBranch, Copy, Check, Heart, Trash2, MessageCircle, TrendingUp, Sparkles, AlertTriangle } from 'lucide-react';
+import ReportModal from '../ReportModal';
 import { db } from '../../lib/firebase';
 import {
   doc, getDoc, collection, query, where, orderBy, onSnapshot,
@@ -119,6 +120,7 @@ function PartInteractionBar({ part, story, isAuthor, votedIds, onVote }: {
   onVote: (partId: string, type: 'up' | 'down') => void;
 }) {
   const [activeUnit, setActiveUnit] = useState<'none' | 'vote' | 'comment' | 'rating'>('none');
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
 
   useEffect(() => {
@@ -171,8 +173,26 @@ function PartInteractionBar({ part, story, isAuthor, votedIds, onVote }: {
             <TrendingUp size={14} className={activeUnit === 'rating' ? 'fill-current' : 'text-amber-400/70'} />
             <span className="text-amber-300">{avgRating}</span>
           </button>
+          
+          <div className="w-[1px] h-4 bg-white/10" />
+          
+          <button 
+            onClick={() => setIsReportModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-slate-400 hover:text-amber-400 transition-all hover:bg-amber-500/10"
+            title="Report Part"
+          >
+            <AlertTriangle size={14} className="text-slate-500 hover:text-amber-400" />
+          </button>
         </div>
       </div>
+      
+      <ReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        targetType="whisper_story_part"
+        targetId={part.id}
+        storyId={part.storyId}
+      />
 
       {/* Interaction Pop-up Units */}
       <AnimatePresence>
@@ -298,6 +318,7 @@ export default function StoryView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, profile } = useAuth();
+  const [isStoryReportModalOpen, setIsStoryReportModalOpen] = useState(false);
 
   const [story, setStory] = useState<Story | null>(null);
   const [parts, setParts] = useState<StoryPart[]>([]);
@@ -648,6 +669,14 @@ export default function StoryView() {
                     {isLiked ? 'Story Liked' : 'Like this Story'}
                     <span className="ml-1 opacity-60">· {story.likes || 0}</span>
                   </button>
+                  <button 
+                    onClick={() => setIsStoryReportModalOpen(true)}
+                    className="h-9 px-4 rounded-xl flex items-center gap-2 text-xs font-bold transition-all border shadow-[0_4px_12px_rgba(0,0,0,0.5)] bg-white/5 text-slate-300 border-white/10 hover:bg-amber-500/10 hover:text-amber-400 hover:border-amber-500/30"
+                    title="Report Story"
+                  >
+                    <AlertTriangle size={14} />
+                    Report
+                  </button>
                   {profile?.is_admin && (
                     <button 
                       onClick={handleDeleteStory}
@@ -822,6 +851,14 @@ export default function StoryView() {
           </motion.div>
         )}
       </div>
+
+      <ReportModal
+        isOpen={isStoryReportModalOpen}
+        onClose={() => setIsStoryReportModalOpen(false)}
+        targetType="whisper_story"
+        targetId={story?.id}
+        storyId={story?.id}
+      />
     </div>
   );
 }

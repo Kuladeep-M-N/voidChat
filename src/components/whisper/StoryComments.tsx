@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, ChevronDown, ChevronUp, Send, CornerDownRight, Trash2 } from 'lucide-react';
+import { MessageCircle, ChevronDown, ChevronUp, Send, CornerDownRight, Trash2, AlertTriangle } from 'lucide-react';
+import ReportModal from '../ReportModal';
 import { db } from '../../lib/firebase';
 import {
   collection, query, where, orderBy, onSnapshot,
@@ -45,6 +46,7 @@ interface CommentItemProps {
 
 function CommentItem({ comment, allComments, depth, onReply, onLike, onDelete, likedIds, isAdmin }: CommentItemProps) {
   const [expanded, setExpanded] = useState(true);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const replies = allComments.filter(c => c.parentId === comment.id);
 
   return (
@@ -78,6 +80,13 @@ function CommentItem({ comment, allComments, depth, onReply, onLike, onDelete, l
                 className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-cyan-400 transition-colors"
               >
                 <CornerDownRight size={11} /> Reply
+              </button>
+              <button
+                onClick={() => setIsReportModalOpen(true)}
+                className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-amber-400 transition-colors"
+                title="Report Comment"
+              >
+                <AlertTriangle size={11} /> Report
               </button>
               {replies.length > 0 && (
                 <button
@@ -120,6 +129,13 @@ function CommentItem({ comment, allComments, depth, onReply, onLike, onDelete, l
           ))}
         </div>
       )}
+      <ReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        targetType="whisper_story_comment"
+        targetId={comment.id}
+        storyId={comment.storyId}
+      />
     </motion.div>
   );
 }
