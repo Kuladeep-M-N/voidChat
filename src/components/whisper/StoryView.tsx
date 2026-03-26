@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Send, Users, ShieldAlert, GitBranch, Copy, Check, Heart, Trash2, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Send, Users, ShieldAlert, GitBranch, Copy, Check, Heart, Trash2, MessageCircle, TrendingUp, Sparkles } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import {
   doc, getDoc, collection, query, where, orderBy, onSnapshot,
@@ -30,7 +30,8 @@ interface StoryPart {
   title: string;
   content: string;
   createdAt: any;
-  reactions: { mindBlown: number; dark: number; genius: number; creepy: number };
+  upvotes: number;
+  downvotes: number;
   plotTwistRatings?: number[];
   branchOptions?: { label: string }[];
 }
@@ -110,8 +111,132 @@ function QuoteHighlight({ storyTitle }: { storyTitle: string }) {
   );
 }
 
-function PlotRating({ partId, existingRatings }: { partId: string; existingRatings?: number[] }) {
+function PartInteractionBar({ part, story, isAuthor, votedIds, onVote }: { 
+  part: StoryPart; 
+  story: Story; 
+  isAuthor: boolean; 
+  votedIds: Set<string>;
+  onVote: (partId: string, type: 'up' | 'down') => void;
+}) {
+  const [activeUnit, setActiveUnit] = useState<'none' | 'vote' | 'comment' | 'rating'>('none');
+  const [commentCount, setCommentCount] = useState(0);
+
+  useEffect(() => {
+    const q = query(collection(db, 'whisper_part_comments'), where('partId', '==', part.id));
+    const unsub = onSnapshot(q, snap => setCommentCount(snap.size));
+    return () => unsub();
+  }, [part.id]);
+
+  const totalVotes = (part.upvotes || 0) - (part.downvotes || 0);
+  const avgRating = part.plotTwistRatings && part.plotTwistRatings.length > 0
+    ? (part.plotTwistRatings.reduce((a, b) => a + b, 0) / part.plotTwistRatings.length).toFixed(1)
+    : '—';
+
+  return (
+    <div className="relative mt-6 pt-4 border-t border-white/5">
+      <div className="flex items-center gap-2">
+        <div className="flex items-center bg-white/5 rounded-full p-1 border border-white/5 backdrop-blur-md">
+          <div className="flex items-center gap-0.5 bg-black/20 rounded-full p-0.5 mr-1">
+            <button 
+              onClick={() => onVote(part.id, 'up')}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full transition-all ${votedIds.has(`${part.id}_up`) ? 'text-orange-500 bg-orange-500/10' : 'text-slate-500 hover:text-orange-400 hover:bg-white/5'}`}
+            >
+              <ArrowLeft size={16} className="rotate-90" />
+              <span className="text-[11px] font-black">{part.upvotes || 0}</span>
+            </button>
+            <div className="w-[1px] h-3 bg-white/10 mx-0.5" />
+            <button 
+              onClick={() => onVote(part.id, 'down')}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full transition-all ${votedIds.has(`${part.id}_down`) ? 'text-indigo-500 bg-indigo-500/10' : 'text-slate-500 hover:text-indigo-400 hover:bg-white/5'}`}
+            >
+              <ArrowLeft size={16} className="-rotate-90" />
+              <span className="text-[11px] font-black">{part.downvotes || 0}</span>
+            </button>
+          </div>
+          
+          <div className="w-[1px] h-4 bg-white/10" />
+          
+          <button 
+            onClick={() => setActiveUnit(activeUnit === 'comment' ? 'none' : 'comment')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${activeUnit === 'comment' ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-400 hover:text-white'}`}
+          >
+            <MessageCircle size={14} className={activeUnit === 'comment' ? 'fill-current' : 'text-cyan-400/70'} />
+            <span>{commentCount}</span>
+          </button>
+          <div className="w-[1px] h-4 bg-white/10" />
+          <button 
+            onClick={() => setActiveUnit(activeUnit === 'rating' ? 'none' : 'rating')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${activeUnit === 'rating' ? 'bg-amber-500/20 text-amber-400' : 'text-slate-400 hover:text-white'}`}
+          >
+            <TrendingUp size={14} className={activeUnit === 'rating' ? 'fill-current' : 'text-amber-400/70'} />
+            <span className="text-amber-300">{avgRating}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Interaction Pop-up Units */}
+      <AnimatePresence>
+        {activeUnit !== 'none' && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-40" onClick={() => setActiveUnit('none')} 
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: -10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: -10 }}
+              className={`absolute top-full left-0 mt-2 z-[100] rounded-2xl bg-[#0a0a14] border border-white/10 shadow-2xl backdrop-blur-2xl overflow-hidden ${activeUnit === 'comment' ? 'w-[450px]' : 'w-72'}`}
+            >
+              <div className="p-4">
+                {activeUnit === 'vote' && (
+                  <div className="space-y-4">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">Vote Insight</p>
+                    <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-center">
+                        <div className="text-2xl font-black text-white mb-1">{totalVotes}</div>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Community Score</p>
+                    </div>
+                  </div>
+                )}
+
+                {activeUnit === 'comment' && (
+                  <div className="max-h-[400px] flex flex-col">
+                    <div className="flex items-center justify-between mb-4">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Part Discussion</p>
+                      <span className="text-[10px] font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full">{commentCount} comments</span>
+                    </div>
+                    <div className="overflow-y-auto scrollbar-hide pr-1">
+                      <StoryComments partId={part.id} storyId={story.id} />
+                    </div>
+                  </div>
+                )}
+
+                {activeUnit === 'rating' && (
+                  <div className="space-y-4">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Plot Complexity</p>
+                    <div className="py-4 text-center rounded-xl bg-white/5 border border-white/5">
+                      <div className="text-4xl font-black text-white glow-text-fuchsia mb-1" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                        {avgRating}
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Average Reader Score</p>
+                    </div>
+                    <p className="text-xs text-slate-400 text-center leading-relaxed">
+                      This score reflects how "unthinkable" readers found this specific plot development.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function PlotRating({ partId, authorId, existingRatings }: { partId: string; authorId: string; existingRatings?: number[] }) {
   const { user } = useAuth();
+  const isAuthor = user?.uid === authorId;
   const [localRating, setLocalRating] = useState<number | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
@@ -120,63 +245,51 @@ function PlotRating({ partId, existingRatings }: { partId: string; existingRatin
     if (stored !== null) { setLocalRating(parseInt(stored)); setSubmitted(true); }
   }, [partId]);
 
-  const avg = existingRatings && existingRatings.length > 0
-    ? (existingRatings.reduce((a, b) => a + b, 0) / existingRatings.length).toFixed(1)
-    : null;
-
-  const handleSubmit = async () => {
-    if (localRating === null || !user || submitted) return;
+  const handleSubmit = async (r: number) => {
+    if (isAuthor || !user || submitted) return;
     try {
       await updateDoc(doc(db, 'whisper_story_parts', partId), {
-        plotTwistRatings: [...(existingRatings || []), localRating],
+        plotTwistRatings: [...(existingRatings || []), r],
       });
-      localStorage.setItem(`plot_twist_${partId}`, String(localRating));
+      localStorage.setItem(`plot_twist_${partId}`, String(r));
+      setLocalRating(r);
       setSubmitted(true);
-      toast.success('Plot Rating saved!');
+      toast.success('Your calculation added to the void.');
     } catch (err) { console.error(err); }
   };
 
+  if (isAuthor || submitted) return null; // We'll show the result in the interaction bar pop-up instead of a permanent box if already submitted
+
   return (
-    <div className="mt-4 p-4 rounded-xl bg-white/3 border border-white/6">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">🌀 Plot Rating</span>
-        {avg ? (
-          <div className="flex items-center gap-1">
-            <span className="text-xl font-black text-fuchsia-400">{avg}</span>
-            <span className="text-xs text-slate-500 font-bold mt-1">/ 10 avg</span>
-          </div>
-        ) : (
-          <span className="text-xs text-slate-500 italic">No ratings yet</span>
-        )}
+    <div className="mt-4 p-6 rounded-2xl bg-[#080810] border border-fuchsia-500/20 backdrop-blur-xl relative overflow-hidden group">
+      <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+        <Sparkles size={64} className="text-fuchsia-500" />
       </div>
-      {!submitted ? (
-        <div className="space-y-3">
-          <input
-            type="range" min={1} max={10}
-            value={localRating ?? 5}
-            onChange={e => setLocalRating(parseInt(e.target.value))}
-            className="plot-twist-slider w-full"
-          />
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-600 font-medium">Predictable</span>
-            <span className="text-sm font-bold text-white bg-white/10 px-2 py-0.5 rounded">{localRating ?? 5}</span>
-            <span className="text-xs text-slate-600 font-medium">Mind-bending</span>
-          </div>
-          <button
-            onClick={handleSubmit}
-            disabled={localRating === null}
-            className="w-full mt-2 py-2 rounded-lg text-xs font-bold text-fuchsia-300 border border-fuchsia-500/30 hover:bg-fuchsia-500/10 transition-all disabled:opacity-40"
-          >
-            Submit Rating
-          </button>
+
+      <div className="relative z-10 mb-4">
+        <h5 className="text-sm font-bold text-white mb-1 uppercase tracking-widest" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+          Calculate Complexity
+        </h5>
+        <p className="text-[11px] text-slate-500">How predictable was this development?</p>
+      </div>
+
+      <div className="relative z-10">
+        <div className="flex flex-wrap gap-1.5 justify-between">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
+            <button
+              key={num}
+              onClick={() => handleSubmit(num)}
+              className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[10px] font-black text-slate-400 hover:bg-fuchsia-600 hover:border-fuchsia-500 hover:text-white transition-all transform hover:-translate-y-1 active:scale-95 shadow-lg"
+            >
+              {num}
+            </button>
+          ))}
         </div>
-      ) : (
-        <div className="text-center py-2 bg-white/5 rounded-lg border border-white/10">
-          <span className="text-sm text-slate-400">
-            You rated it <span className="text-fuchsia-400 font-bold">{localRating}</span> / 10
-          </span>
+        <div className="flex justify-between mt-3 text-[9px] font-bold text-slate-600 uppercase tracking-widest px-1">
+          <span>Obvious</span>
+          <span>Mastermind</span>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -194,7 +307,7 @@ export default function StoryView() {
   const [useBranching, setUseBranching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [reactedIds, setReactedIds] = useState<Set<string>>(new Set());
+  const [votedIds, setVotedIds] = useState<Set<string>>(new Set());
   
   const [isFollowing, setIsFollowing] = useState(false);
   const [followId, setFollowId] = useState<string | null>(null);
@@ -297,14 +410,35 @@ export default function StoryView() {
     }
   }, [parts.length, id]);
 
-  const handleReaction = async (partId: string, key: string) => {
-    if (!user || reactedIds.has(`${partId}_${key}`)) return;
-    setReactedIds(prev => new Set(prev).add(`${partId}_${key}`));
+  const handleVote = async (partId: string, type: 'up' | 'down') => {
+    if (!user) return;
+    const voteKey = `${partId}_${type}`;
+    const hasVoted = votedIds.has(voteKey);
+
+    // Optimistic Update
+    setVotedIds(prev => {
+      const next = new Set(prev);
+      if (hasVoted) next.delete(voteKey);
+      else next.add(voteKey);
+      return next;
+    });
+
     try {
+      const field = type === 'up' ? 'upvotes' : 'downvotes';
       await updateDoc(doc(db, 'whisper_story_parts', partId), {
-        [`reactions.${key}`]: increment(1),
+        [field]: increment(hasVoted ? -1 : 1),
       });
-    } catch (err) { console.error(err); }
+    } catch (err) { 
+      console.error(err); 
+      // Rollback
+      setVotedIds(prev => {
+        const next = new Set(prev);
+        if (hasVoted) next.add(voteKey);
+        else next.delete(voteKey);
+        return next;
+      });
+      toast.error('Failed to vote');
+    }
   };
 
   const toggleFollow = async () => {
@@ -359,7 +493,8 @@ export default function StoryView() {
         title: newPartTitle.trim(),
         content: newPartContent.trim(),
         createdAt: serverTimestamp(),
-        reactions: { mindBlown: 0, dark: 0, genius: 0, creepy: 0 },
+        upvotes: 0,
+        downvotes: 0,
         plotTwistRatings: [],
         branchOptions,
       });
@@ -509,8 +644,8 @@ export default function StoryView() {
         </div>
       </div>
 
-      {/* Parts Timeline */}
-      <div className="max-w-2xl mx-auto space-y-10">
+      {/* Storyboard Layout */}
+      <div className="storyboard-container space-y-16">
         {parts.length === 0 && (
           <div className="text-center py-16 text-slate-600 font-medium">
             No parts published yet. {isAuthor ? 'Write the first one below!' : 'Check back soon...'}
@@ -518,25 +653,17 @@ export default function StoryView() {
         )}
 
         {parts.map((part, index) => (
-          <motion.div
-            key={part.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.08 }}
-            className="relative"
-          >
-            {/* Timeline connector */}
-            {index < parts.length - 1 && (
-              <div className="absolute left-5 top-14 bottom-[-2.5rem] w-[2px] bg-gradient-to-b from-fuchsia-500/30 via-purple-500/15 to-transparent z-0" />
-            )}
+            <motion.div
+              key={part.id}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.1 }}
+              className="storyboard-part"
+              style={{ zIndex: parts.length - index }}
+            >
+            <div className="storyboard-number">{part.number}</div>
 
-            <div className="flex gap-4 relative z-10">
-              {/* Episode number bubble */}
-              <div className="w-10 h-10 rounded-full border-2 border-fuchsia-500/40 bg-fuchsia-500/15 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(191,90,242,0.25)]">
-                <span className="text-fuchsia-300 font-black text-sm">{part.number}</span>
-              </div>
-
-              <div className="flex-1 whisper-card p-6">
+            <div className="story-card-premium">
                 <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-fuchsia-500/30 to-transparent rounded-t-2xl" />
 
                 <div className="flex items-center justify-between mb-4">
@@ -561,47 +688,31 @@ export default function StoryView() {
                   {part.content}
                 </p>
 
-                {/* Emoji Reactions */}
-                <div className="flex flex-wrap gap-2 pt-4 border-t border-white/5">
-                  {REACTIONS.map(r => {
-                    const count = part.reactions?.[r.key as keyof typeof part.reactions] ?? 0;
-                    const reacted = reactedIds.has(`${part.id}_${r.key}`);
-                    return (
-                      <button
-                        key={r.key}
-                        onClick={() => handleReaction(part.id, r.key)}
-                        className={`reaction-btn ${reacted ? 'reacted' : ''}`}
-                        title={r.label}
-                      >
-                        <span className="emoji">{r.emoji}</span>
-                        <span>{count}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                {/* Multi-Interaction Bar (Reddit Style) */}
+                <PartInteractionBar 
+                  part={part} 
+                  story={story} 
+                  isAuthor={isAuthor}
+                  votedIds={votedIds}
+                  onVote={handleVote}
+                />
 
-                {/* Plot Rating */}
-                <PlotRating partId={part.id} existingRatings={part.plotTwistRatings} />
+                {/* Plot Rating (Internal Component for better organization) */}
+                {/* We'll keep PlotRating but make it more premium */}
+                <div className="mt-8">
+                  <PlotRating partId={part.id} authorId={story.authorId} existingRatings={part.plotTwistRatings} />
+                </div>
 
                 {/* Branch Voting */}
                 {part.branchOptions && part.branchOptions.length > 0 && id && (
-                  <StoryBranchVote storyId={id} partId={part.id} options={part.branchOptions} />
+                  <div className="mt-8">
+                    <StoryBranchVote storyId={id} partId={part.id} options={part.branchOptions} />
+                  </div>
                 )}
-              </div>
             </div>
           </motion.div>
         ))}
 
-        {/* Global Story Comments */}
-        <div className="mt-12 pt-8 border-t border-white/5">
-          <div className="flex items-center gap-2 mb-6 text-fuchsia-400">
-            <MessageCircle size={20} />
-            <h3 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-              Discussion
-            </h3>
-          </div>
-          {id && <StoryComments storyId={id} />}
-        </div>
 
         {/* Author Controls */}
         {isAuthor && (

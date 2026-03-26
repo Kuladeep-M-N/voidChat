@@ -2,13 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen, User, Users, ChevronRight, PenTool, X,
-  Flame, Gem, TrendingUp, Search, Tag, Hash, Trash2, Heart
+  Flame, Gem, TrendingUp, Search, Tag, Hash, Trash2, Heart, MessageCircle
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { db } from '../../lib/firebase';
 import {
   collection, query, orderBy, onSnapshot, addDoc, serverTimestamp,
-  where, getDocs, doc, deleteDoc
+  where, getDocs, doc, deleteDoc, getDoc
 } from 'firebase/firestore';
 import { useAuth } from '../../hooks/useAuth';
 import { toast } from 'sonner';
@@ -114,6 +114,28 @@ function StoryCard({ story, index, onClick, onDelete, isAdmin }: {
   onDelete?: (e: React.MouseEvent) => void;
   isAdmin?: boolean;
 }) {
+  const navigate = useNavigate();
+  const [avgRating, setAvgRating] = useState<string>('—');
+
+  useEffect(() => {
+    if (!story.id) return;
+    const q = query(collection(db, 'whisper_story_parts'), where('storyId', '==', story.id));
+    getDocs(q).then(snap => {
+      const allRatings: number[] = [];
+      snap.docs.forEach(d => {
+        const data = d.data();
+        if (data.plotTwistRatings && Array.isArray(data.plotTwistRatings)) {
+          allRatings.push(...data.plotTwistRatings);
+        }
+      });
+      if (allRatings.length > 0) {
+        setAvgRating((allRatings.reduce((a, b) => a + b, 0) / allRatings.length).toFixed(1));
+      } else {
+        setAvgRating('—');
+      }
+    });
+  }, [story.id]);
+
   return (
     <motion.div
       onClick={onClick}
@@ -174,28 +196,37 @@ function StoryCard({ story, index, onClick, onDelete, isAdmin }: {
       {/* Continue reading progress */}
       <ReadingProgress storyId={story.id} />
 
-      {/* Footer */}
-      <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 text-xs text-slate-500">
-            <Users size={12} className="text-cyan-400/70" />
-            <span>{story.followers.toLocaleString()}</span>
-          </div>
-          <div className="flex items-center gap-1 text-xs text-slate-500">
-            <Heart size={11} className="text-pink-400/70" />
+      {/* Interaction Bar (Simplified Reddit Style) */}
+      <div className="flex items-center gap-2 mt-4 pt-4 border-t border-white/5">
+        <div className="flex items-center bg-white/5 rounded-full p-1 border border-white/5 backdrop-blur-md">
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-slate-400">
+            <Heart size={14} className="text-pink-500/70" />
             <span>{story.likes || 0}</span>
           </div>
-          <ReactionMini reactions={story.reactions} />
+          <div className="w-[1px] h-4 bg-white/10" />
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-slate-400">
+            <TrendingUp size={14} className="text-amber-400/70" />
+            <span className="text-amber-300">{avgRating === '—' ? 'New' : avgRating}</span>
+          </div>
         </div>
-        <div className="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-fuchsia-500/20 group-hover:text-fuchsia-400 transition-all">
-          <ChevronRight size={14} />
+        
+        <div className="flex-1" />
+        
+        <div className="flex items-center gap-1 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+          <Users size={12} className="text-indigo-400" />
+          <span>{story.followers.toLocaleString()}</span>
         </div>
       </div>
     </motion.div>
   );
 }
 
-export default function StoriesTab() {
+export default function StoriesTab({ externalFilter, isComposingExternal, onCloseCompose, searchQuery = '' }: { 
+  externalFilter?: string | null; 
+  isComposingExternal?: boolean; 
+  onCloseCompose?: () => void; 
+  searchQuery?: string;
+}) {
   const [stories, setStories] = useState<Story[]>([]);
   const [isComposing, setIsComposing] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -204,11 +235,36 @@ export default function StoriesTab() {
   const [customTag, setCustomTag] = useState('');
   const [penName, setPenName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
   const [followedIds, setFollowedIds] = useState<string[]>([]);
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, profile } = useAuth();
+
+  const isAuthorsView = location.pathname.includes('/authors');
+  const queryParams = new URLSearchParams(location.search);
+  const sortParam = queryParams.get('sort');
+  const authorParam = queryParams.get('author');
+
+  const [authorProfile, setAuthorProfile] = useState<{ name: string } | null>(null);
+
+  useEffect(() => {
+    if (authorParam) {
+      getDoc(doc(db, 'users', authorParam)).then(snap => {
+        if (snap.exists()) setAuthorProfile({ name: snap.data().anonymous_username });
+      });
+    } else {
+      setAuthorProfile(null);
+    }
+  }, [authorParam]);
+
+  useEffect(() => {
+    if (isComposingExternal) setIsComposing(true);
+  }, [isComposingExternal]);
+
+  const handleCloseCompose = () => {
+    setIsComposing(false);
+    if (onCloseCompose) onCloseCompose();
+  };
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -280,7 +336,7 @@ export default function StoriesTab() {
         reactions: { mindBlown: 0, dark: 0, genius: 0, creepy: 0 },
         createdAt: serverTimestamp(),
       });
-      setIsComposing(false);
+      handleCloseCompose();
       setNewTitle('');
       setNewExcerpt('');
       setSelectedTags([]);
@@ -311,18 +367,25 @@ export default function StoriesTab() {
       prev.includes(tag) ? prev.filter(t => t !== tag) : prev.length < 3 ? [...prev, tag] : prev
     );
 
-  // Filtering & search
   const filteredStories = stories.filter(s => {
-    if (activeFilter === 'Following') return followedIds.includes(s.id);
-    const matchTag = (activeFilter && activeFilter !== 'Most Liked') ? s.tags?.includes(activeFilter) : true;
+    if (authorParam) return s.authorId === authorParam;
+    
+    const matchTag = (externalFilter && !['Following', 'Liked'].includes(externalFilter)) 
+      ? s.tags?.includes(externalFilter) 
+      : true;
+    
     const matchSearch = searchQuery
       ? s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.excerpt.toLowerCase().includes(searchQuery.toLowerCase())
+        s.excerpt.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.authorName.toLowerCase().includes(searchQuery.toLowerCase())
       : true;
+
+    if (externalFilter === 'Following') return followedIds.includes(s.id) && matchSearch;
+    
     return matchTag && matchSearch;
   });
 
-  if (activeFilter === 'Most Liked') {
+  if (externalFilter === 'Liked' || sortParam === 'popular') {
     filteredStories.sort((a, b) => (b.likes || 0) - (a.likes || 0));
   }
 
@@ -358,7 +421,7 @@ export default function StoriesTab() {
                 <h3 className="text-lg font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                   ✍️ Start a New Story Thread
                 </h3>
-                <button onClick={() => setIsComposing(false)} className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all">
+                <button onClick={handleCloseCompose} className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all">
                   <X size={16} />
                 </button>
               </div>
@@ -427,50 +490,25 @@ export default function StoriesTab() {
         )}
       </AnimatePresence>
 
-      {/* ── Search + Filter Bar ── */}
-      <div className="flex gap-3 mb-6 flex-wrap items-center">
-        <div className="relative flex-1 min-w-[180px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-          <input
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search stories..."
-            className="w-full bg-white/4 border border-white/8 rounded-full pl-9 pr-4 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-fuchsia-500/40 transition-colors backdrop-blur-sm"
-          />
+      {/* ── Author Search Header ── */}
+      {authorProfile && (
+        <div className="mb-8 p-6 rounded-3xl bg-fuchsia-500/5 border border-fuchsia-500/10 flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold text-fuchsia-400 uppercase tracking-widest block mb-1">Viewing Works By</span>
+            <h2 className="text-xl font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>@{authorProfile.name}</h2>
+          </div>
+          <button 
+            onClick={() => navigate('/whisper/stories')}
+            className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-bold text-slate-400 hover:text-white hover:bg-white/10 transition-all"
+          >
+            Clear Filter
+          </button>
         </div>
-        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
-          <button
-            onClick={() => setActiveFilter(null)}
-            className={`neon-tag ${!activeFilter ? 'neon-tag-purple active' : 'neon-tag-purple'}`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setActiveFilter(activeFilter === 'Following' ? null : 'Following')}
-            className={`neon-tag ${activeFilter === 'Following' ? 'neon-tag-pink active' : 'neon-tag-pink'}`}
-          >
-            Following
-          </button>
-          <button
-            onClick={() => setActiveFilter(activeFilter === 'Most Liked' ? null : 'Most Liked')}
-            className={`neon-tag ${activeFilter === 'Most Liked' ? 'neon-tag-amber active' : 'neon-tag-amber'}`}
-          >
-            Most Liked
-          </button>
-          {PRESET_TAGS.slice(0, 5).map(t => (
-            <button
-              key={t.label}
-              onClick={() => setActiveFilter(activeFilter === t.label ? null : t.label)}
-              className={`${t.style} ${activeFilter === t.label ? 'active' : ''}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      )}
+
 
       {/* ── Trending Section ── */}
-      {trending.length > 0 && !activeFilter && !searchQuery && (
+      {trending.length > 0 && !externalFilter && !searchQuery && (
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-3">
             <Flame size={16} className="text-amber-400" />
@@ -503,7 +541,7 @@ export default function StoriesTab() {
       )}
 
       {/* ── Underrated Gems ── */}
-      {underrated.length > 0 && !activeFilter && !searchQuery && (
+      {underrated.length > 0 && !externalFilter && !searchQuery && (
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-3">
             <Gem size={15} className="text-cyan-400" />
@@ -531,7 +569,7 @@ export default function StoriesTab() {
         <div className="mb-3 flex items-center gap-2">
           <TrendingUp size={14} className="text-slate-500" />
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-            {activeFilter ? `Stories tagged ${activeFilter}` : 'All Stories'}
+            {externalFilter ? `Stories tagged ${externalFilter}` : 'All Stories'}
           </span>
         </div>
       )}
@@ -544,14 +582,14 @@ export default function StoriesTab() {
         >
           <BookOpen className="mx-auto text-slate-600 mb-4" size={36} />
           <p className="text-slate-400 font-bold mb-1" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-            {activeFilter === 'Following' 
+            {externalFilter === 'Following' 
               ? "You aren't following any authors yet." 
-              : (searchQuery || activeFilter ? 'No stories match your filter.' : 'No stories yet in the void.')}
+              : (searchQuery || externalFilter ? 'No stories match your filter.' : 'No stories yet in the void.')}
           </p>
           <p className="text-slate-600 text-sm">
-            {activeFilter === 'Following'
+            {externalFilter === 'Following'
               ? 'Explore the void to find inspiration and follow creators!'
-              : (searchQuery || activeFilter ? 'Try a different tag or search term.' : 'Be the first to start a thread.')}
+              : (searchQuery || externalFilter ? 'Try a different tag or search term.' : 'Be the first to start a thread.')}
           </p>
         </motion.div>
       ) : (
@@ -569,17 +607,6 @@ export default function StoriesTab() {
         </div>
       )}
 
-      {/* ── FAB: Create Story ── */}
-      {!isComposing && (
-        <button
-          className="whisper-fab"
-          style={{ fontFamily: "'Manrope', sans-serif" }}
-          onClick={() => setIsComposing(true)}
-        >
-          <PenTool size={18} />
-          Start a Story
-        </button>
-      )}
     </div>
   );
 }
