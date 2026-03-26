@@ -413,28 +413,50 @@ export default function StoryView() {
   const handleVote = async (partId: string, type: 'up' | 'down') => {
     if (!user) return;
     const voteKey = `${partId}_${type}`;
-    const hasVoted = votedIds.has(voteKey);
+    const otherType = type === 'up' ? 'down' : 'up';
+    const otherVoteKey = `${partId}_${otherType}`;
+    
+    const hasVotedThis = votedIds.has(voteKey);
+    const hasVotedOther = votedIds.has(otherVoteKey);
 
     // Optimistic Update
     setVotedIds(prev => {
       const next = new Set(prev);
-      if (hasVoted) next.delete(voteKey);
-      else next.add(voteKey);
+      if (hasVotedThis) {
+        next.delete(voteKey);
+      } else {
+        next.add(voteKey);
+        if (hasVotedOther) next.delete(otherVoteKey);
+      }
       return next;
     });
 
     try {
-      const field = type === 'up' ? 'upvotes' : 'downvotes';
-      await updateDoc(doc(db, 'whisper_story_parts', partId), {
-        [field]: increment(hasVoted ? -1 : 1),
-      });
+      const updates: any = {};
+      const thisField = type === 'up' ? 'upvotes' : 'downvotes';
+      const otherField = type === 'up' ? 'downvotes' : 'upvotes';
+
+      if (hasVotedThis) {
+        updates[thisField] = increment(-1);
+      } else {
+        updates[thisField] = increment(1);
+        if (hasVotedOther) {
+          updates[otherField] = increment(-1);
+        }
+      }
+
+      await updateDoc(doc(db, 'whisper_story_parts', partId), updates);
     } catch (err) { 
       console.error(err); 
       // Rollback
       setVotedIds(prev => {
         const next = new Set(prev);
-        if (hasVoted) next.add(voteKey);
-        else next.delete(voteKey);
+        if (hasVotedThis) {
+          next.add(voteKey);
+        } else {
+          next.delete(voteKey);
+          if (hasVotedOther) next.add(otherVoteKey);
+        }
         return next;
       });
       toast.error('Failed to vote');
