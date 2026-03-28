@@ -25,6 +25,9 @@ import { verifySession, checkRole, logAdminAction } from './middleware';
 const app = express();
 const port = process.env.PORT || 4000;
 
+// Trust proxies (Render, Vercel, Heroku) so rate limiting identifies the true client IP
+app.set('trust proxy', 1);
+
 // HTTPS Redirection Middleware
 if (process.env.NODE_ENV === 'production') {
   app.use((req, res, next) => {
@@ -124,7 +127,7 @@ app.use('/admin', verifySession, checkRole(['admin', 'moderator']), logAdminActi
 // Secure ICE Servers Proxy (Proxy for Metered TURN credentials)
 app.get('/ice-servers', verifySession, async (req, res) => {
   try {
-    const domain = process.env.METERED_DOMAIN;
+    const domain = process.env.VITE_METERED_DOMAIN;
     const apiKey = process.env.METERED_API_KEY;
     
     if (!domain || !apiKey) {
