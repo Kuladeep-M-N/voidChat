@@ -1,0 +1,178 @@
+﻿
+> vite_react_shadcn_ts@0.0.0 lint
+> eslint .
+
+
+C:\VoidChat\server\src\ai.ts
+  24:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\VoidChat\server\src\auth.ts
+  32:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  81:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\VoidChat\server\src\index.ts
+  158:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  164:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\VoidChat\server\src\validation.ts
+  15:39  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\VoidChat\src\components\GlobalAnnouncement.tsx
+  10:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\VoidChat\src\components\whisper\StoriesTab.tsx
+   30:15  error    Unexpected any. Specify a different type                                                                    @typescript-eslint/no-explicit-any
+  320:6   warning  React Hook useEffect has a missing dependency: 'penName'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\VoidChat\src\components\whisper\StoryComments.tsx
+  22:14  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  26:24  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\VoidChat\src\components\whisper\StoryView.tsx
+   33:14  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+   45:14  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+   55:24  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+   84:6   warning  React Hook useCallback has an unnecessary dependency: 'storyTitle'. Either exclude it or remove the dependency array  react-hooks/exhaustive-deps
+  456:22  error    Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+
+C:\VoidChat\src\hooks\useAuth.tsx
+   30:41  error    Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+  114:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\VoidChat\src\hooks\useNotifications.tsx
+  127:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\VoidChat\src\hooks\useSystemConfig.tsx
+  78:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\VoidChat\src\pages\AdminModeration.tsx
+    89:15  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   104:33  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   147:25  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   148:21  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   149:19  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   150:24  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   155:52  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   156:44  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   157:52  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   163:24  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   164:20  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   165:18  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   166:23  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   173:52  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   183:66  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   328:69  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   358:69  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   367:69  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   416:21  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   417:27  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   418:29  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   426:23  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   427:21  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   428:22  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   433:82  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   435:46  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   560:22  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   561:28  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   606:6   warning  React Hook useEffect has missing dependencies: 'activeTab' and 'runSpamDetection'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+   648:21  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   668:21  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   765:21  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+   879:45  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+  1039:61  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+  1190:36  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+  1190:56  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+  1282:42  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+  1424:50  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+  1474:63  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+  1533:64  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+  1575:60  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+  1618:58  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+  1630:59  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+  1693:49  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+  1823:76  error    Unexpected any. Specify a different type                                                                                               @typescript-eslint/no-explicit-any
+
+C:\VoidChat\src\pages\ChatCenter.tsx
+   54:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   81:52  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  111:37  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  174:36  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  244:21  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\VoidChat\src\pages\ChatRoom.tsx
+   41:44  error    Unexpected any. Specify a different type                                                                                 @typescript-eslint/no-explicit-any
+  219:6   warning  React Hook useEffect has missing dependencies: 'profile' and 'user'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  241:83  error    Unexpected any. Specify a different type                                                                                 @typescript-eslint/no-explicit-any
+  252:58  error    Unexpected any. Specify a different type                                                                                 @typescript-eslint/no-explicit-any
+  268:35  error    Unexpected any. Specify a different type                                                                                 @typescript-eslint/no-explicit-any
+  282:6   warning  React Hook useEffect has missing dependencies: 'profile' and 'user'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\VoidChat\src\pages\Confessions.tsx
+   49:15  error    Unexpected any. Specify a different type                                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  146:24  error    Unexpected any. Specify a different type                                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  202:9   error    Unexpected any. Specify a different type                                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  229:14  error    Unexpected any. Specify a different type                                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  580:21  error    Unexpected any. Specify a different type                                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  622:6   warning  React Hook useEffect has an unnecessary dependency: 'window.location.hash'. Either exclude it or remove the dependency array. Outer scope values like 'window.location.hash' aren't valid dependencies because mutating them doesn't re-render the component  react-hooks/exhaustive-deps
+
+C:\VoidChat\src\pages\DebateArena.tsx
+   49:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   50:16  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  194:21  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  214:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\VoidChat\src\pages\DebateThread.tsx
+  55:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  67:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\VoidChat\src\pages\Join.tsx
+   23:41  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  191:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  234:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\VoidChat\src\pages\Polls.tsx
+   43:15  error    Unexpected any. Specify a different type                                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+   54:15  error    Unexpected any. Specify a different type                                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+   85:24  error    Unexpected any. Specify a different type                                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  163:85  error    Unexpected any. Specify a different type                                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  250:19  error    Unexpected any. Specify a different type                                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  281:19  error    Unexpected any. Specify a different type                                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  298:19  error    Unexpected any. Specify a different type                                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  317:19  error    Unexpected any. Specify a different type                                                                                                                                                                                                                      @typescript-eslint/no-explicit-any
+  338:6   warning  React Hook useEffect has an unnecessary dependency: 'window.location.hash'. Either exclude it or remove the dependency array. Outer scope values like 'window.location.hash' aren't valid dependencies because mutating them doesn't re-render the component  react-hooks/exhaustive-deps
+
+C:\VoidChat\src\pages\QnA.tsx
+   35:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   45:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   83:24  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  276:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  304:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\VoidChat\src\pages\Shoutouts.tsx
+   51:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  106:24  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\VoidChat\src\pages\VoiceRooms.tsx
+    38:15   error    Unexpected any. Specify a different type                                                                                                                            @typescript-eslint/no-explicit-any
+    41:14   error    Unexpected any. Specify a different type                                                                                                                            @typescript-eslint/no-explicit-any
+   150:86   error    Unexpected any. Specify a different type                                                                                                                            @typescript-eslint/no-explicit-any
+   257:22   error    Unexpected any. Specify a different type                                                                                                                            @typescript-eslint/no-explicit-any
+   270:50   error    Unexpected any. Specify a different type                                                                                                                            @typescript-eslint/no-explicit-any
+   271:22   error    Unexpected any. Specify a different type                                                                                                                            @typescript-eslint/no-explicit-any
+   373:14   error    Empty block statement                                                                                                                                               no-empty
+   447:6    warning  React Hook useEffect has missing dependencies: 'activeRoom', 'handRaised', 'isSpeaking', 'muted', and 'myRole'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+   462:6    warning  React Hook useEffect has a missing dependency: 'activeRoom'. Either include it or remove the dependency array                                                       react-hooks/exhaustive-deps
+   569:84   error    Unexpected any. Specify a different type                                                                                                                            @typescript-eslint/no-explicit-any
+   683:52   error    Unexpected any. Specify a different type                                                                                                                            @typescript-eslint/no-explicit-any
+  1558:106  error    Unexpected any. Specify a different type                                                                                                                            @typescript-eslint/no-explicit-any
+  1558:111  error    Unexpected any. Specify a different type                                                                                                                            @typescript-eslint/no-explicit-any
+  1659:53   error    Unexpected any. Specify a different type                                                                                                                            @typescript-eslint/no-explicit-any
+  1691:102  error    Unexpected any. Specify a different type                                                                                                                            @typescript-eslint/no-explicit-any
+  1691:107  error    Unexpected any. Specify a different type                                                                                                                            @typescript-eslint/no-explicit-any
+  1807:45   error    Unexpected any. Specify a different type                                                                                                                            @typescript-eslint/no-explicit-any
+
+C:\VoidChat\tailwind.config.ts
+  110:13  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+Γ£û 125 problems (113 errors, 12 warnings)
+

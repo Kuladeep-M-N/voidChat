@@ -370,7 +370,6 @@ export default function VoiceRooms() {
       console.log(`[VoiceRooms] RTDB Connection Status: ${isConnected}`);
       if (!isConnected) {
         toast.error("RTDB Disconnected - Check your network/env", { id: 'rtdb-status' });
-      } else {
       }
     });
     return () => off(connectedRef);
