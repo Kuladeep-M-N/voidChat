@@ -10,12 +10,26 @@ import path from 'path';
 dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 // Initialize Firebase Admin
-// Note: In local development, we use the FIREBASE_AUTH_EMULATOR_HOST or a service account key
 if (!admin.apps.length) {
-  admin.initializeApp({
-    projectId: process.env.VITE_FIREBASE_PROJECT_ID,
-    databaseURL: process.env.VITE_FIREBASE_DATABASE_URL
-  });
+  const serviceAccountValid = process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY;
+
+  if (serviceAccountValid) {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.VITE_FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        // Render sometimes escapes newlines when pasting into Env Vars, this fixes it:
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      }),
+      databaseURL: process.env.VITE_FIREBASE_DATABASE_URL
+    });
+  } else {
+    // Fallback for local emulator or when GOOGLE_APPLICATION_CREDENTIALS is fundamentally set
+    admin.initializeApp({
+      projectId: process.env.VITE_FIREBASE_PROJECT_ID,
+      databaseURL: process.env.VITE_FIREBASE_DATABASE_URL
+    });
+  }
 }
 
 import authRouter from './auth';
