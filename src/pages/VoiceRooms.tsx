@@ -830,17 +830,49 @@ export default function VoiceRooms() {
   };
 
   const toggleMute = useCallback(() => {
-    const track = localStreamRef.current?.getAudioTracks()[0];
-    if (track) track.enabled = muted;
+    const isUnmuting = muted;
+    
+    if (isUnmuting) {
+      if (myRole === 'audience') {
+        const currentSpeakers = participants.filter(p => p.role === 'speaker');
+        if (currentSpeakers.length >= 5) {
+          toast.error('The stage is full! Maximum 5 members allowed on stage.');
+          return;
+        }
+      }
 
-    // Promote to stage if unmuting from audience
-    if (muted && myRole === 'audience' && localStreamRef.current) {
-      setMyRole('speaker');
-      toast.success("You've moved to the stage!");
+      const track = localStreamRef.current?.getAudioTracks()[0];
+      if (track) {
+        track.enabled = true;
+        setMuted(false);
+        if (myRole === 'audience') {
+          setMyRole('speaker');
+          toast.success("You've moved to the stage!");
+        } else {
+          toast.success("Microphone unmuted.");
+        }
+      } else {
+        toast.error("Microphone not available. Please check your permissions.");
+      }
+    } else {
+      const track = localStreamRef.current?.getAudioTracks()[0];
+      if (track) track.enabled = false;
+      
+      setMuted(true);
+      toast.info("Microphone muted.");
     }
+  }, [muted, myRole, participants]);
 
-    setMuted(m => !m);
-  }, [muted, myRole]);
+  const leaveStage = useCallback(() => {
+    if (myRole !== 'speaker') return;
+    
+    const track = localStreamRef.current?.getAudioTracks()[0];
+    if (track) track.enabled = false;
+    
+    setMuted(true);
+    setMyRole('audience');
+    toast.info("You've stepped down to the audience.");
+  }, [myRole]);
 
   const sendReaction = (emoji: string) => {
     if (!user || !activeRoom || safeMode) return;
@@ -1202,6 +1234,15 @@ export default function VoiceRooms() {
 
           {/* Floating Controls Bar */}
           <div className="absolute bottom-4 sm:bottom-8 left-1/2 -translate-x-1/2 bg-[#1c1c24]/90 backdrop-blur-xl rounded-full px-4 sm:px-6 py-2.5 flex items-center gap-2 sm:gap-3 shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/10 z-30 w-max max-w-[95vw] justify-center">
+            {myRole === 'speaker' && (
+              <button 
+                onClick={leaveStage}
+                className="w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-full bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 flex items-center justify-center transition-all group border border-indigo-500/20"
+                title="Step Down from Stage"
+              >
+                <span className="material-symbols-outlined transition-colors text-[22px]">directions_walk</span>
+              </button>
+            )}
             <button 
               onClick={toggleMute}
               className={`w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center transition-all group ${
