@@ -20,10 +20,12 @@
     text-transform: none;
     display: inline-block;
     white-space: nowrap;
-    word-wrap: normal;
+    overflow-wrap: normal;
     direction: ltr;
     -webkit-font-feature-settings: 'liga';
+    font-feature-settings: 'liga';
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   html {
@@ -848,15 +850,13 @@
     padding: 2.5rem;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
     transition: all 0.3s ease;
+    overflow: visible !important;
   }
   @media (max-width: 640px) {
     .story-card-premium {
       padding: 1rem;
       border-radius: 1rem;
     }
-  }
-  .story-card-premium {
-    overflow: visible !important;
   }
 
   .story-card-premium:hover {
