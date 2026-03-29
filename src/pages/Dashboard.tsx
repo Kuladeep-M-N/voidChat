@@ -56,27 +56,27 @@ export default function Dashboard() {
       <header className="relative z-10 border-b border-white/5 glass sticky top-0">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
           <motion.span className="text-xl font-bold text-gradient" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>VoidChat</motion.span>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-white/5 rounded-full border border-white/10">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
               <span className="text-xs font-medium text-slate-300">{onlineCount} Online</span>
             </div>
-            <span className="text-slate-400 text-sm flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              {profile?.anonymous_username || 'Anonymous'}
+            <span className="text-slate-400 text-sm flex items-center gap-2 min-w-0 truncate">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span className="truncate">{profile?.anonymous_username || 'Anonymous'}</span>
               {profile?.is_admin && (
                 <Link 
                   to="/admin" 
-                  className="ml-2 flex items-center gap-2 px-3 py-1 bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[10px] font-black rounded-full transition hover:bg-amber-500/20"
+                  className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[10px] font-black rounded-full transition hover:bg-amber-500/20 shrink-0 whitespace-nowrap"
                 >
-                  <Shield size={12} />
-                  MOD PANEL
+                  <Shield size={10} />
+                  MOD
                 </Link>
               )}
             </span>
             <button 
               onClick={() => { if (window.confirm('Are you sure you want to leave the void?')) signOut(); }} 
-              className="text-slate-500 hover:text-slate-300 text-sm transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
+              className="text-slate-500 hover:text-slate-300 text-sm transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5 shrink-0"
             >
               Leave
             </button>
