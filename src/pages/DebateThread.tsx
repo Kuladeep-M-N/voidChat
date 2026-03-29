@@ -324,7 +324,7 @@ export default function DebateThread() {
       
       {/* Header */}
       <header className="relative z-20 border-b border-white/5 glass sticky top-0">
-        <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 py-2 sm:py-4">
           <div className="flex items-center gap-4 flex-1">
             <button onClick={() => navigate('/debate-arena')} className="p-2 hover:bg-white/5 rounded-full transition-colors">
               <ArrowLeft size={20} className="text-slate-400" />
@@ -365,9 +365,9 @@ export default function DebateThread() {
         </div>
       </header>
 
-      <main className="relative z-10 flex-1 flex flex-col max-w-7xl mx-auto w-full px-6 py-8 overflow-hidden">
+      <main className="relative z-10 flex-1 flex flex-col max-w-7xl mx-auto w-full px-4 sm:px-6 py-3 sm:py-8 overflow-hidden">
         <motion.div 
-          className="glass border border-white/5 rounded-2xl p-6 mb-8 bg-gradient-to-r from-blue-500/05 to-red-500/05"
+          className="glass border border-white/5 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-3 sm:mb-8 bg-gradient-to-r from-blue-500/05 to-red-500/05"
           initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
         >
           <p className="text-sm text-slate-300 leading-relaxed italic opacity-80">
@@ -392,10 +392,10 @@ export default function DebateThread() {
         )}
 
         {/* Arena Grid */}
-        <div className="flex-1 grid grid-cols-1 grid-rows-2 md:grid-rows-1 md:grid-cols-2 gap-4 md:gap-8 min-h-0 mb-36 md:mb-20 overflow-hidden lg:overflow-visible">
+        <div className="flex-1 grid grid-cols-1 grid-rows-2 md:grid-rows-1 md:grid-cols-2 gap-3 md:gap-8 min-h-0 mb-32 md:mb-20 overflow-hidden lg:overflow-visible">
           {/* Side A */}
           <div className="flex flex-col min-h-0">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-2 sm:mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400">
                   <Star size={16} />
@@ -431,7 +431,7 @@ export default function DebateThread() {
 
           {/* Side B */}
           <div className="flex flex-col min-h-0">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-2 sm:mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center text-red-400">
                   <Zap size={16} />
@@ -469,7 +469,7 @@ export default function DebateThread() {
 
       {/* Input Bar - Floating Style */}
       {debate.status === 'active' ? (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-3xl px-6 z-30">
+        <div className="fixed bottom-4 sm:bottom-8 left-1/2 -translate-x-1/2 w-full max-w-3xl px-4 sm:px-6 z-30">
           <div className="glass border border-white/10 rounded-2xl p-2 shadow-2xl">
             {safeMode ? (
               <div className="flex items-center justify-center p-4 gap-3 text-red-400 font-bold uppercase tracking-widest text-xs">
@@ -548,7 +548,7 @@ function ArgumentCard({ arg, color, onReport }: { arg: Argument, color: 'blue' |
   const isMe = arg.user_id === 'me'; // Just for visual demo
   return (
     <motion.div 
-      className={`p-4 rounded-xl glass border border-white/5 relative group ${color === 'blue' ? 'hover:border-blue-500/20' : 'hover:border-red-500/20'}`}
+      className={`p-3 sm:p-4 rounded-xl glass border border-white/5 relative group ${color === 'blue' ? 'hover:border-blue-500/20' : 'hover:border-red-500/20'}`}
       initial={{ opacity: 0, x: color === 'blue' ? -20 : 20 }}
       animate={{ opacity: 1, x: 0 }}
     >
