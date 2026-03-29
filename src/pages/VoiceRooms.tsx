@@ -1430,20 +1430,21 @@ export default function VoiceRooms() {
             
             {/* Overview Stats Row */}
             {/* Interactive Engagement Cards */}
-            <div className="grid grid-cols-3 gap-2 md:gap-4 lg:gap-6">
+            {/* Interactive Engagement Cards */}
+            <div className="flex overflow-x-auto no-scrollbar snap-x snap-mandatory gap-3 md:grid md:grid-cols-3 md:gap-4 lg:gap-6 -mx-6 px-6 pb-4 md:mx-0 md:px-0 md:pb-0">
               {/* Card 1: Start Room */}
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="relative overflow-hidden group rounded-[1.2rem] border border-white/5 bg-gradient-to-br from-violet-500/10 to-transparent p-3 shadow-lg backdrop-blur-xl transition-all md:rounded-[1.6rem] md:p-6 glass-hover"
+                className="relative overflow-hidden group rounded-[1.2rem] border border-white/5 bg-gradient-to-br from-violet-500/10 to-transparent p-3 sm:p-4 shadow-lg backdrop-blur-xl transition-all md:rounded-[1.6rem] md:p-6 glass-hover shrink-0 w-[42vw] max-w-[180px] md:w-auto md:max-w-none snap-center"
               >
                 <div className="relative flex flex-col items-center text-center gap-1 md:flex-row md:items-start md:justify-between md:text-left md:gap-4">
-                  <div className="order-2 md:order-1">
-                    <p className="font-mono text-[8px] uppercase tracking-wider text-white/38 md:hidden">Start</p>
-                    <p className="hidden font-mono text-[11px] uppercase tracking-[0.26em] text-white/38 md:block">Host</p>
-                    <h3 className="mt-0.5 text-[10px] font-bold text-white md:mt-3 md:text-lg">Start a Voice Room</h3>
+                  <div className="order-2 md:order-1 w-full">
+                    <p className="font-mono text-[8px] sm:text-[9px] uppercase tracking-wider text-white/40 md:hidden">Start</p>
+                    <p className="hidden font-mono text-[11px] uppercase tracking-[0.26em] text-white/40 md:block">Host</p>
+                    <h3 className="mt-0.5 text-[11px] sm:text-[12px] font-bold text-white md:mt-3 md:text-lg">Start a Voice Room</h3>
                     <p className="hidden mt-2 text-sm text-slate-500 leading-relaxed md:block">Host a topic and invite people to join the conversation.</p>
-                    <p className="mt-1 text-[8px] text-slate-500 md:hidden">Host a topic</p>
+                    <p className="mt-1 text-[8px] sm:text-[9px] text-slate-500 md:hidden line-clamp-1">Host a topic</p>
                     
                     <button 
                       type="button"
@@ -1457,15 +1458,15 @@ export default function VoiceRooms() {
                         setShowCreate(true);
                       }}
                       disabled={safeMode}
-                      className="relative z-20 mt-2 w-full py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500 text-violet-400 hover:text-white border border-violet-500/20 font-bold text-[8px] transition-all flex items-center justify-center gap-1.5 group/btn md:mt-6 md:py-2.5 md:rounded-xl md:text-xs cursor-pointer disabled:opacity-50"
+                      className="relative z-20 mt-3 w-full py-2 sm:py-2.5 rounded-lg bg-violet-500/10 hover:bg-violet-500 text-violet-400 hover:text-white border border-violet-500/20 font-bold text-[9px] sm:text-[10px] transition-all flex items-center justify-center gap-1.5 group/btn md:mt-6 md:py-2.5 md:rounded-xl md:text-xs cursor-pointer disabled:opacity-50"
                     >
                       <span>{safeMode ? 'Restricted' : 'Create'}</span>
                       {safeMode ? <ShieldAlert size={10} className="md:size-14" /> : <div className="w-1 h-1 rounded-full bg-violet-400 group-hover/btn:bg-white animate-pulse md:w-1.5 md:h-1.5" />}
                     </button>
                   </div>
                   
-                  <div className="order-1 mb-1 rounded-lg border border-violet-500/20 bg-violet-500/10 p-2 md:order-2 md:mb-0 md:rounded-2xl md:p-3">
-                    <Mic2 className="h-3.5 w-3.5 text-violet-400 md:h-5 md:w-5" />
+                  <div className="order-1 mb-1 rounded-full border border-violet-500/20 bg-violet-500/10 p-2.5 sm:p-3 md:order-2 md:mb-0 md:rounded-2xl md:p-3">
+                    <Mic2 className="h-4 w-4 text-violet-400 md:h-5 md:w-5" />
                     <div className="absolute inset-0 bg-violet-400/20 blur-lg rounded-full animate-pulse opacity-50" />
                   </div>
                 </div>
@@ -1476,34 +1477,34 @@ export default function VoiceRooms() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="relative overflow-hidden group rounded-[1.2rem] border border-white/5 bg-gradient-to-br from-blue-500/10 to-transparent p-3 shadow-lg backdrop-blur-xl transition-all md:rounded-[1.6rem] md:p-6 glass-hover"
+                className="relative overflow-hidden group rounded-[1.2rem] border border-white/5 bg-gradient-to-br from-blue-500/10 to-transparent p-3 sm:p-4 shadow-lg backdrop-blur-xl transition-all md:rounded-[1.6rem] md:p-6 glass-hover shrink-0 w-[42vw] max-w-[180px] md:w-auto md:max-w-none snap-center"
               >
                 <div className="relative flex flex-col items-center text-center gap-1 md:flex-row md:items-start md:justify-between md:text-left md:gap-4">
                   <div className="order-2 md:order-1 w-full">
-                    <p className="font-mono text-[8px] uppercase tracking-wider text-white/38 md:hidden">Live</p>
-                    <p className="hidden font-mono text-[11px] uppercase tracking-[0.26em] text-white/38 md:block">Trending</p>
-                    <h3 className="mt-0.5 text-[10px] font-bold text-white md:mt-3 md:text-lg">Hot Topics</h3>
+                    <p className="font-mono text-[8px] sm:text-[9px] uppercase tracking-wider text-white/40 md:hidden">Live</p>
+                    <p className="hidden font-mono text-[11px] uppercase tracking-[0.26em] text-white/40 md:block">Trending</p>
+                    <h3 className="mt-0.5 text-[11px] sm:text-[12px] font-bold text-white md:mt-3 md:text-lg">Hot Topics</h3>
                     
-                    <div className="mt-2 flex flex-wrap justify-center gap-1 md:mt-4 md:justify-start md:gap-2">
+                    <div className="mt-3 flex flex-wrap justify-center gap-1 md:mt-4 md:justify-start md:gap-2">
                       {hotTopics.length > 0 ? (
                         hotTopics.slice(0, 2).map((room, idx) => (
                           <button 
                             key={room.id}
                             onClick={() => joinRoom(room)}
-                            className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/5 text-[7px] font-medium text-slate-400 hover:text-blue-300 hover:bg-blue-500/10 hover:border-blue-500/30 transition-all flex items-center gap-1 group/topic md:px-3 md:py-1.5 md:rounded-lg md:text-[10px]"
+                            className="w-full px-2 py-1.5 rounded-md bg-white/5 border border-white/5 text-[9px] sm:text-[10px] font-medium text-slate-400 hover:text-blue-300 hover:bg-blue-500/10 hover:border-blue-500/30 transition-all flex items-center justify-center gap-1.5 group/topic md:w-auto md:px-3 md:py-1.5 md:rounded-lg"
                           >
-                            <MessageSquare size={8} className="group-hover/topic:text-blue-400 transition-colors md:size-10" />
-                            <span className="truncate max-w-[40px] md:max-w-none">{room.name}</span>
+                            <MessageSquare size={10} className="group-hover/topic:text-blue-400 transition-colors md:size-10 shrink-0" />
+                            <span className="truncate max-w-[80px] md:max-w-none">{room.name}</span>
                           </button>
                         ))
                       ) : (
-                        <p className="text-[7px] text-slate-600 font-medium italic md:text-[10px]">Scanning...</p>
+                        <p className="w-full text-center text-[9px] sm:text-[10px] text-slate-500 font-medium italic md:text-left py-1">Scanning...</p>
                       )}
                     </div>
                   </div>
                   
-                  <div className="order-1 mb-1 rounded-lg border border-blue-500/20 bg-blue-500/10 p-2 md:order-2 md:mb-0 md:rounded-2xl md:p-3">
-                    <Flame className="h-3.5 w-3.5 text-blue-400 md:h-5 md:w-5" />
+                  <div className="order-1 mb-1 rounded-full border border-blue-500/20 bg-blue-500/10 p-2.5 sm:p-3 md:order-2 md:mb-0 md:rounded-2xl md:p-3">
+                    <Flame className="h-4 w-4 text-blue-400 md:h-5 md:w-5" />
                   </div>
                 </div>
               </motion.div>
@@ -1513,15 +1514,15 @@ export default function VoiceRooms() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="relative overflow-hidden group rounded-[1.2rem] border border-white/5 bg-gradient-to-br from-amber-500/10 to-transparent p-3 shadow-lg backdrop-blur-xl transition-all md:rounded-[1.6rem] md:p-6 glass-hover"
+                className="relative overflow-hidden group rounded-[1.2rem] border border-white/5 bg-gradient-to-br from-amber-500/10 to-transparent p-3 sm:p-4 shadow-lg backdrop-blur-xl transition-all md:rounded-[1.6rem] md:p-6 glass-hover shrink-0 w-[42vw] max-w-[180px] md:w-auto md:max-w-none snap-center"
               >
                 <div className="relative flex flex-col items-center text-center gap-1 md:flex-row md:items-start md:justify-between md:text-left md:gap-4">
-                  <div className="order-2 md:order-1">
-                    <p className="font-mono text-[8px] uppercase tracking-wider text-white/38 md:hidden">Random</p>
-                    <p className="hidden font-mono text-[11px] uppercase tracking-[0.26em] text-white/38 md:block">Shuffle</p>
-                    <h3 className="mt-0.5 text-[10px] font-bold text-white md:mt-3 md:text-lg">Join Random</h3>
+                  <div className="order-2 md:order-1 w-full">
+                    <p className="font-mono text-[8px] sm:text-[9px] uppercase tracking-wider text-white/40 md:hidden">Random</p>
+                    <p className="hidden font-mono text-[11px] uppercase tracking-[0.26em] text-white/40 md:block">Shuffle</p>
+                    <h3 className="mt-0.5 text-[11px] sm:text-[12px] font-bold text-white md:mt-3 md:text-lg">Join Random</h3>
                     <p className="hidden mt-2 text-sm text-slate-500 leading-relaxed md:block">Jump into a random live discussion happening now.</p>
-                    <p className="mt-1 text-[8px] text-slate-500 md:hidden">Jump in</p>
+                    <p className="mt-1 text-[8px] sm:text-[9px] text-slate-500 md:hidden line-clamp-1">Jump in</p>
                     
                     <button 
                       onClick={() => {
@@ -1532,15 +1533,15 @@ export default function VoiceRooms() {
                           setShowNoRoomsOverlay(true);
                         }
                       }}
-                      className="mt-2 w-full py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500 text-amber-400 hover:text-white border border-amber-500/20 font-bold text-[8px] transition-all flex items-center justify-center gap-1.5 group/dice md:mt-6 md:py-2.5 md:rounded-xl md:text-xs"
+                      className="mt-3 w-full py-2 sm:py-2.5 rounded-lg bg-amber-500/10 hover:bg-amber-500 text-amber-400 hover:text-white border border-amber-500/20 font-bold text-[9px] sm:text-[10px] transition-all flex items-center justify-center gap-1.5 group/dice md:mt-6 md:py-2.5 md:rounded-xl md:text-xs"
                     >
-                      <Dices size={10} className="group-hover/dice:rotate-180 transition-transform duration-500 md:size-14" />
+                      <Dices size={12} className="group-hover/dice:rotate-180 transition-transform duration-500 md:size-14" />
                       <span>Shuffle</span>
                     </button>
                   </div>
                   
-                  <div className="order-1 mb-1 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 md:order-2 md:mb-0 md:rounded-2xl md:p-3">
-                    <Dices className="h-3.5 w-3.5 text-amber-400 md:h-5 md:w-5" />
+                  <div className="order-1 mb-1 rounded-full border border-amber-500/20 bg-amber-500/10 p-2.5 sm:p-3 md:order-2 md:mb-0 md:rounded-2xl md:p-3">
+                    <Dices className="h-4 w-4 text-amber-400 md:h-5 md:w-5" />
                   </div>
                 </div>
               </motion.div>
