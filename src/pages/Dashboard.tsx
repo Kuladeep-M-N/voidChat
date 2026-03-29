@@ -103,9 +103,9 @@ export default function Dashboard() {
               transition={{ delay: 0.05 * i }}
               whileHover={{ scale: 1.04, y: -4 }}
             >
-              <div className="relative z-10">
+              <div className="relative z-10 flex flex-col items-center md:items-start">
                 <div className="text-4xl mb-4 transform group-hover:scale-110 transition-transform">{f.emoji}</div>
-                <div className="font-bold text-white text-lg mb-1">{f.label}</div>
+                <div className="font-bold text-white text-base sm:text-lg mb-1">{f.label}</div>
                 <div className="text-xs text-slate-400 leading-relaxed">{f.desc}</div>
               </div>
               <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
