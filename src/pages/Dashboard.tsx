@@ -97,7 +97,7 @@ export default function Dashboard() {
             <motion.button
               key={f.id}
               onClick={() => navigate(f.path)}
-              className={`glass-hover rounded-2xl p-6 text-left bg-gradient-to-br ${f.color} border ${f.border} relative overflow-hidden group`}
+              className={`glass-hover rounded-2xl p-6 text-center md:text-left bg-gradient-to-br ${f.color} border ${f.border} relative overflow-hidden group`}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.05 * i }}

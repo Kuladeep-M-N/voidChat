@@ -1,0 +1,21 @@
+{
+  "name": "VoidChat",
+  "short_name": "VoidChat",
+  "description": "The anonymous invite-only chat platform. No identity. No trace. Just conversation.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#070710",
+  "theme_color": "#070710",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
