@@ -980,7 +980,7 @@ export default function VoiceRooms() {
 
         <main className="flex-1 flex relative overflow-hidden">
           {/* Main Stage Area */}
-          <div className="flex-1 flex flex-col p-4 sm:p-8 overflow-y-auto pb-48 custom-scrollbar-voice">
+          <div className="flex-1 flex flex-col p-4 sm:p-8 overflow-y-auto pb-72 custom-scrollbar-voice">
             <div className="mb-6 sm:mb-12">
               <div className="flex items-center justify-between mb-4 sm:mb-6">
                 <h2 className="text-[10px] sm:text-xs font-bold tracking-widest uppercase text-slate-400">On Stage</h2>
@@ -1113,7 +1113,7 @@ export default function VoiceRooms() {
 
               {/* Scrollable Message Area */}
               <div 
-                className="flex-1 overflow-y-auto pr-2 flex flex-col gap-3 custom-scrollbar-voice min-h-[180px] max-h-[400px]" 
+                className="flex-1 flex flex-col gap-3 custom-scrollbar-voice" 
                 ref={chatScrollRef}
               >
                 {chatMessages.length === 0 ? (
@@ -1227,9 +1227,51 @@ export default function VoiceRooms() {
           </aside>
 
           {/* Floating Controls Bar */}
-          <div className="absolute bottom-4 sm:bottom-8 left-0 right-0 z-30 flex justify-center px-2 pointer-events-none">
+          <div className="absolute bottom-4 sm:bottom-8 left-0 right-0 z-30 flex flex-col items-center gap-4 px-2 pointer-events-none">
+            {/* Reaction Menu - Viewport Centered */}
+            <AnimatePresence>
+              {showReactionMenu && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20, scale: 0.9 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 20, scale: 0.9 }}
+                  className="fixed bottom-40 left-1/2 -translate-x-1/2 bg-[#1c1c24]/95 backdrop-blur-3xl border border-white/10 rounded-2xl p-2.5 flex gap-2.5 shadow-[0_20px_60px_rgba(0,0,0,0.8)] z-[100] overflow-visible pointer-events-auto"
+                  style={{ minWidth: 'max-content' }}
+                >
+                  {['❤️', '🔥', '👍', '😂', '😮', '🙌'].map(emoji => (
+                    <button 
+                      key={emoji}
+                      onClick={() => sendReaction(emoji)}
+                      className="w-12 h-12 flex items-center justify-center text-3xl hover:bg-white/5 rounded-xl transition-all hover:scale-110 active:scale-90"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Mobile Persistent Chat Input Bar - Always Centered */}
+            <div className="lg:hidden w-full max-w-md pointer-events-auto z-[90]">
+              <div className="relative flex items-center bg-[#1c1c24]/90 backdrop-blur-2xl rounded-2xl p-1 border border-white/15 shadow-[0_10px_40px_rgba(0,0,0,0.4)]">
+                <input 
+                  type="text"
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && sendChat()}
+                  placeholder="Comment..."
+                  className="w-full bg-transparent py-3 pl-4 pr-12 text-sm text-slate-100 placeholder-slate-500 focus:outline-none transition-all"
+                />
+                <button 
+                  onClick={sendChat}
+                  className="absolute right-1 w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white hover:bg-indigo-500 transition-colors shadow-lg active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-[20px]">send</span>
+                </button>
+              </div>
+            </div>
+
             <div className="relative pointer-events-auto">
-              {/* Floating Reactions - Moved OUTSIDE scroll container */}
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 pointer-events-none z-[60] mb-2 w-full h-0">
                 <AnimatePresence>
                   {floatingReactions.map(r => (
@@ -1245,49 +1287,6 @@ export default function VoiceRooms() {
                     </motion.div>
                   ))}
                 </AnimatePresence>
-              </div>
-
-              {/* Reaction Menu - Fixed Positioning on Mobile */}
-              <AnimatePresence>
-                {showReactionMenu && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 20, scale: 0.9 }}
-                    animate={{ opacity: 1, y: 0.5, scale: 1 }}
-                    exit={{ opacity: 0, y: 20, scale: 0.9 }}
-                    className="fixed bottom-36 sm:bottom-auto sm:absolute sm:bottom-full mb-4 left-1/2 -translate-x-1/2 bg-[#1c1c24]/95 backdrop-blur-2xl border border-white/10 rounded-2xl p-2.5 flex gap-2.5 shadow-[0_20px_60px_rgba(0,0,0,0.8)] z-[100] overflow-visible"
-                    style={{ minWidth: 'max-content' }}
-                  >
-                    {['❤️', '🔥', '👍', '😂', '😮', '🙌'].map(emoji => (
-                      <button 
-                        key={emoji}
-                        onClick={() => sendReaction(emoji)}
-                        className="w-11 h-11 flex items-center justify-center text-2xl hover:bg-white/5 rounded-xl transition-all hover:scale-110 active:scale-90"
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Mobile Persistent Chat Input Bar */}
-              <div className="lg:hidden absolute bottom-16 left-0 right-0 px-4 w-full h-auto pointer-events-auto">
-                <div className="relative flex items-center bg-[#1c1c24]/90 backdrop-blur-xl rounded-2xl p-1 border border-white/15 shadow-2xl">
-                  <input 
-                    type="text"
-                    value={chatInput}
-                    onChange={e => setChatInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && sendChat()}
-                    placeholder="Comment..."
-                    className="w-full bg-transparent py-3 pl-4 pr-12 text-sm text-slate-100 placeholder-slate-500 focus:outline-none transition-all"
-                  />
-                  <button 
-                    onClick={sendChat}
-                    className="absolute right-1 w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white hover:bg-indigo-500 transition-colors shadow-lg active:scale-95"
-                  >
-                    <span className="material-symbols-outlined text-[20px]">send</span>
-                  </button>
-                </div>
               </div>
 
               <div className="bg-[#1c1c24]/90 backdrop-blur-xl rounded-full px-3 sm:px-6 py-2 sm:py-2.5 flex items-center justify-center gap-1.5 sm:gap-3 shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/10 w-auto max-w-full overflow-x-auto no-scrollbar">
