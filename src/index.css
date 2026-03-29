@@ -371,11 +371,15 @@
   }
 
   .custom-scrollbar-voice::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
+    width: 6px;
+    height: 6px;
   }
   .custom-scrollbar-voice::-webkit-scrollbar-thumb {
-    background: rgba(189, 141, 206, 0.2);
+    background: rgba(189, 141, 206, 0.7) !important;
+    border-radius: 10px;
+  }
+  .custom-scrollbar-voice::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
     border-radius: 10px;
   }
 
