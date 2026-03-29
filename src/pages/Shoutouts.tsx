@@ -164,6 +164,8 @@ export default function Shoutouts() {
   const [presenceCount, setPresenceCount] = useState(1);
   const [reportingContent, setReportingContent] = useState<{ type: 'shoutout' | 'user' | 'shoutout_comment'; id: string } | null>(null);
   const [reportCounts, setReportCounts] = useState<Record<string, number>>({});
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -234,7 +236,12 @@ export default function Shoutouts() {
       setPresenceCount(Math.max(1, snapshot.size));
     });
 
-    const handleGlobalClick = () => setActiveMenuId(null);
+    const handleGlobalClick = (e: MouseEvent) => {
+      setActiveMenuId(null);
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
     window.addEventListener('click', handleGlobalClick);
 
     return () => {
@@ -249,7 +256,13 @@ export default function Shoutouts() {
 
   const myName = profile?.anonymous_username ?? 'Ghost_System';
 
-  const spotlightNames = useMemo(() => usernameList.filter((name) => name !== myName).slice(0, 6), [myName, usernameList]);
+  const filteredUsernames = useMemo(() => {
+    const search = toAlias.toLowerCase().replace(/^@+/, '');
+    if (!showDropdown && !search) return [];
+    return usernameList
+      .filter(name => name !== myName && name.toLowerCase().includes(search))
+      .slice(0, 10);
+  }, [usernameList, toAlias, myName, showDropdown]);
 
   const visibleShoutouts = useMemo(() => {
     const filtered = shoutouts.filter((item) => {
@@ -651,37 +664,54 @@ export default function Shoutouts() {
             {/* Removed global reply context UI - replies are now inline */}
 
             <div className="space-y-4">
-              <div className="space-y-2">
+              <div className="relative space-y-2" ref={dropdownRef}>
                 <label className="ml-1 block font-mono text-[10px] uppercase tracking-[0.32em] text-white/40">
                   Send To (Username)
                 </label>
-                <input
-                  list="usernames"
-                  className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-base text-cyan-200 outline-none transition focus:border-violet-400/50 focus:bg-violet-500/[0.07] focus:ring-2 focus:ring-violet-500/20"
-                  placeholder="@who_is_this_for?"
-                  value={toAlias}
-                  onChange={(event) => setToAlias(event.target.value)}
-                  maxLength={30}
-                />
-                <datalist id="usernames">
-                  {usernameList.filter((name) => name !== myName).map((name) => (
-                    <option key={name} value={name} />
-                  ))}
-                </datalist>
-                {spotlightNames.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {spotlightNames.map((name) => (
-                      <button
-                        key={name}
-                        type="button"
-                        onClick={() => setToAlias(name)}
-                        className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-white/65 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-cyan-200"
-                      >
-                        @{name}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <div className="relative">
+                  <AtSign className={`absolute left-5 top-1/2 h-4 w-4 -translate-y-1/2 transition-colors ${toAlias ? 'text-cyan-400' : 'text-white/20'}`} />
+                  <input
+                    type="text"
+                    autoComplete="off"
+                    className="w-full rounded-2xl border border-white/10 bg-white/[0.04] py-4 pl-12 pr-5 text-base text-cyan-200 outline-none transition focus:border-violet-400/50 focus:bg-violet-500/[0.07] focus:ring-2 focus:ring-violet-500/20"
+                    placeholder="who_is_this_for?"
+                    value={toAlias}
+                    onFocus={() => setShowDropdown(true)}
+                    onChange={(event) => {
+                      setToAlias(event.target.value);
+                      setShowDropdown(true);
+                    }}
+                    maxLength={30}
+                  />
+                </div>
+
+                <AnimatePresence>
+                  {showDropdown && filteredUsernames.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                      className="absolute left-0 right-0 top-full z-50 mt-2 max-h-60 overflow-y-auto rounded-2xl border border-white/10 bg-[#0d0e14]/95 p-2 shadow-2xl backdrop-blur-3xl custom-scrollbar-voice"
+                    >
+                      {filteredUsernames.map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => {
+                            setToAlias(name);
+                            setShowDropdown(false);
+                          }}
+                          className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-white/5 group"
+                        >
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-500/10 text-[10px] font-bold text-violet-300 border border-violet-500/20 group-hover:bg-violet-500/20">
+                            {name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <span className="text-sm font-medium text-white/80 group-hover:text-cyan-300">@{name}</span>
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               <div className="space-y-2">
