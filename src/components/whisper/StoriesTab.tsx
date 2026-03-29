@@ -465,10 +465,10 @@ export default function StoriesTab({ externalFilter, isComposingExternal, onClos
               <textarea
                 value={newExcerpt}
                 onChange={e => setNewExcerpt(e.target.value)}
-                placeholder="Hook readers with a short excerpt (max 200 chars)..."
+                placeholder="Hook readers with a short excerpt (max 100 chars)..."
                 className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-slate-200 mb-4 outline-none focus:border-fuchsia-500/60 h-24 resize-none transition-colors placeholder-slate-600"
                 style={{ fontFamily: "'Manrope', sans-serif" }}
-                maxLength={200}
+                maxLength={100}
               />
 
               {/* Tag selector */}

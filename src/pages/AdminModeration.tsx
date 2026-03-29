@@ -735,7 +735,14 @@ export default function AdminModeration() {
       'poll_votes',
       'voice_rooms',
       'notifications',
-      'online_users'
+      'online_users',
+      'whisper_stories',
+      'whisper_story_parts',
+      'whisper_story_comments',
+      'whisper_part_comments',
+      'whisper_story_follows',
+      'whisper_story_likes',
+      'whisper_branch_votes'
     ];
 
     setErasureTotal(collectionsToErase.length);
@@ -1017,7 +1024,7 @@ export default function AdminModeration() {
               <h2 className="text-2xl font-black uppercase tracking-tight">Danger Zone</h2>
             </div>
             <p className="text-slate-300 mb-8 leading-relaxed">
-              The <span className="text-red-400 font-bold">Nuclear Option</span> will permanently erase every single piece of content on this platform—including messages, polls, shouts, and reports. User profiles will be preserved, but all their history will vanish forever.
+              The <span className="text-red-400 font-bold">Nuclear Option</span> will permanently erase every single piece of content on this platform—including messages, polls, shouts, whisper stories, and reports. User profiles will be preserved, but all their history will vanish forever.
             </p>
             <button 
               onClick={() => setShowNuclearModal(true)}
