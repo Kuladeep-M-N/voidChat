@@ -387,7 +387,7 @@ export default function DebateArena() {
                           {debate.category}
                         </span>
                         <div className="flex items-center gap-2">
-                          {profile?.is_admin && (
+                          {(profile?.is_admin || debate.created_by === user?.uid) && (
                             <div className="flex items-center gap-1.5">
                               {debate.status !== 'closed' && (
                                 <button 
