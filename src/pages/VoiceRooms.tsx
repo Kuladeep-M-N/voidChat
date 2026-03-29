@@ -897,8 +897,14 @@ export default function VoiceRooms() {
     if (!isVoiceRoute && activeRoom) {
       // Minimized Widget
       return (
-        <div className="fixed bottom-6 right-6 z-50 font-display">
-          <div className="bg-room-dark/95 backdrop-blur-xl border border-white/10 p-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-4 w-72">
+        <motion.div 
+          drag
+          dragConstraints={{ left: -window.innerWidth + 300, right: 0, top: -window.innerHeight + 100, bottom: 0 }}
+          dragElastic={0.1}
+          dragMomentum={false}
+          className="fixed bottom-6 right-6 z-50 font-display cursor-grab active:cursor-grabbing"
+        >
+          <div className="bg-room-dark/95 backdrop-blur-xl border border-white/10 p-4 rounded-3xl shadow-[0_40px_100px_rgba(0,0,0,0.6)] flex items-center gap-4 w-80 select-none">
             <div className={`w-12 h-12 rounded-full flex items-center justify-center relative overflow-hidden shrink-0 border-2 ${isSpeaking && !muted ? 'border-accent-purple speaking-glow' : 'border-white/10'}`}>
               <Mic size={20} className="relative z-10 text-white" />
             </div>
@@ -912,14 +918,20 @@ export default function VoiceRooms() {
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              <button onClick={toggleMute} className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${muted ? 'bg-red-500/20 text-red-500' : 'bg-white/10 text-white hover:bg-white/20'}`}>
+              <button 
+                onClick={(e) => { e.stopPropagation(); toggleMute(); }} 
+                className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${muted ? 'bg-red-500/20 text-red-500' : 'bg-white/10 text-white hover:bg-white/20'}`}
+              >
                 <span className="material-symbols-outlined text-[20px]">{muted ? 'mic_off' : 'mic'}</span>
               </button>
-              <button onClick={() => navigate('/voice')} className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all">
+              <button 
+                onClick={(e) => { e.stopPropagation(); navigate('/voice'); }} 
+                className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all"
+              >
                 <span className="material-symbols-outlined text-[20px]">open_in_full</span>
               </button>
               <button 
-                onClick={() => { if (window.confirm('Leave this room?')) leaveRoom(); }} 
+                onClick={(e) => { e.stopPropagation(); if (window.confirm('Leave this room?')) leaveRoom(); }} 
                 className="w-9 h-9 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center transition-all" 
                 title="Leave"
               >
@@ -927,7 +939,7 @@ export default function VoiceRooms() {
               </button>
             </div>
           </div>
-        </div>
+        </motion.div>
       );
     }
     return null;
