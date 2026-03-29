@@ -206,7 +206,7 @@ function PartInteractionBar({ part, story, isAuthor, votedIds, onVote }: {
               initial={{ opacity: 0, scale: 0.95, y: -10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -10 }}
-              className={`absolute top-full left-0 mt-2 z-[100] rounded-2xl bg-[#0a0a14] border border-white/10 shadow-2xl backdrop-blur-2xl overflow-hidden ${activeUnit === 'comment' ? 'w-[450px]' : 'w-72'}`}
+              className={`fixed sm:absolute top-1/2 left-1/2 sm:top-full sm:left-0 -translate-x-1/2 -translate-y-1/2 sm:translate-x-0 sm:translate-y-0 mt-0 sm:mt-2 z-[100] rounded-2xl bg-[#0a0a14] border border-white/10 shadow-2xl backdrop-blur-2xl overflow-hidden w-[94vw] max-w-lg ${activeUnit === 'comment' ? 'sm:w-[450px]' : 'sm:w-72'}`}
             >
               <div className="p-4">
                 {activeUnit === 'vote' && (
@@ -220,7 +220,7 @@ function PartInteractionBar({ part, story, isAuthor, votedIds, onVote }: {
                 )}
 
                 {activeUnit === 'comment' && (
-                  <div className="max-h-[400px] flex flex-col">
+                  <div className="max-h-[75vh] sm:max-h-[400px] flex flex-col">
                     <div className="flex items-center justify-between mb-4">
                       <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Part Discussion</p>
                       <span className="text-[10px] font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full">{commentCount} comments</span>
