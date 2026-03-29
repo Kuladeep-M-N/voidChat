@@ -845,9 +845,9 @@ export default function Confessions() {
                   >
                     <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
                     <div className="relative z-10">
-                      <div className="flex items-center justify-between">
-                        <div className="text-[11px] font-black uppercase tracking-[0.15em] text-slate-500">Vibe Check</div>
-                        <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r ${spotlight ? getVibeInfo(spotlight, commentCounts[spotlight.id] || 0).color : 'from-slate-500 to-slate-700'} text-[9px] font-black text-white uppercase tracking-widest`}>
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+                        <div className="text-[10px] sm:text-[11px] font-black uppercase tracking-widest sm:tracking-[0.15em] text-slate-500 leading-tight">Vibe Check</div>
+                        <div className={`self-end sm:self-auto flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r ${spotlight ? getVibeInfo(spotlight, commentCounts[spotlight.id] || 0).color : 'from-slate-500 to-slate-700'} text-[9px] font-black text-white uppercase tracking-widest shrink-0`}>
                           <span>{spotlight ? getVibeInfo(spotlight, commentCounts[spotlight.id] || 0).emoji : '✨'}</span>
                           <span>{spotlight ? getVibeInfo(spotlight, commentCounts[spotlight.id] || 0).label : 'Calm'}</span>
                         </div>
@@ -872,18 +872,18 @@ export default function Confessions() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3 lg:flex lg:flex-col lg:gap-4">
+              <div className="flex flex-col sm:grid sm:grid-cols-3 gap-3 lg:flex lg:flex-col lg:gap-4">
                 {/* Spotlight Card: Mini on mobile, detailed on desktop */}
                 <div className="col-span-1 lg:col-span-full">
-                  <div className="lg:hidden confession-mini-panel h-full flex flex-col justify-between">
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-widest block mb-1" style={{ color: spotlightMeta.accent }}>{spotlightMeta.label}</span>
-                      <p className="text-[11px] leading-relaxed text-slate-300 line-clamp-2 break-all overflow-hidden">{spotlight?.content ?? 'Spotlight'}</p>
+                  <div className="lg:hidden confession-mini-panel h-full flex sm:flex-col justify-between items-center sm:items-start text-left gap-2 sm:gap-0">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[10px] font-bold uppercase tracking-widest block mb-0.5 sm:mb-1 truncate" style={{ color: spotlightMeta.accent }}>{spotlightMeta.label}</span>
+                      <p className="text-[11px] leading-relaxed text-slate-300 line-clamp-1 sm:line-clamp-2 break-all overflow-hidden">{spotlight?.content ?? 'Spotlight'}</p>
                     </div>
                     {spotlight && (
                       <button
                         onClick={() => setCommentTarget(spotlight)}
-                        className="mt-2 text-[10px] font-bold uppercase tracking-widest text-orange-400/80 hover:text-orange-400 transition-colors"
+                        className="shrink-0 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-orange-400/80 hover:text-orange-400 transition-colors"
                       >
                         Open thread
                       </button>
@@ -924,13 +924,13 @@ export default function Confessions() {
                   </div>
                 </div>
 
-                <div className="confession-mini-panel h-full flex flex-col justify-between">
-                  <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Freshest drop</p>
-                  <p className="mt-1 text-[11px] text-slate-200 line-clamp-2 break-all overflow-hidden">{latestDrop ? latestDrop.content.slice(0, 88) : 'No confessions yet.'}</p>
+                <div className="confession-mini-panel sm:h-full flex flex-row sm:flex-col justify-between items-center sm:items-start gap-4 sm:gap-0">
+                  <p className="shrink-0 text-[10px] sm:text-[10px] uppercase tracking-widest sm:tracking-[0.22em] text-slate-500">Freshest drop</p>
+                  <p className="mt-0 sm:mt-1 text-[11px] text-slate-200 line-clamp-1 sm:line-clamp-2 break-all overflow-hidden flex-1 text-right sm:text-left min-w-0">{latestDrop ? latestDrop.content.slice(0, 88) : 'No confessions yet.'}</p>
                 </div>
-                <div className="confession-mini-panel h-full flex flex-col justify-between">
-                  <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Collections</p>
-                  <p className="mt-1 text-[11px] text-slate-200 line-clamp-2">{bookmarkedIds.size} saved.</p>
+                <div className="confession-mini-panel sm:h-full flex flex-row sm:flex-col justify-between items-center sm:items-start gap-4 sm:gap-0">
+                  <p className="shrink-0 text-[10px] sm:text-[10px] uppercase tracking-widest sm:tracking-[0.22em] text-slate-500">Collections</p>
+                  <p className="mt-0 sm:mt-1 text-[11px] text-slate-200 line-clamp-1 sm:line-clamp-2 text-right sm:text-left">{bookmarkedIds.size} saved.</p>
                 </div>
               </div>
             </div>
@@ -964,7 +964,7 @@ export default function Confessions() {
                 <button
                   key={item.key}
                   onClick={() => setCategory(item.key)}
-                  className={`rounded-full border px-4 py-2 text-sm transition ${
+                  className={`rounded-full border px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm transition ${
                     category === item.key ? 'text-white shadow-lg' : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-white'
                   }`}
                   style={
@@ -1019,13 +1019,13 @@ export default function Confessions() {
                     setText('');
                     window.localStorage.removeItem(LOCAL_STORAGE_KEYS.draft);
                   }}
-                  className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/8 hover:text-white"
+                  className="rounded-full border border-white/10 px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm text-slate-300 transition hover:bg-white/8 hover:text-white"
                 >
                   Clear draft
                 </button>
                 <button
                   onClick={post}
-                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-orange-500 via-pink-500 to-violet-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(249,115,22,0.35)] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 sm:gap-2 rounded-full bg-gradient-to-r from-orange-500 via-pink-500 to-violet-500 px-4 py-2 sm:px-5 sm:py-2.5 text-xs sm:text-sm font-semibold text-white shadow-[0_18px_45px_rgba(249,115,22,0.35)] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={!text.trim() || posting || safeMode || isDisabled}
                 >
                   {safeMode || isDisabled ? <ShieldAlert size={16} /> : <Sparkles size={16} />}
@@ -1044,7 +1044,7 @@ export default function Confessions() {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => setOnlyBookmarked((current) => !current)}
-                  className={`rounded-full border px-4 py-2 text-sm transition ${
+                  className={`rounded-full border px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm transition ${
                     onlyBookmarked ? 'border-orange-400/50 bg-orange-500/15 text-orange-200' : 'border-white/10 text-slate-300 hover:bg-white/8 hover:text-white'
                   }`}
                 >
@@ -1053,7 +1053,7 @@ export default function Confessions() {
                 </button>
                 <button
                   onClick={reviveDismissed}
-                  className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/8 hover:text-white"
+                  className="rounded-full border border-white/10 px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm text-slate-300 transition hover:bg-white/8 hover:text-white"
                 >
                   Restore hidden
                 </button>
@@ -1061,7 +1061,7 @@ export default function Confessions() {
             </div>
 
             <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto_auto]">
-              <label className="flex items-center gap-3 rounded-[1.25rem] border border-white/10 bg-black/20 px-4 py-3">
+              <label className="flex items-center gap-2 sm:gap-3 rounded-full sm:rounded-[1.25rem] border border-white/10 bg-black/20 px-3 py-2 sm:px-4 sm:py-3">
                 <Search size={16} className="text-slate-500" />
                 <input
                   value={search}
@@ -1075,7 +1075,7 @@ export default function Confessions() {
                   <button
                     key={mode}
                     onClick={() => setSortBy(mode)}
-                    className={`rounded-full border px-4 py-2 text-sm transition ${
+                    className={`rounded-full border px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm transition ${
                       sortBy === mode ? 'border-orange-400/50 bg-orange-500/15 text-orange-200' : 'border-white/10 text-slate-300 hover:bg-white/8 hover:text-white'
                     }`}
                   >
@@ -1088,7 +1088,7 @@ export default function Confessions() {
                   <button
                     key={item.key}
                     onClick={() => setFilterCat(item.key)}
-                    className={`rounded-full border px-4 py-2 text-sm transition ${
+                    className={`rounded-full border px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm transition ${
                       filterCat === item.key ? 'border-white/20 text-white' : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-white'
                     }`}
                     style={filterCat === item.key ? { backgroundColor: `${item.accent}22` } : undefined}
@@ -1159,7 +1159,7 @@ export default function Confessions() {
                       </div>
 
                       <div className="max-h-[300px] overflow-y-auto custom-scrollbar-voice pr-2">
-                        <p className="text-[15px] leading-7 text-slate-100 sm:text-base break-all">{confession.content}</p>
+                        <p className="text-sm sm:text-base leading-6 sm:leading-7 text-slate-100 break-all">{confession.content}</p>
                       </div>
 
                       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">

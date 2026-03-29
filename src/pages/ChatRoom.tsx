@@ -675,9 +675,6 @@ export default function ChatRoom() {
                   </div>
                 )}
                 <div className="flex items-center gap-1 sm:gap-2 px-1 sm:px-2">
-                  <button className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-slate-500 hover:text-cyan-400 transition-colors">
-                    <Paperclip className="w-4 h-4 sm:w-5 sm:h-5" />
-                  </button>
                   <input
                     id="chatMessageInput"
                     name="chatMessageInput"

@@ -352,6 +352,11 @@
       padding: 0.6rem 0.8rem;
     }
 
+    .confession-action {
+      padding: 0.5rem 0.6rem;
+      font-size: 0.75rem;
+    }
+
     .confession-stat-card,
     .confession-spotlight-card,
     .confession-mini-panel {
