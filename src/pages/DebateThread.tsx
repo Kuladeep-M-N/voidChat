@@ -319,7 +319,7 @@ export default function DebateThread() {
   const pctB = 100 - pctA;
 
   return (
-    <div className="min-h-screen bg-[#07070f] flex flex-col relative overflow-hidden">
+    <div className="h-[100dvh] bg-[#07070f] flex flex-col relative overflow-hidden">
       <div className="ambient-blob w-full h-[300px] bg-slate-600/05 top-0 left-0" />
       
       {/* Header */}
