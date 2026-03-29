@@ -1113,7 +1113,7 @@ export default function VoiceRooms() {
 
               {/* Scrollable Message Area */}
               <div 
-                className="flex-1 flex flex-col gap-3 custom-scrollbar-voice" 
+                className="flex-1 overflow-y-auto pr-1 flex flex-col gap-3 custom-scrollbar-voice max-h-[320px]" 
                 ref={chatScrollRef}
               >
                 {chatMessages.length === 0 ? (
