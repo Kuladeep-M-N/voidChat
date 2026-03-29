@@ -84,6 +84,7 @@ export default function DebateThread() {
   const [text, setText] = useState('');
   const [selectedSide, setSelectedSide] = useState<'A' | 'B' | null>(null);
   const [sending, setSending] = useState(false);
+  const [activeParticipants, setActiveParticipants] = useState(1);
   const [reportingArg, setReportingArg] = useState<string | null>(null);
 
   const bottomRefA = useRef<HTMLDivElement>(null);
@@ -176,9 +177,34 @@ export default function DebateThread() {
 
     unsubArgsFunction = unsubArgs;
 
+    // Room Presence Pulse
+    const pulsePresence = async () => {
+      try {
+        await setDoc(doc(db, 'debate_presence', debateId, 'active_users', user.uid), {
+          user_id: user.uid,
+          last_seen: serverTimestamp()
+        });
+      } catch (e) {
+        console.error("Presence Pulse Error:", e);
+      }
+    };
+    pulsePresence();
+    const pulseInterval = setInterval(pulsePresence, 30000);
+
+    // Room Presence Listener
+    const presenceQuery = query(
+      collection(db, 'debate_presence', debateId, 'active_users'),
+      where('last_seen', '>', new Date(Date.now() - 60000))
+    );
+    const unsubPresence = onSnapshot(presenceQuery, (snap) => {
+      setActiveParticipants(Math.max(1, snap.size));
+    });
+
     return () => {
       unsubDebate();
       unsubArgsFunction();
+      clearInterval(pulseInterval);
+      unsubPresence();
     };
   }, [debateId, user, navigate]);
 
@@ -356,7 +382,7 @@ export default function DebateThread() {
             <div className="flex items-center gap-1 sm:gap-2">
               <Users size={14} className="sm:hidden" />
               <Users size={16} className="hidden sm:block" />
-              <span className="text-xs sm:text-sm font-bold">{debate.participantCount}</span>
+              <span className="text-xs sm:text-sm font-bold">{activeParticipants}</span>
             </div>
           </div>
         </div>
