@@ -793,7 +793,7 @@ export default function Shoutouts() {
             );
           })}
 
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {[
               { id: 'recent' as const, label: 'Recent', icon: Sparkles },
               { id: 'hype' as const, label: 'Most Reacted', icon: TrendingUp },
@@ -862,83 +862,48 @@ export default function Shoutouts() {
                               </div>
                             </div>
                           </div>
-                          <div className="relative flex items-center gap-2">
-                            {profile?.is_admin && (
-                              <button onClick={() => deleteShoutout(shoutout.id)} className="rounded-full border border-white/10 p-2 text-white/35 transition hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300"><Trash2 className="h-4 w-4" /></button>
-                            )}
-                            <div className="relative">
+                          <div className="relative flex items-center gap-1 sm:gap-2 shrink-0">
+                            {(profile?.is_admin || isMine) && (
                               <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveMenuId(activeMenuId === shoutout.id ? null : shoutout.id);
-                                }} 
-                                className={`rounded-full p-2 transition ${activeMenuId === shoutout.id ? 'bg-white/10 text-white' : 'text-white/20 hover:bg-white/5 hover:text-white/60'}`}
+                                onClick={() => deleteShoutout(shoutout.id)} 
+                                className="rounded-full p-2 text-white/20 transition hover:bg-red-500/10 hover:text-red-400"
+                                title="Delete Post"
                               >
-                                <MoreHorizontal className="h-5 w-5" />
+                                <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
                               </button>
-                              
-                              <AnimatePresence>
-                                {activeMenuId === shoutout.id && (
-                                  <motion.div
-                                    initial={{ opacity: 0, scale: 0.95, y: 10, x: 20 }}
-                                    animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
-                                    exit={{ opacity: 0, scale: 0.95, y: 10, x: 20 }}
-                                    className="absolute right-0 top-12 z-50 w-48 overflow-hidden rounded-2xl border border-white/10 bg-[#16161a]/95 p-1.5 shadow-2xl backdrop-blur-xl"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <button 
-                                      onClick={() => handleCopy(shoutout.message)}
-                                      className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-xs font-bold text-white/70 transition hover:bg-white/5 hover:text-white"
-                                    >
-                                      <Copy className="h-4 w-4 text-cyan-400" />
-                                      COPY MESSAGE
-                                    </button>
-                                    {isMine && !profile?.is_admin && (
-                                      <button 
-                                        onClick={() => deleteShoutout(shoutout.id)}
-                                        className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-xs font-bold text-red-400/70 transition hover:bg-red-500/10 hover:text-red-400"
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                        DELETE POST
-                                      </button>
-                                    )}
-                                    <button 
-                                      onClick={() => {
-                                        setReportingContent({ type: 'shoutout', id: shoutout.id });
-                                        setActiveMenuId(null);
-                                      }}
-                                      className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-xs font-bold text-amber-400/70 transition hover:bg-amber-500/10 hover:text-amber-400"
-                                    >
-                                      <AlertTriangle className="h-4 w-4" />
-                                      REPORT POST
-                                    </button>
-                                  </motion.div>
-                                )}
-                              </AnimatePresence>
-                            </div>
+                            )}
+                            {(!isMine || profile?.is_admin) && (
+                              <button 
+                                onClick={() => setReportingContent({ type: 'shoutout', id: shoutout.id })}
+                                className="rounded-full p-2 text-white/20 transition hover:bg-amber-500/10 hover:text-amber-400"
+                                title="Report Post"
+                              >
+                                <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5" />
+                              </button>
+                            )}
                           </div>
                         </div>
 
-                        <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-white/8 pt-5">
-                          <div className="flex flex-wrap items-center gap-2">
+                        <div className="mt-4 sm:mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-3 border-t border-white/8 pt-4 sm:pt-5">
+                          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar w-full sm:w-auto pb-1 sm:pb-0 snap-x">
                             {REACTIONS.map((reaction) => {
                               const who = shoutoutReactions[reaction.emoji] ?? [];
                               const count = who.length;
                               const hasReacted = Boolean(user && who.includes(user.uid));
                               return (
-                                <button key={reaction.emoji} type="button" onClick={() => toggleReaction(shoutout.id, reaction.emoji)} className={['inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition', hasReacted ? 'border-violet-400/40 bg-violet-500/12 text-white' : `border-transparent bg-transparent text-white/65 ${reaction.border}`].join(' ')}>
-                                  <span className="text-base">{reaction.emoji}</span>
-                                  <span className={`inline-flex items-center gap-1 font-mono text-xs ${hasReacted ? 'text-white' : reaction.accent}`}>{count}</span>
+                                <button key={reaction.emoji} type="button" onClick={() => toggleReaction(shoutout.id, reaction.emoji)} className={['inline-flex items-center gap-1.5 sm:gap-2 shrink-0 snap-center rounded-full border px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm transition', hasReacted ? 'border-violet-400/40 bg-violet-500/12 text-white' : `border-transparent bg-transparent text-white/65 ${reaction.border}`].join(' ')}>
+                                  <span className="text-sm sm:text-base">{reaction.emoji}</span>
+                                  <span className={`inline-flex items-center gap-1 font-mono text-[10px] sm:text-xs ${hasReacted ? 'text-white' : reaction.accent}`}>{count}</span>
                                 </button>
                               );
                             })}
                           </div>
 
-                          <div className="flex items-center gap-3 ml-auto">
+                          <div className="flex items-center shrink-0 w-full sm:w-auto sm:ml-auto">
                             <button
                               type="button"
                               onClick={() => toggleComments(shoutout.id)}
-                              className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-xs font-bold transition ${activeCommentId === shoutout.id ? 'border-violet-500/40 bg-violet-500/10 text-violet-300' : 'border-white/10 bg-white/[0.04] text-white/60 hover:border-white/20'}`}
+                              className={`flex w-full sm:w-auto items-center justify-center gap-2 rounded-full border px-4 py-2 sm:py-2.5 text-[11px] sm:text-xs font-bold transition ${activeCommentId === shoutout.id ? 'border-violet-500/40 bg-violet-500/10 text-violet-300' : 'border-white/10 bg-white/[0.04] text-white/60 hover:border-white/20'}`}
                             >
                               <MessageCircle className="h-4 w-4" />
                               {children.length > 0 ? (
