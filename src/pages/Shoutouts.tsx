@@ -691,7 +691,7 @@ export default function Shoutouts() {
                       initial={{ opacity: 0, y: -10, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                      className="absolute left-0 right-0 top-full z-50 mt-2 max-h-[160px] overflow-y-auto rounded-2xl border border-white/20 bg-[#0d0e14]/98 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur-3xl custom-scrollbar-voice pr-2"
+                      className="absolute left-0 right-0 top-full z-[100] mt-2 max-h-[160px] overflow-y-auto rounded-2xl border border-white/20 bg-[#0d0e14] p-2 shadow-[0_20px_60px_rgba(0,0,0,0.8)] custom-scrollbar-voice pr-2"
                     >
                       {filteredUsernames.map((name) => (
                         <button
