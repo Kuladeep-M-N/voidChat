@@ -1232,95 +1232,99 @@ export default function VoiceRooms() {
           </aside>
 
           {/* Floating Controls Bar */}
-          <div className="absolute bottom-4 sm:bottom-8 left-1/2 -translate-x-1/2 bg-[#1c1c24]/90 backdrop-blur-xl rounded-full px-4 sm:px-6 py-2.5 flex items-center gap-2 sm:gap-3 shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/10 z-30 w-max max-w-[95vw] justify-center">
-            {myRole === 'speaker' && (
+          <div className="absolute bottom-4 sm:bottom-8 left-0 right-0 z-30 flex justify-center px-2 pointer-events-none">
+            <div className="bg-[#1c1c24]/90 backdrop-blur-xl rounded-full px-3 sm:px-6 py-2 sm:py-2.5 flex items-center justify-center gap-1.5 sm:gap-3 shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/10 w-auto max-w-full overflow-x-auto no-scrollbar pointer-events-auto">
+              {myRole === 'speaker' && (
+                <button 
+                  onClick={leaveStage}
+                  className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-full bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 flex items-center justify-center transition-all group border border-indigo-500/20"
+                  title="Step Down from Stage"
+                >
+                  <span className="material-symbols-outlined transition-colors text-[20px] sm:text-[22px]">directions_walk</span>
+                </button>
+              )}
               <button 
-                onClick={leaveStage}
-                className="w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-full bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 flex items-center justify-center transition-all group border border-indigo-500/20"
-                title="Step Down from Stage"
+                onClick={toggleMute}
+                className={`w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center transition-all group ${
+                  muted ? 'bg-white/5 hover:bg-white/10 text-slate-300' : 'bg-white/10 hover:bg-white/20 text-sky-300 shadow-[0_0_15px_rgba(125,211,252,0.15)]'
+                }`}
               >
-                <span className="material-symbols-outlined transition-colors text-[22px]">directions_walk</span>
+                <span className={`material-symbols-outlined transition-colors text-[20px] sm:text-[22px] ${!muted && 'text-sky-300'}`}>{muted ? 'mic_off' : 'mic'}</span>
               </button>
-            )}
-            <button 
-              onClick={toggleMute}
-              className={`w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center transition-all group ${
-                muted ? 'bg-white/5 hover:bg-white/10 text-slate-300' : 'bg-white/10 hover:bg-white/20 text-sky-300 shadow-[0_0_15px_rgba(125,211,252,0.15)]'
-              }`}
-            >
-              <span className={`material-symbols-outlined transition-colors text-[22px] ${!muted && 'text-sky-300'}`}>{muted ? 'mic_off' : 'mic'}</span>
-            </button>
-            <button 
-              onClick={() => setHandRaised(!handRaised)}
-              className={`w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center transition-all group ${
-                handRaised ? 'bg-amber-400/20 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.15)]' : 'bg-white/5 hover:bg-white/10 text-slate-300'
-              }`}
-            >
-              <span className={`material-symbols-outlined transition-colors text-[22px] ${handRaised && 'text-amber-300'}`}>back_hand</span>
-            </button>
-            <div className="relative">
               <button 
-                onClick={() => setShowReactionMenu(!showReactionMenu)}
-                className={`w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all group ${showReactionMenu ? 'bg-indigo-500/20 text-indigo-300' : ''}`}
+                onClick={() => setHandRaised(!handRaised)}
+                className={`w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center transition-all group ${
+                  handRaised ? 'bg-amber-400/20 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.15)]' : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                }`}
               >
-                <span className="material-symbols-outlined text-slate-300 group-hover:text-amber-300 transition-colors text-[22px]">add_reaction</span>
+                <span className={`material-symbols-outlined transition-colors text-[20px] sm:text-[22px] ${handRaised && 'text-amber-300'}`}>back_hand</span>
               </button>
-              
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 pointer-events-none z-[60] mb-2">
+              <div className="relative">
+                <button 
+                  onClick={() => setShowReactionMenu(!showReactionMenu)}
+                  className={`w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all group ${showReactionMenu ? 'bg-indigo-500/20 text-indigo-300' : ''}`}
+                >
+                  <span className="material-symbols-outlined text-slate-300 group-hover:text-amber-300 transition-colors text-[20px] sm:text-[22px]">add_reaction</span>
+                </button>
+                
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 pointer-events-none z-[60] mb-2">
+                  <AnimatePresence>
+                    {floatingReactions.map(r => (
+                      <motion.div
+                        key={r.id}
+                        initial={{ y: 0, opacity: 1, scale: 0.5, x: (Math.random() - 0.5) * 40 }}
+                        animate={{ y: -150 - Math.random() * 50, opacity: 0, scale: 1.5 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 2 + Math.random(), ease: "easeOut" }}
+                        className="absolute bottom-0 text-3xl drop-shadow-md"
+                      >
+                        {r.emoji}
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+
                 <AnimatePresence>
-                  {floatingReactions.map(r => (
-                    <motion.div
-                      key={r.id}
-                      initial={{ y: 0, opacity: 1, scale: 0.5, x: (Math.random() - 0.5) * 40 }}
-                      animate={{ y: -150 - Math.random() * 50, opacity: 0, scale: 1.5 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 2 + Math.random(), ease: "easeOut" }}
-                      className="absolute bottom-0 text-3xl drop-shadow-md"
+                  {showReactionMenu && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.9 }}
+                      className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 bg-[#1c1c24] border border-white/10 rounded-2xl p-2 flex gap-2 shadow-2xl z-50"
                     >
-                      {r.emoji}
+                      {['❤️', '🔥', '👍', '😂', '😮', '🙌'].map(emoji => (
+                        <button 
+                          key={emoji}
+                          onClick={() => sendReaction(emoji)}
+                          className="w-10 h-10 flex items-center justify-center text-xl hover:bg-white/5 rounded-xl transition-colors"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
                     </motion.div>
-                  ))}
+                  )}
                 </AnimatePresence>
               </div>
-
-              <AnimatePresence>
-                {showReactionMenu && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10, scale: 0.9 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.9 }}
-                    className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 bg-[#1c1c24] border border-white/10 rounded-2xl p-2 flex gap-2 shadow-2xl z-50"
-                  >
-                    {['❤️', '🔥', '👍', '😂', '😮', '🙌'].map(emoji => (
-                      <button 
-                        key={emoji}
-                        onClick={() => sendReaction(emoji)}
-                        className="w-10 h-10 flex items-center justify-center text-xl hover:bg-white/5 rounded-xl transition-colors"
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-              
-
-            </div>
-            <div className="hidden sm:block w-[1px] h-8 bg-white/10 shrink-0"></div>
-            <button 
-              onClick={() => { if (window.confirm('Leave this room?')) leaveRoom(); }}
-              className="ml-0 sm:ml-2 px-4 sm:px-6 py-2.5 shrink-0 rounded-full bg-rose-500/80 hover:bg-rose-500 flex items-center gap-2 font-medium text-white shadow-sm transition-all text-sm"
-            >
-              <span className="material-symbols-outlined text-[18px]">logout</span> Leave
-            </button>
-            {(profile?.is_admin || user?.uid === activeRoom.created_by) && (
-               <button 
-                onClick={() => { if (confirm('End this room for everyone?')) endRoom(); }}
-                className="ml-1 sm:ml-2 px-4 sm:px-6 py-2.5 shrink-0 rounded-full bg-slate-700/80 hover:bg-slate-700 flex items-center gap-2 font-medium text-white shadow-sm transition-all border border-white/5 text-sm"
+              <div className="hidden sm:block w-[1px] h-8 bg-white/10 shrink-0 mx-1"></div>
+              <button 
+                onClick={() => { if (window.confirm('Leave this room?')) leaveRoom(); }}
+                className="ml-0 sm:ml-2 w-10 h-10 sm:w-auto sm:h-auto sm:px-6 sm:py-2.5 shrink-0 rounded-full bg-rose-500/80 hover:bg-rose-500 flex items-center justify-center gap-2 font-medium text-white shadow-sm transition-all text-sm"
+                title="Leave"
               >
-                <span className="material-symbols-outlined text-[18px]">cancel</span> End
+                <span className="material-symbols-outlined text-[18px]">logout</span>
+                <span className="hidden sm:inline">Leave</span>
               </button>
-            )}
+              {(profile?.is_admin || user?.uid === activeRoom.created_by) && (
+                 <button 
+                  onClick={() => { if (confirm('End this room for everyone?')) endRoom(); }}
+                  className="w-10 h-10 sm:w-auto sm:h-auto sm:px-6 sm:py-2.5 shrink-0 rounded-full bg-slate-700/80 hover:bg-slate-700 flex items-center justify-center gap-2 font-medium text-white shadow-sm transition-all border border-white/5 text-sm"
+                  title="End Room"
+                >
+                  <span className="material-symbols-outlined text-[18px]">cancel</span>
+                  <span className="hidden sm:inline">End</span>
+                </button>
+              )}
+            </div>
           </div>
         </main>
       </div>
@@ -1341,65 +1345,79 @@ export default function VoiceRooms() {
       </div>
 
       <header className="relative z-50 border-b border-white/5 bg-[#07070f]/80 backdrop-blur-xl sticky top-0 group">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-6 px-6 py-4">
-          <div className="flex items-center gap-6">
-            <Link to="/dashboard" className="transition-transform active:scale-90">
-              <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all group/back">
-                <ArrowLeft size={18} className="group-hover/back:-translate-x-0.5 transition-transform" />
-              </div>
-            </Link>
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-3">
-                <h1 className="font-black text-2xl tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-200 to-slate-400">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-6">
+            
+            {/* Header & Title Group */}
+            <div className="flex items-center gap-4 sm:gap-6">
+              <Link to="/dashboard" className="transition-transform active:scale-90 shrink-0">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all group/back">
+                  <ArrowLeft size={18} className="group-hover/back:-translate-x-0.5 transition-transform" />
+                </div>
+              </Link>
+              <div className="space-y-0.5">
+                <h1 className="font-black text-[22px] sm:text-2xl lg:text-3xl whitespace-nowrap tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-200 to-slate-400 leading-none">
                   Voice Lounge
                 </h1>
-                <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">{activeRoomsCount} Live</span>
-                </div>
+                <p className="hidden sm:flex text-[10px] text-slate-500 uppercase tracking-[0.2em] font-bold items-center gap-2 mt-1">
+                  <Users size={10} /> {totalListeners} Listeners Connected
+                </p>
               </div>
-              <p className="text-[10px] text-slate-500 uppercase tracking-[0.2em] font-bold flex items-center gap-2">
-                <Users size={10} /> {totalListeners} Listeners Connected
-              </p>
             </div>
-          </div>
 
-          <motion.button 
-            onClick={() => {
-              if (safeMode) {
-                toast.error('Voice field generation is suppressed during Safe Mode');
-                return;
-              }
-              setShowCreate(true);
-            }}
-            disabled={safeMode}
-            className="group relative px-6 py-2.5 rounded-2xl bg-violet-600/10 backdrop-blur-md border border-violet-400/30 text-white font-bold text-sm transition-all flex items-center gap-3 overflow-hidden shadow-[0_0_20px_rgba(139,92,246,0.1)] disabled:opacity-50"
-            whileHover={safeMode ? {} : { y: -2, boxShadow: "0 0 30px rgba(139,92,246,0.2)" }}
-            whileTap={safeMode ? {} : { scale: 0.98 }}
-          >
-            {/* Hover Gradient Overlay */}
-            <div className="absolute inset-0 bg-gradient-to-r from-violet-500/10 to-indigo-600/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-            
-            <div className="relative flex items-center gap-2">
-              <div className="relative">
-                {safeMode ? <ShieldAlert size={18} className="relative z-10" /> : <Mic size={18} className="relative z-10" />}
-                {/* Animated Soundwave Dots */}
-                {!safeMode && (
-                  <div className="absolute -right-1 -top-1 flex gap-[1px]">
-                    {[1, 2].map((_, i) => (
-                      <motion.div 
-                        key={i}
-                        className="w-[2px] bg-violet-400 rounded-full"
-                        animate={{ height: ["2px", "6px", "2px"] }}
-                        transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.2 }}
-                      />
-                    ))}
-                  </div>
-                )}
+            {/* Action Group (Live Stats & Button) */}
+            <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-6 w-full sm:w-auto mt-1 sm:mt-0">
+              
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-emerald-500/10 border border-emerald-500/20 w-fit">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[10px] sm:text-[11px] font-black text-emerald-400 uppercase tracking-widest leading-none">{activeRoomsCount} Live</span>
+                </div>
+                <p className="flex sm:hidden text-[9px] text-slate-500 uppercase tracking-[0.15em] font-bold items-center gap-1.5">
+                  <Users size={10} /> {totalListeners} Connected
+                </p>
               </div>
-              <span className="tracking-tight">{safeMode ? 'Safe Mode Active' : 'Start Voice Room'}</span>
+
+              <motion.button 
+                onClick={() => {
+                  if (safeMode) {
+                    toast.error('Voice field generation is suppressed during Safe Mode');
+                    return;
+                  }
+                  setShowCreate(true);
+                }}
+                disabled={safeMode}
+                className="group relative px-4 sm:px-6 py-2 sm:py-2.5 shrink-0 rounded-xl sm:rounded-2xl bg-violet-600/10 backdrop-blur-md border border-violet-400/30 text-white font-bold text-[11px] sm:text-sm transition-all flex items-center gap-2 sm:gap-3 overflow-hidden shadow-[0_0_20px_rgba(139,92,246,0.1)] disabled:opacity-50"
+                whileHover={safeMode ? {} : { y: -2, boxShadow: "0 0 30px rgba(139,92,246,0.2)" }}
+                whileTap={safeMode ? {} : { scale: 0.98 }}
+              >
+                {/* Hover Gradient Overlay */}
+                <div className="absolute inset-0 bg-gradient-to-r from-violet-500/10 to-indigo-600/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                
+                <div className="relative flex items-center gap-2">
+                  <div className="relative line-clamp-1">
+                    {safeMode ? <ShieldAlert size={16} className="relative z-10" /> : <Mic size={16} className="relative z-10" />}
+                    {/* Animated Soundwave Dots */}
+                    {!safeMode && (
+                      <div className="absolute -right-1 -top-1 flex gap-[1px]">
+                        {[1, 2].map((_, i) => (
+                          <motion.div 
+                            key={i}
+                            className="w-[2px] bg-violet-400 rounded-full hidden sm:block"
+                            animate={{ height: ["2px", "6px", "2px"] }}
+                            transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.2 }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <span className="tracking-tight whitespace-nowrap">{safeMode ? 'Safe Mode Active' : 'Start Voice Room'}</span>
+                </div>
+              </motion.button>
+              
             </div>
-          </motion.button>
+            
+          </div>
         </div>
       </header>
 
