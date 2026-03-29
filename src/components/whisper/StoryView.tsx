@@ -215,10 +215,10 @@ function PartInteractionBar({ part, story, isAuthor, votedIds, onVote }: {
                   onClick={() => setActiveUnit('none')} 
                 />
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                  className={`fixed sm:absolute top-1/2 left-1/2 sm:top-full sm:left-0 -translate-x-1/2 -translate-y-1/2 sm:translate-x-0 sm:translate-y-0 mt-0 sm:mt-2 z-[1000] rounded-2xl bg-[#0a0a14] border border-white/10 shadow-2xl backdrop-blur-2xl overflow-hidden w-[94vw] max-w-lg ${activeUnit === 'comment' ? 'sm:w-[450px]' : 'sm:w-72'}`}
+                  initial={isMobile ? { opacity: 0, scale: 0.95, x: '-50%', y: '-40%' } : { opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, x: isMobile ? '-50%' : 0, y: isMobile ? '-50%' : 0 }}
+                  exit={isMobile ? { opacity: 0, scale: 0.95, x: '-50%', y: '-40%' } : { opacity: 0, scale: 0.95, y: 20 }}
+                  className={`fixed sm:absolute top-1/2 left-1/2 sm:top-full sm:left-0 mt-0 sm:mt-2 z-[1000] rounded-2xl bg-[#0a0a14] border border-white/10 shadow-2xl backdrop-blur-2xl overflow-hidden w-[94vw] max-w-lg ${activeUnit === 'comment' ? 'sm:w-[450px]' : 'sm:w-72'}`}
                 >
                   <div className="p-4">
                     {activeUnit === 'vote' && (
