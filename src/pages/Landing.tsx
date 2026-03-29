@@ -48,10 +48,10 @@ export default function Landing() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <Link to="/join">
+          <Link to="/join?mode=login">
             <button className="text-slate-400 hover:text-white px-4 py-2 transition text-sm">Login</button>
           </Link>
-          <Link to="/join">
+          <Link to="/join?mode=signup">
             <button className="btn-primary !w-auto px-6 py-2.5 text-sm">
               Sign Up →
             </button>
@@ -98,12 +98,12 @@ export default function Landing() {
           transition={{ duration: 0.7, delay: 0.5 }}
           className="flex flex-col sm:flex-row items-center gap-4"
         >
-          <Link to="/join">
+          <Link to="/join?mode=signup">
             <button className="btn-primary !w-auto px-10 py-4 text-sm rounded-2xl">
               Sign Up Now
             </button>
           </Link>
-          <Link to="/join">
+          <Link to="/join?mode=login">
             <button className="glass-hover border border-white/10 !w-auto px-10 py-4 text-sm rounded-2xl text-white">
               Login to Account
             </button>

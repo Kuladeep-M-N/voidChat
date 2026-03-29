@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Eye, EyeOff } from 'lucide-react';
 import { 
@@ -123,7 +123,16 @@ function AnimatedTitle({ text }: { text: string }) {
 
 export default function Join() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const m = params.get('mode');
+    if (m === 'signup' || m === 'login') {
+      setMode(m as 'login' | 'signup');
+    }
+  }, [location.search]);
   const [realUsername, setRealUsername] = useState('');
   const [anonymousUsername, setAnonymousUsername] = useState('');
   const [password, setPassword] = useState('');
