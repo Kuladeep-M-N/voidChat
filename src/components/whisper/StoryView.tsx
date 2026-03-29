@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Send, Users, ShieldAlert, GitBranch, Copy, Check, Heart, Trash2, MessageCircle, TrendingUp, Sparkles, AlertTriangle } from 'lucide-react';
@@ -122,6 +123,14 @@ function PartInteractionBar({ part, story, isAuthor, votedIds, onVote }: {
   const [activeUnit, setActiveUnit] = useState<'none' | 'vote' | 'comment' | 'rating'>('none');
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 640);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     const q = query(collection(db, 'whisper_part_comments'), where('partId', '==', part.id));
@@ -195,61 +204,68 @@ function PartInteractionBar({ part, story, isAuthor, votedIds, onVote }: {
       />
 
       {/* Interaction Pop-up Units */}
-      <AnimatePresence>
-        {activeUnit !== 'none' && (
-          <>
-            <motion.div 
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 z-40" onClick={() => setActiveUnit('none')} 
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: -10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: -10 }}
-              className={`fixed sm:absolute top-1/2 left-1/2 sm:top-full sm:left-0 -translate-x-1/2 -translate-y-1/2 sm:translate-x-0 sm:translate-y-0 mt-0 sm:mt-2 z-[100] rounded-2xl bg-[#0a0a14] border border-white/10 shadow-2xl backdrop-blur-2xl overflow-hidden w-[94vw] max-w-lg ${activeUnit === 'comment' ? 'sm:w-[450px]' : 'sm:w-72'}`}
-            >
-              <div className="p-4">
-                {activeUnit === 'vote' && (
-                  <div className="space-y-4">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">Vote Insight</p>
-                    <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-center">
-                        <div className="text-2xl font-black text-white mb-1">{totalVotes}</div>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Community Score</p>
-                    </div>
-                  </div>
-                )}
-
-                {activeUnit === 'comment' && (
-                  <div className="max-h-[75vh] sm:max-h-[400px] flex flex-col">
-                    <div className="flex items-center justify-between mb-4">
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Part Discussion</p>
-                      <span className="text-[10px] font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full">{commentCount} comments</span>
-                    </div>
-                    <div className="overflow-y-auto scrollbar-hide pr-1">
-                      <StoryComments partId={part.id} storyId={story.id} />
-                    </div>
-                  </div>
-                )}
-
-                {activeUnit === 'rating' && (
-                  <div className="space-y-4">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Plot Complexity</p>
-                    <div className="py-4 text-center rounded-xl bg-white/5 border border-white/5">
-                      <div className="text-4xl font-black text-white glow-text-fuchsia mb-1" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                        {avgRating}
+      {(() => {
+        const units = (
+          <AnimatePresence>
+            {activeUnit !== 'none' && (
+              <>
+                <motion.div 
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-[999] bg-black/60 backdrop-blur-sm sm:bg-transparent sm:backdrop-blur-none" 
+                  onClick={() => setActiveUnit('none')} 
+                />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  className={`fixed sm:absolute top-1/2 left-1/2 sm:top-full sm:left-0 -translate-x-1/2 -translate-y-1/2 sm:translate-x-0 sm:translate-y-0 mt-0 sm:mt-2 z-[1000] rounded-2xl bg-[#0a0a14] border border-white/10 shadow-2xl backdrop-blur-2xl overflow-hidden w-[94vw] max-w-lg ${activeUnit === 'comment' ? 'sm:w-[450px]' : 'sm:w-72'}`}
+                >
+                  <div className="p-4">
+                    {activeUnit === 'vote' && (
+                      <div className="space-y-4">
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">Vote Insight</p>
+                        <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-center">
+                            <div className="text-2xl font-black text-white mb-1">{totalVotes}</div>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Community Score</p>
+                        </div>
                       </div>
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Average Reader Score</p>
-                    </div>
-                    <p className="text-xs text-slate-400 text-center leading-relaxed">
-                      This score reflects how "unthinkable" readers found this specific plot development.
-                    </p>
+                    )}
+
+                    {activeUnit === 'comment' && (
+                      <div className="max-h-[75vh] sm:max-h-[400px] flex flex-col">
+                        <div className="flex items-center justify-between mb-4">
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Part Discussion</p>
+                          <span className="text-[10px] font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full">{commentCount} comments</span>
+                        </div>
+                        <div className="overflow-y-auto scrollbar-hide pr-1">
+                          <StoryComments partId={part.id} storyId={story.id} />
+                        </div>
+                      </div>
+                    )}
+
+                    {activeUnit === 'rating' && (
+                      <div className="space-y-4">
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Plot Complexity</p>
+                        <div className="py-4 text-center rounded-xl bg-white/5 border border-white/5">
+                          <div className="text-4xl font-black text-white glow-text-fuchsia mb-1" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                            {avgRating}
+                          </div>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Average Reader Score</p>
+                        </div>
+                        <p className="text-xs text-slate-400 text-center leading-relaxed">
+                          This score reflects how "unthinkable" readers found this specific plot development.
+                        </p>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+        );
+
+        return isMobile ? createPortal(units, document.body) : units;
+      })()}
     </div>
   );
 }
