@@ -324,36 +324,39 @@ export default function DebateThread() {
       
       {/* Header */}
       <header className="relative z-20 border-b border-white/5 glass sticky top-0">
-        <div className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 py-2 sm:py-4">
-          <div className="flex items-center gap-4 flex-1">
-            <button onClick={() => navigate('/debate-arena')} className="p-2 hover:bg-white/5 rounded-full transition-colors">
-              <ArrowLeft size={20} className="text-slate-400" />
+        <div className="max-w-7xl mx-auto flex items-start justify-between gap-3 sm:gap-4 px-4 sm:px-6 py-2 sm:py-4">
+          <div className="flex items-start gap-2 sm:gap-4 flex-1 min-w-0">
+            <button onClick={() => navigate('/debate-arena')} className="p-1 sm:p-2 mt-0.5 sm:mt-0 hover:bg-white/5 rounded-full transition-colors shrink-0">
+              <ArrowLeft size={18} className="text-slate-400 sm:w-[20px] sm:h-[20px]" />
             </button>
-            <div className="min-w-0">
-              <h1 className="text-xl font-bold text-white truncate">{debate.title}</h1>
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{debate.category}</p>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-base sm:text-lg md:text-xl font-bold text-white line-clamp-2 md:line-clamp-1 break-words leading-tight">{debate.title}</h1>
+              <p className="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest mt-0.5">{debate.category}</p>
             </div>
           </div>
-          <div className="flex items-center gap-6 text-slate-400">
+          <div className="flex items-center gap-2 sm:gap-6 text-slate-400 shrink-0">
             {((debate.created_by === user?.uid) || profile?.is_admin) && debate.status !== 'closed' && (
-              <div className="flex items-center gap-2 mr-4 border-r border-white/10 pr-4">
+              <div className="flex items-center gap-1 sm:gap-2 mr-2 sm:mr-4 border-r border-white/10 pr-2 sm:pr-4">
                 <button 
                   onClick={closeDebate}
-                  className="px-3 py-1.5 rounded-lg bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 text-[10px] font-black tracking-widest transition-all flex items-center gap-2"
+                  className="p-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 text-[10px] font-black tracking-widest transition-all flex items-center justify-center sm:gap-2"
+                  title="Close Debate"
                 >
-                  <Lock size={14} /> CLOSE
+                  <Lock size={14} /> <span className="hidden sm:inline">CLOSE</span>
                 </button>
                 <button 
                   onClick={deleteDebate}
-                  className="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-[10px] font-black tracking-widest transition-all flex items-center gap-2"
+                  className="p-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-[10px] font-black tracking-widest transition-all flex items-center justify-center sm:gap-2"
+                  title="Delete Debate"
                 >
-                  <Trash2 size={14} /> DELETE
+                  <Trash2 size={14} /> <span className="hidden sm:inline">DELETE</span>
                 </button>
               </div>
             )}
-            <div className="flex items-center gap-2">
-              <Users size={16} />
-              <span className="text-sm font-bold">{debate.participantCount}</span>
+            <div className="flex items-center gap-1 sm:gap-2">
+              <Users size={14} className="sm:hidden" />
+              <Users size={16} className="hidden sm:block" />
+              <span className="text-xs sm:text-sm font-bold">{debate.participantCount}</span>
             </div>
           </div>
         </div>
