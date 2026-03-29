@@ -84,7 +84,6 @@ export default function DebateThread() {
   const [text, setText] = useState('');
   const [selectedSide, setSelectedSide] = useState<'A' | 'B' | null>(null);
   const [sending, setSending] = useState(false);
-  const [activeParticipants, setActiveParticipants] = useState(1);
   const [reportingArg, setReportingArg] = useState<string | null>(null);
 
   const bottomRefA = useRef<HTMLDivElement>(null);
@@ -177,34 +176,9 @@ export default function DebateThread() {
 
     unsubArgsFunction = unsubArgs;
 
-    // Room Presence Pulse
-    const pulsePresence = async () => {
-      try {
-        await setDoc(doc(db, 'debate_presence', debateId, 'active_users', user.uid), {
-          user_id: user.uid,
-          last_seen: serverTimestamp()
-        });
-      } catch (e) {
-        console.error("Presence Pulse Error:", e);
-      }
-    };
-    pulsePresence();
-    const pulseInterval = setInterval(pulsePresence, 30000);
-
-    // Room Presence Listener
-    const presenceQuery = query(
-      collection(db, 'debate_presence', debateId, 'active_users'),
-      where('last_seen', '>', new Date(Date.now() - 60000))
-    );
-    const unsubPresence = onSnapshot(presenceQuery, (snap) => {
-      setActiveParticipants(Math.max(1, snap.size));
-    });
-
     return () => {
       unsubDebate();
       unsubArgsFunction();
-      clearInterval(pulseInterval);
-      unsubPresence();
     };
   }, [debateId, user, navigate]);
 
@@ -362,7 +336,7 @@ export default function DebateThread() {
           </div>
           <div className="flex items-center gap-2 sm:gap-6 text-slate-400 shrink-0">
             {((debate.created_by === user?.uid) || profile?.is_admin) && debate.status !== 'closed' && (
-              <div className="flex items-center gap-1 sm:gap-2 mr-2 sm:mr-4 border-r border-white/10 pr-2 sm:pr-4">
+              <div className="flex items-center gap-1 sm:gap-2 mr-0 border-white/10 pr-0">
                 <button 
                   onClick={closeDebate}
                   className="p-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 text-[10px] font-black tracking-widest transition-all flex items-center justify-center sm:gap-2"
@@ -372,18 +346,13 @@ export default function DebateThread() {
                 </button>
                 <button 
                   onClick={deleteDebate}
-                  className="p-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-[10px] font-black tracking-widest transition-all flex items-center justify-center sm:gap-2"
+                  className="p-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-[10px] font-black tracking-widest transition-all flex items-center justify-center sm:gap-2 ml-2"
                   title="Delete Debate"
                 >
                   <Trash2 size={14} /> <span className="hidden sm:inline">DELETE</span>
                 </button>
               </div>
             )}
-            <div className="flex items-center gap-1 sm:gap-2">
-              <Users size={14} className="sm:hidden" />
-              <Users size={16} className="hidden sm:block" />
-              <span className="text-xs sm:text-sm font-bold">{activeParticipants}</span>
-            </div>
           </div>
         </div>
 
