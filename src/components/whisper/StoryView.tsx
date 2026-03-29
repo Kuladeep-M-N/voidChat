@@ -135,50 +135,50 @@ function PartInteractionBar({ part, story, isAuthor, votedIds, onVote }: {
     : '—';
 
   return (
-    <div className="relative mt-4 sm:mt-6 pt-4 border-t border-white/5">
-      <div className="flex items-center">
-        <div className="flex flex-wrap items-center justify-center sm:justify-start bg-white/5 rounded-xl sm:rounded-full p-1.5 border border-white/5 backdrop-blur-md gap-1 sm:gap-0">
-          <div className="flex items-center gap-0.5 bg-black/20 rounded-full p-0.5 sm:mr-1 shrink-0">
+    <div className="relative mt-3 sm:mt-6 pt-3 sm:pt-4 border-t border-white/5">
+      <div className="flex flex-wrap items-center">
+        <div className="flex flex-wrap items-center justify-center sm:justify-start bg-white/5 rounded-xl sm:rounded-full p-1 sm:p-1.5 border border-white/5 backdrop-blur-md gap-0.5 sm:gap-0">
+          <div className="flex items-center gap-0 sm:gap-0.5 bg-black/20 rounded-full p-0.5 sm:mr-1 shrink-0">
             <button 
               onClick={() => onVote(part.id, 'up')}
-              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full transition-all ${votedIds.has(`${part.id}_up`) ? 'text-orange-500 bg-orange-500/10' : 'text-slate-500 hover:text-orange-400 hover:bg-white/5'}`}
+              className={`flex items-center gap-1 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-full transition-all ${votedIds.has(`${part.id}_up`) ? 'text-orange-500 bg-orange-500/10' : 'text-slate-500 hover:text-orange-400 hover:bg-white/5'}`}
             >
-              <ArrowLeft size={16} className="rotate-90" />
-              <span className="text-[11px] font-black">{part.upvotes || 0}</span>
+              <ArrowLeft size={14} className="rotate-90 sm:w-4 sm:h-4" />
+              <span className="text-[10px] sm:text-[11px] font-black">{part.upvotes || 0}</span>
             </button>
             <div className="w-[1px] h-3 bg-white/10 mx-0.5" />
             <button 
               onClick={() => onVote(part.id, 'down')}
-              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full transition-all ${votedIds.has(`${part.id}_down`) ? 'text-indigo-500 bg-indigo-500/10' : 'text-slate-500 hover:text-indigo-400 hover:bg-white/5'}`}
+              className={`flex items-center gap-1 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-full transition-all ${votedIds.has(`${part.id}_down`) ? 'text-indigo-500 bg-indigo-500/10' : 'text-slate-500 hover:text-indigo-400 hover:bg-white/5'}`}
             >
-              <ArrowLeft size={16} className="-rotate-90" />
-              <span className="text-[11px] font-black">{part.downvotes || 0}</span>
+              <ArrowLeft size={14} className="-rotate-90 sm:w-4 sm:h-4" />
+              <span className="text-[10px] sm:text-[11px] font-black">{part.downvotes || 0}</span>
             </button>
           </div>
           
-          <div className="w-[1px] h-4 bg-white/10" />
+          <div className="w-[1px] h-4 bg-white/10 mx-0.5 sm:mx-0" />
           
           <button 
             onClick={() => setActiveUnit(activeUnit === 'comment' ? 'none' : 'comment')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${activeUnit === 'comment' ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-400 hover:text-white'}`}
+            className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-bold transition-all ${activeUnit === 'comment' ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-400 hover:text-white'}`}
           >
             <MessageCircle size={14} className={activeUnit === 'comment' ? 'fill-current' : 'text-cyan-400/70'} />
             <span>{commentCount}</span>
           </button>
-          <div className="w-[1px] h-4 bg-white/10" />
+          <div className="w-[1px] h-4 bg-white/10 mx-0.5 sm:mx-0" />
           <button 
             onClick={() => setActiveUnit(activeUnit === 'rating' ? 'none' : 'rating')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${activeUnit === 'rating' ? 'bg-amber-500/20 text-amber-400' : 'text-slate-400 hover:text-white'}`}
+            className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-bold transition-all ${activeUnit === 'rating' ? 'bg-amber-500/20 text-amber-400' : 'text-slate-400 hover:text-white'}`}
           >
             <TrendingUp size={14} className={activeUnit === 'rating' ? 'fill-current' : 'text-amber-400/70'} />
             <span className="text-amber-300">{avgRating}</span>
           </button>
           
-          <div className="hidden sm:block w-[1px] h-4 bg-white/10" />
+          <div className="hidden sm:block w-[1px] h-4 bg-white/10 mx-0.5 sm:mx-0" />
           
           <button 
             onClick={() => setIsReportModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-slate-400 hover:text-amber-400 transition-all hover:bg-amber-500/10 shrink-0"
+            className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-bold text-slate-400 hover:text-amber-400 transition-all hover:bg-amber-500/10 shrink-0"
             title="Report Part"
           >
             <AlertTriangle size={14} className="text-slate-500 hover:text-amber-400" />
@@ -281,31 +281,31 @@ function PlotRating({ partId, authorId, existingRatings }: { partId: string; aut
   if (isAuthor || submitted) return null; // We'll show the result in the interaction bar pop-up instead of a permanent box if already submitted
 
   return (
-    <div className="mt-4 p-4 sm:p-6 rounded-2xl bg-[#080810] border border-fuchsia-500/20 backdrop-blur-xl relative overflow-hidden group">
+    <div className="mt-3 sm:mt-4 p-3 sm:p-6 rounded-2xl bg-[#080810] border border-fuchsia-500/20 backdrop-blur-xl relative overflow-hidden group">
       <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity hidden sm:block">
         <Sparkles size={64} className="text-fuchsia-500" />
       </div>
 
-      <div className="relative z-10 mb-4 text-center sm:text-left">
-        <h5 className="text-xs sm:text-sm font-bold text-white mb-1 uppercase tracking-widest" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+      <div className="relative z-10 mb-3 sm:mb-4 text-center sm:text-left">
+        <h5 className="text-[11px] sm:text-sm font-bold text-white mb-1 uppercase tracking-widest" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
           Calculate Complexity
         </h5>
-        <p className="text-[10px] sm:text-[11px] text-slate-500">How predictable was this development?</p>
+        <p className="text-[9px] sm:text-[11px] text-slate-500">How predictable was this development?</p>
       </div>
 
-      <div className="relative z-10">
-        <div className="flex flex-wrap gap-2 justify-center sm:justify-between">
+      <div className="relative z-10 w-full max-w-[200px] sm:max-w-none mx-auto sm:mx-0">
+        <div className="flex flex-wrap gap-1 sm:gap-2 justify-center sm:justify-between px-1">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
             <button
               key={num}
               onClick={() => handleSubmit(num)}
-              className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[10px] font-black text-slate-400 hover:bg-fuchsia-600 hover:border-fuchsia-500 hover:text-white transition-all transform hover:-translate-y-1 active:scale-95 shadow-lg"
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[10px] font-black text-slate-400 hover:bg-fuchsia-600 hover:border-fuchsia-500 hover:text-white transition-all transform hover:-translate-y-1 active:scale-95 shadow-lg"
             >
               {num}
             </button>
           ))}
         </div>
-        <div className="flex justify-between mt-3 text-[9px] font-bold text-slate-600 uppercase tracking-widest px-1">
+        <div className="flex justify-between mt-2 sm:mt-3 text-[8px] sm:text-[9px] font-bold text-slate-600 uppercase tracking-widest px-1">
           <span>Obvious</span>
           <span>Mastermind</span>
         </div>

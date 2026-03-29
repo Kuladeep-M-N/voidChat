@@ -848,6 +848,14 @@
     padding: 2.5rem;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
     transition: all 0.3s ease;
+  }
+  @media (max-width: 640px) {
+    .story-card-premium {
+      padding: 1rem;
+      border-radius: 1rem;
+    }
+  }
+  .story-card-premium {
     overflow: visible !important;
   }
 
