@@ -639,12 +639,12 @@ export default function QnA() {
                         }`}
                         onClick={() => openQuestion(q)}
                       >
-                         <div className="flex items-center justify-between mb-4">
-                           <div className="flex items-center gap-3">
+                         <div className="flex flex-wrap sm:flex-nowrap items-start sm:items-center justify-between mb-3 sm:mb-4 gap-3">
+                           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                               <span className={`neon-tag text-[10px] ${TAG_COLORS[q.tag] ?? 'neon-tag-purple'}`}>#{q.tag}</span>
-                              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{timeAgo(q.created_at)}</span>
+                              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest whitespace-nowrap">{timeAgo(q.created_at)}</span>
                               
-                              <div className="flex items-center gap-1.5 ml-2">
+                              <div className="flex items-center gap-1.5 sm:ml-2">
                                 <button
                                   onClick={(e) => upvoteQuestion(e, q)}
                                   className={`p-1.5 rounded-lg border transition-all ${
@@ -674,7 +674,7 @@ export default function QnA() {
                                 )}
                               </div>
                            </div>
-                           <span className={`status-badge text-[9px] ${status === 'solved' ? 'status-solved' : status === 'answered' ? 'status-answered' : 'status-unanswered'}`}>
+                           <span className={`status-badge text-[9px] shrink-0 ${status === 'solved' ? 'status-solved' : status === 'answered' ? 'status-answered' : 'status-unanswered'}`}>
                             {status === 'solved' ? 'Solved ✓' : status === 'answered' ? 'Answered' : 'Unanswered'}
                            </span>
                          </div>
