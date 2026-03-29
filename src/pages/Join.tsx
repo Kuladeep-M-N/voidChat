@@ -163,8 +163,8 @@ export default function Join() {
 
     if (code !== validCode) { setError('Invalid invite code'); return; }
     if (real.length < 3) { setError('Username must be at least 3 characters'); return; }
-    if (anon.length < 2) { setError('Anonymous name must be at least 2 characters'); return; }
-    if (pw.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (anon.length < 3) { setError('Anonymous name must be at least 3 characters'); return; }
+    if (pw.length < 8) { setError('Password must be at least 8 characters'); return; }
 
     setLoading(true);
 
@@ -320,8 +320,9 @@ export default function Join() {
                   )}
 
                   <div>
-                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">
-                      Anonymous name
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex justify-between items-end">
+                      <span>Anonymous name</span>
+                      <span className="text-[10px] lowercase text-slate-600">min 3 chars</span>
                     </label>
                     <div className="relative">
                       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm font-mono">@</span>
@@ -332,8 +333,9 @@ export default function Join() {
                   </div>
 
                   <div>
-                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">
-                      Secure Password
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex justify-between items-end">
+                      <span>Secure Password</span>
+                      <span className="text-[10px] lowercase text-slate-600">min 8 chars</span>
                     </label>
                     <div className="relative">
                       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">🔐</span>
