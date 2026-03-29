@@ -842,23 +842,23 @@ export default function Shoutouts() {
                       transition={{ delay: index * 0.04 }}
                     >
                       <div className="relative">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex gap-4">
-                            <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border ${isForMe ? 'border-cyan-400/35 bg-gradient-to-br from-cyan-500/15 to-blue-500/10 text-cyan-300' : 'border-violet-400/35 bg-gradient-to-br from-violet-500/15 to-pink-500/10 text-violet-300'}`}>
-                              <MessageCircle className="h-6 w-6" />
+                        <div className="flex items-start justify-between gap-3 sm:gap-4">
+                          <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
+                            <div className={`flex h-10 w-10 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-xl sm:rounded-2xl border ${isForMe ? 'border-cyan-400/35 bg-gradient-to-br from-cyan-500/15 to-blue-500/10 text-cyan-300' : 'border-violet-400/35 bg-gradient-to-br from-violet-500/15 to-pink-500/10 text-violet-300'}`}>
+                              <MessageCircle className="h-4 w-4 sm:h-6 sm:w-6" />
                             </div>
-                            <div>
+                            <div className="flex-1 min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-white/48">From @{shoutout.from_alias}</span>
                                 <span className="text-sm text-white/25">to</span>
-                                <span className="text-2xl font-extrabold tracking-tight text-white">@{shoutout.to_alias}</span>
-                                {isForMe && <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-200">For You</span>}
-                                {isMine && <span className="rounded-full border border-violet-400/30 bg-violet-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-violet-200">You Posted</span>}
+                                <span className="text-xl sm:text-2xl font-extrabold tracking-tight text-white mb-0.5 sm:mb-0 line-clamp-1 break-all">@{shoutout.to_alias}</span>
+                                {isForMe && <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-200 shrink-0">For You</span>}
+                                {isMine && <span className="rounded-full border border-violet-400/30 bg-violet-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-violet-200 shrink-0">You Posted</span>}
                               </div>
-                              <p className="mt-4 max-w-3xl text-[1.1rem] leading-8 text-white/92 sm:text-[1.28rem]" dangerouslySetInnerHTML={{ __html: sanitizeContent(shoutout.message) }}></p>
-                              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-white/35">
-                                <span className="font-mono uppercase tracking-[0.24em]">{timeAgo(shoutout.created_at)}</span>
-                                <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">{reactionCount} reactions</span>
+                              <p className="mt-3 sm:mt-4 max-w-3xl text-[1.05rem] leading-7 text-white/92 sm:text-[1.28rem] sm:leading-8 break-words" dangerouslySetInnerHTML={{ __html: sanitizeContent(shoutout.message) }}></p>
+                              <div className="mt-3 sm:mt-4 flex flex-row items-center gap-2 sm:gap-3 text-xs text-white/35 w-full overflow-hidden">
+                                <span className="font-mono uppercase tracking-[0.24em] text-[9px] sm:text-[10px] shrink-0">{timeAgo(shoutout.created_at)}</span>
+                                <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 sm:px-2.5 py-0.5 sm:py-1 text-[8px] sm:text-[10px] font-bold uppercase tracking-[0.18em] text-white/45 shrink-0 whitespace-nowrap">{reactionCount} {reactionCount === 1 ? 'reaction' : 'reactions'}</span>
                               </div>
                             </div>
                           </div>
