@@ -1101,11 +1101,11 @@ export default function VoiceRooms() {
 
               {/* Scrollable Message Area */}
               <div 
-                className="flex-1 overflow-y-auto pr-2 mb-4 flex flex-col gap-5 custom-scrollbar-voice max-h-[380px]" 
+                className="flex-1 overflow-y-auto pr-2 mb-3 flex flex-col gap-3 custom-scrollbar-voice min-h-[220px] max-h-[450px]" 
                 ref={chatScrollRef}
               >
                 {chatMessages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-slate-600 gap-3">
+                  <div className="flex flex-col items-center justify-center py-10 text-slate-600 gap-3">
                     <span className="material-symbols-outlined text-4xl opacity-20">bubble_chart</span>
                     <p className="text-[11px] font-medium uppercase tracking-widest">Quiet in the void...</p>
                   </div>
@@ -1113,8 +1113,8 @@ export default function VoiceRooms() {
                   chatMessages.map(msg => {
                     if (msg.isSystem) {
                       return (
-                        <div key={msg.id} className="flex justify-center my-1">
-                          <span className="text-[10px] font-semibold px-3 py-1 rounded-full bg-white/5 text-slate-500 border border-white/5 uppercase tracking-tighter">
+                        <div key={msg.id} className="flex justify-center my-0.5">
+                          <span className="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-white/5 text-slate-500 border border-white/5 uppercase tracking-tighter">
                             {msg.text}
                           </span>
                         </div>
@@ -1123,20 +1123,20 @@ export default function VoiceRooms() {
                     
                     const isMe = msg.userId === user?.uid;
                     return (
-                      <div key={msg.id} className={`flex gap-3 max-w-full ${isMe ? 'flex-row-reverse' : ''}`}>
-                        <div className={`w-8 h-8 rounded-full flex shrink-0 items-center justify-center text-xs font-bold text-white shadow-sm ${
+                      <div key={msg.id} className={`flex gap-2 max-w-full ${isMe ? 'flex-row-reverse' : ''}`}>
+                        <div className={`w-7 h-7 rounded-full flex shrink-0 items-center justify-center text-[10px] font-bold text-white shadow-sm ${
                           isMe ? 'bg-indigo-500 border border-indigo-400/50' : 'bg-slate-700/80 border border-slate-600'
                         }`}>
                           {(msg.username || "??").slice(0, 2).toUpperCase()}
                         </div>
                         <div className={`flex flex-col min-w-0 flex-1 ${isMe ? 'items-end' : ''}`}>
-                          <div className={`flex items-baseline gap-2 mb-1 ${isMe ? 'flex-row-reverse' : ''}`}>
-                            <span className={`font-semibold text-[11px] ${isMe ? 'text-indigo-300' : 'text-slate-400'}`}>{isMe ? 'You' : msg.username}</span>
-                            <span className="text-[9px] text-slate-600 shrink-0 font-bold">12:00</span>
+                          <div className={`flex items-baseline gap-2 mb-0.5 ${isMe ? 'flex-row-reverse' : ''}`}>
+                            <span className={`font-semibold text-[10px] ${isMe ? 'text-indigo-300' : 'text-slate-400'}`}>{isMe ? 'You' : msg.username}</span>
+                            <span className="text-[8px] text-slate-600 shrink-0 font-bold">12:00</span>
                           </div>
                           <div className={isMe 
-                               ? 'bg-indigo-600/30 border border-indigo-500/20 px-4 py-2 rounded-2xl rounded-tr-none text-slate-200 text-[13px] break-words whitespace-pre-wrap shadow-sm' 
-                               : 'text-[13px] text-slate-300 bg-white/[0.03] px-4 py-2 rounded-2xl rounded-tl-none border border-white/5 break-words whitespace-pre-wrap shadow-sm'}>
+                               ? 'bg-indigo-600/30 border border-indigo-500/20 px-3 py-1.5 rounded-xl rounded-tr-none text-slate-200 text-[12px] break-words whitespace-pre-wrap shadow-sm' 
+                               : 'text-[12px] text-slate-300 bg-white/[0.03] px-3 py-1.5 rounded-xl rounded-tl-none border border-white/5 break-words whitespace-pre-wrap shadow-sm'}>
                             {msg.text}
                           </div>
                         </div>
@@ -1233,33 +1233,74 @@ export default function VoiceRooms() {
 
           {/* Floating Controls Bar */}
           <div className="absolute bottom-4 sm:bottom-8 left-0 right-0 z-30 flex justify-center px-2 pointer-events-none">
-            <div className="bg-[#1c1c24]/90 backdrop-blur-xl rounded-full px-3 sm:px-6 py-2 sm:py-2.5 flex items-center justify-center gap-1.5 sm:gap-3 shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/10 w-auto max-w-full overflow-x-auto no-scrollbar pointer-events-auto">
-              {myRole === 'speaker' && (
+            <div className="relative pointer-events-auto">
+              {/* Floating Reactions - Moved OUTSIDE scroll container */}
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 pointer-events-none z-[60] mb-2 w-full h-0">
+                <AnimatePresence>
+                  {floatingReactions.map(r => (
+                    <motion.div
+                      key={r.id}
+                      initial={{ y: 0, opacity: 1, scale: 0.5, x: (Math.random() - 0.5) * 40 }}
+                      animate={{ y: -150 - Math.random() * 50, opacity: 0, scale: 1.5 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 2 + Math.random(), ease: "easeOut" }}
+                      className="absolute bottom-0 left-1/2 -translate-x-1/2 text-3xl drop-shadow-md"
+                    >
+                      {r.emoji}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+
+              {/* Reaction Menu - Moved OUTSIDE scroll container */}
+              <AnimatePresence>
+                {showReactionMenu && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.9 }}
+                    className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 bg-[#1c1c24]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-2 flex gap-2 shadow-2xl z-50 overflow-visible"
+                    style={{ minWidth: 'max-content' }}
+                  >
+                    {['❤️', '🔥', '👍', '😂', '😮', '🙌'].map(emoji => (
+                      <button 
+                        key={emoji}
+                        onClick={() => sendReaction(emoji)}
+                        className="w-10 h-10 flex items-center justify-center text-xl hover:bg-white/5 rounded-xl transition-colors"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="bg-[#1c1c24]/90 backdrop-blur-xl rounded-full px-3 sm:px-6 py-2 sm:py-2.5 flex items-center justify-center gap-1.5 sm:gap-3 shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/10 w-auto max-w-full overflow-x-auto no-scrollbar">
+                {myRole === 'speaker' && (
+                  <button 
+                    onClick={leaveStage}
+                    className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-full bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 flex items-center justify-center transition-all group border border-indigo-500/20"
+                    title="Step Down from Stage"
+                  >
+                    <span className="material-symbols-outlined transition-colors text-[20px] sm:text-[22px]">directions_walk</span>
+                  </button>
+                )}
                 <button 
-                  onClick={leaveStage}
-                  className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-full bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 flex items-center justify-center transition-all group border border-indigo-500/20"
-                  title="Step Down from Stage"
+                  onClick={toggleMute}
+                  className={`w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center transition-all group ${
+                    muted ? 'bg-white/5 hover:bg-white/10 text-slate-300' : 'bg-white/10 hover:bg-white/20 text-sky-300 shadow-[0_0_15px_rgba(125,211,252,0.15)]'
+                  }`}
                 >
-                  <span className="material-symbols-outlined transition-colors text-[20px] sm:text-[22px]">directions_walk</span>
+                  <span className={`material-symbols-outlined transition-colors text-[20px] sm:text-[22px] ${!muted && 'text-sky-300'}`}>{muted ? 'mic_off' : 'mic'}</span>
                 </button>
-              )}
-              <button 
-                onClick={toggleMute}
-                className={`w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center transition-all group ${
-                  muted ? 'bg-white/5 hover:bg-white/10 text-slate-300' : 'bg-white/10 hover:bg-white/20 text-sky-300 shadow-[0_0_15px_rgba(125,211,252,0.15)]'
-                }`}
-              >
-                <span className={`material-symbols-outlined transition-colors text-[20px] sm:text-[22px] ${!muted && 'text-sky-300'}`}>{muted ? 'mic_off' : 'mic'}</span>
-              </button>
-              <button 
-                onClick={() => setHandRaised(!handRaised)}
-                className={`w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center transition-all group ${
-                  handRaised ? 'bg-amber-400/20 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.15)]' : 'bg-white/5 hover:bg-white/10 text-slate-300'
-                }`}
-              >
-                <span className={`material-symbols-outlined transition-colors text-[20px] sm:text-[22px] ${handRaised && 'text-amber-300'}`}>back_hand</span>
-              </button>
-              <div className="relative">
+                <button 
+                  onClick={() => setHandRaised(!handRaised)}
+                  className={`w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-full flex items-center justify-center transition-all group ${
+                    handRaised ? 'bg-amber-400/20 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.15)]' : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                  }`}
+                >
+                  <span className={`material-symbols-outlined transition-colors text-[20px] sm:text-[22px] ${handRaised && 'text-amber-300'}`}>back_hand</span>
+                </button>
                 <button 
                   onClick={() => setShowReactionMenu(!showReactionMenu)}
                   className={`w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all group ${showReactionMenu ? 'bg-indigo-500/20 text-indigo-300' : ''}`}
@@ -1267,63 +1308,26 @@ export default function VoiceRooms() {
                   <span className="material-symbols-outlined text-slate-300 group-hover:text-amber-300 transition-colors text-[20px] sm:text-[22px]">add_reaction</span>
                 </button>
                 
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 pointer-events-none z-[60] mb-2">
-                  <AnimatePresence>
-                    {floatingReactions.map(r => (
-                      <motion.div
-                        key={r.id}
-                        initial={{ y: 0, opacity: 1, scale: 0.5, x: (Math.random() - 0.5) * 40 }}
-                        animate={{ y: -150 - Math.random() * 50, opacity: 0, scale: 1.5 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 2 + Math.random(), ease: "easeOut" }}
-                        className="absolute bottom-0 text-3xl drop-shadow-md"
-                      >
-                        {r.emoji}
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                </div>
-
-                <AnimatePresence>
-                  {showReactionMenu && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 10, scale: 0.9 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 10, scale: 0.9 }}
-                      className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 bg-[#1c1c24] border border-white/10 rounded-2xl p-2 flex gap-2 shadow-2xl z-50"
-                    >
-                      {['❤️', '🔥', '👍', '😂', '😮', '🙌'].map(emoji => (
-                        <button 
-                          key={emoji}
-                          onClick={() => sendReaction(emoji)}
-                          className="w-10 h-10 flex items-center justify-center text-xl hover:bg-white/5 rounded-xl transition-colors"
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-              <div className="hidden sm:block w-[1px] h-8 bg-white/10 shrink-0 mx-1"></div>
-              <button 
-                onClick={() => { if (window.confirm('Leave this room?')) leaveRoom(); }}
-                className="ml-0 sm:ml-2 w-10 h-10 sm:w-auto sm:h-auto sm:px-6 sm:py-2.5 shrink-0 rounded-full bg-rose-500/80 hover:bg-rose-500 flex items-center justify-center gap-2 font-medium text-white shadow-sm transition-all text-sm"
-                title="Leave"
-              >
-                <span className="material-symbols-outlined text-[18px]">logout</span>
-                <span className="hidden sm:inline">Leave</span>
-              </button>
-              {(profile?.is_admin || user?.uid === activeRoom.created_by) && (
-                 <button 
-                  onClick={() => { if (confirm('End this room for everyone?')) endRoom(); }}
-                  className="w-10 h-10 sm:w-auto sm:h-auto sm:px-6 sm:py-2.5 shrink-0 rounded-full bg-slate-700/80 hover:bg-slate-700 flex items-center justify-center gap-2 font-medium text-white shadow-sm transition-all border border-white/5 text-sm"
-                  title="End Room"
+                <div className="hidden sm:block w-[1px] h-8 bg-white/10 shrink-0 mx-1"></div>
+                <button 
+                  onClick={() => { if (window.confirm('Leave this room?')) leaveRoom(); }}
+                  className="ml-0 sm:ml-2 w-10 h-10 sm:w-auto sm:h-auto sm:px-6 sm:py-2.5 shrink-0 rounded-full bg-rose-500/80 hover:bg-rose-500 flex items-center justify-center gap-2 font-medium text-white shadow-sm transition-all text-sm"
+                  title="Leave"
                 >
-                  <span className="material-symbols-outlined text-[18px]">cancel</span>
-                  <span className="hidden sm:inline">End</span>
+                  <span className="material-symbols-outlined text-[18px]">logout</span>
+                  <span className="hidden sm:inline">Leave</span>
                 </button>
-              )}
+                {(profile?.is_admin || user?.uid === activeRoom.created_by) && (
+                   <button 
+                    onClick={() => { if (confirm('End this room for everyone?')) endRoom(); }}
+                    className="w-10 h-10 sm:w-auto sm:h-auto sm:px-6 sm:py-2.5 shrink-0 rounded-full bg-slate-700/80 hover:bg-slate-700 flex items-center justify-center gap-2 font-medium text-white shadow-sm transition-all border border-white/5 text-sm"
+                    title="End Room"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">cancel</span>
+                    <span className="hidden sm:inline">End</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </main>
