@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-r
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   BookOpen, ArrowLeft, Home, TrendingUp, Users, 
-  Heart, Hash, PenTool, Sparkles, Search
+  Heart, Hash, PenTool, Sparkles, Search, Menu, X
 } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 
@@ -19,6 +19,7 @@ export default function Whisper() {
   
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [showCreateStory, setShowCreateStory] = useState(false);
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const isInStoryView = location.pathname.includes('/story/');
@@ -37,6 +38,67 @@ export default function Whisper() {
     { label: '#theory', color: 'text-amber-400' },
   ];
 
+  const SidebarContent = (
+    <>
+      <div className="sidebar-section">
+        <div className="sidebar-section-title px-4">Navigation</div>
+        {sidebarLinks.map(link => (
+          <button
+            key={link.id}
+            onClick={() => { navigate(link.path); setShowMobileSidebar(false); }}
+            className={`sidebar-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all ${(location.pathname === link.path.split('?')[0]) ? 'active bg-white/5 text-fuchsia-400' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+          >
+            {link.icon}
+            <span className="font-medium">{link.label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="sidebar-section mt-6">
+        <div className="sidebar-section-title px-4">Discovery</div>
+        <button
+          onClick={() => { setActiveFilter(activeFilter === 'Following' ? null : 'Following'); setShowMobileSidebar(false); }}
+          className={`sidebar-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all ${activeFilter === 'Following' ? 'active bg-white/5 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+        >
+          <Heart size={18} />
+          <span className="font-medium">Following</span>
+        </button>
+        <button
+          onClick={() => { setActiveFilter(activeFilter === 'Liked' ? null : 'Liked'); setShowMobileSidebar(false); }}
+          className={`sidebar-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all ${activeFilter === 'Liked' ? 'active bg-white/5 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+        >
+          <Sparkles size={18} />
+          <span className="font-medium">Most Liked</span>
+        </button>
+      </div>
+
+      <div className="sidebar-section mt-6">
+        <div className="sidebar-section-title px-4">Categories</div>
+        {categories.map(cat => (
+          <button
+            key={cat.label}
+            onClick={() => { setActiveFilter(activeFilter === cat.label ? null : cat.label); setShowMobileSidebar(false); }}
+            className={`sidebar-link w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-all ${activeFilter === cat.label ? 'active text-fuchsia-400' : 'text-slate-500 hover:text-slate-300 hover:bg-white/2'}`}
+          >
+            <Hash size={16} className={`${cat.color} opacity-70`} />
+            <span className="font-medium">{cat.label.replace('#', '')}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Online indicator at bottom of sidebar */}
+      <div className="mt-auto pt-6 px-4 pb-2">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-white/5 border border-white/5 backdrop-blur-sm w-fit">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+          </span>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{onlineCount} online</span>
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <div className="min-h-screen relative overflow-x-hidden flex flex-col pt-0 pb-16">
       <WhisperBackground />
@@ -48,81 +110,64 @@ export default function Whisper() {
           {/* ── SIDEBAR ── */}
           {!isInStoryView && (
             <aside className="whisper-sidebar hidden lg:flex flex-col h-full pr-6 border-r border-white/5 pt-10">
-
-              <div className="sidebar-section">
-                <div className="sidebar-section-title px-4">Navigation</div>
-                {sidebarLinks.map(link => (
-                  <button
-                    key={link.id}
-                    onClick={() => navigate(link.path)}
-                    className={`sidebar-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all ${location.pathname + location.search === link.path ? 'active bg-white/5 text-fuchsia-400' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
-                  >
-                    {link.icon}
-                    <span className="font-medium">{link.label}</span>
-                  </button>
-                ))}
-              </div>
-
-              <div className="sidebar-section mt-6">
-                <div className="sidebar-section-title px-4">Discovery</div>
-                <button
-                  onClick={() => setActiveFilter(activeFilter === 'Following' ? null : 'Following')}
-                  className={`sidebar-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all ${activeFilter === 'Following' ? 'active bg-white/5 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
-                >
-                  <Heart size={18} />
-                  <span className="font-medium">Following</span>
-                </button>
-                <button
-                  onClick={() => setActiveFilter(activeFilter === 'Liked' ? null : 'Liked')}
-                  className={`sidebar-link w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all ${activeFilter === 'Liked' ? 'active bg-white/5 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
-                >
-                  <Sparkles size={18} />
-                  <span className="font-medium">Most Liked</span>
-                </button>
-              </div>
-
-              <div className="sidebar-section mt-6">
-                <div className="sidebar-section-title px-4">Categories</div>
-                {categories.map(cat => (
-                  <button
-                    key={cat.label}
-                    onClick={() => setActiveFilter(activeFilter === cat.label ? null : cat.label)}
-                    className={`sidebar-link w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-all ${activeFilter === cat.label ? 'active text-fuchsia-400' : 'text-slate-500 hover:text-slate-300 hover:bg-white/2'}`}
-                  >
-                    <Hash size={16} className={`${cat.color} opacity-70`} />
-                    <span className="font-medium">{cat.label.replace('#', '')}</span>
-                  </button>
-                ))}
-              </div>
-
-              {/* Online indicator at bottom of sidebar */}
-              <div className="mt-auto pt-6 px-4 pb-2">
-                <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-white/5 border border-white/5 backdrop-blur-sm w-fit">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
-                  </span>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{onlineCount} online</span>
-                </div>
-              </div>
+              {SidebarContent}
             </aside>
           )}
+
+          {/* ── MOBILE SIDEBAR OVERLAY ── */}
+          <AnimatePresence>
+            {!isInStoryView && showMobileSidebar && (
+              <>
+                <motion.div 
+                  className="fixed inset-0 bg-[#0d0d1e]/80 backdrop-blur-sm z-[2000] lg:hidden"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setShowMobileSidebar(false)}
+                />
+                <motion.div 
+                  className="fixed top-0 left-0 bottom-0 w-[280px] bg-[#0d0d1e] border-r border-white/10 z-[2001] lg:hidden flex flex-col pt-6 pb-6 shadow-2xl overflow-y-auto"
+                  initial={{ x: '-100%' }}
+                  animate={{ x: 0 }}
+                  exit={{ x: '-100%' }}
+                  transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                >
+                  <div className="flex items-center justify-between px-6 mb-6">
+                    <div className="flex items-center gap-3">
+                      <Sparkles className="text-fuchsia-400" size={20} />
+                      <h2 className="text-lg font-black text-white px-1">Menu</h2>
+                    </div>
+                    <button onClick={() => setShowMobileSidebar(false)} className="p-2 bg-white/5 rounded-full text-slate-400">
+                      <X size={16} />
+                    </button>
+                  </div>
+                  {SidebarContent}
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
 
           {/* ── MAIN CONTENT AREA ── */}
           <main className="whisper-main-content flex flex-col min-w-0">
             {/* Dedicated Fixed Header (Reddit-Style) */}
             {!isInStoryView && (
-              <header className="fixed top-0 left-0 right-0 h-16 bg-[#0d0d1e]/95 backdrop-blur-2xl z-[1000] border-b border-white/10 shadow-2xl flex items-center px-8">
-                <div className="flex items-center justify-between gap-6 max-w-[1400px] mx-auto w-full">
-                  <div className="flex items-center gap-4">
+              <header className="fixed top-0 left-0 right-0 h-16 bg-[#0d0d1e]/95 backdrop-blur-2xl z-[1000] border-b border-white/10 shadow-2xl flex items-center px-3 sm:px-8">
+                <div className="flex items-center justify-between gap-2 sm:gap-6 max-w-[1400px] mx-auto w-full">
+                  <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+                    <button 
+                      onClick={() => setShowMobileSidebar(true)}
+                      className="flex lg:hidden h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/5 border border-white/10 text-slate-400 transition-all hover:bg-white/10 hover:text-white"
+                    >
+                      <Menu size={18} />
+                    </button>
                     <Link
                       to="/dashboard"
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/5 border border-white/10 text-slate-400 transition-all hover:bg-white/10 hover:text-white hover:border-white/20"
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/5 border border-white/10 text-slate-400 transition-all hover:bg-white/10 hover:text-white"
                     >
                       <ArrowLeft size={18} />
                     </Link>
-                    <div className="h-8 w-[1px] bg-white/10 mx-1" />
-                    <Link to="/whisper" className="group flex items-center gap-3">
+                    <div className="hidden sm:block h-8 w-[1px] bg-white/10 mx-1" />
+                    <Link to="/whisper" className="group hidden sm:flex items-center gap-3">
                       <div className="p-2 bg-fuchsia-500/10 rounded-xl border border-fuchsia-500/20 group-hover:scale-110 transition-transform">
                         <Sparkles className="text-fuchsia-400" size={20} />
                       </div>
@@ -135,20 +180,20 @@ export default function Whisper() {
                   </div>
 
                   {/* Reddit-Style Search Bar */}
-                  <div className="flex-1 max-w-2xl mx-auto hidden sm:block">
+                  <div className="flex-1 w-full max-w-2xl mx-1 sm:mx-auto">
                     <div className="relative group">
-                      <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-fuchsia-400 transition-colors" />
+                      <Search size={16} className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-fuchsia-400 transition-colors" />
                       <input
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search within the feed..."
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl pl-12 pr-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-fuchsia-500/40 focus:bg-white/10 transition-all backdrop-blur-md"
+                        placeholder="Search feed..."
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl pl-9 sm:pl-12 pr-4 py-2 sm:py-2.5 text-xs sm:text-sm text-white placeholder-slate-500 outline-none focus:border-fuchsia-500/40 focus:bg-white/10 transition-all backdrop-blur-md"
                       />
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-3">
+                  <div className="hidden md:flex items-center gap-3 shrink-0">
                      <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] opacity-80 bg-white/5 px-4 py-2 rounded-xl border border-white/5 whitespace-nowrap">
                        {isInAuthors ? 'Exploring Authors' : (activeFilter ? activeFilter : 'Community Feed')}
                      </h2>
