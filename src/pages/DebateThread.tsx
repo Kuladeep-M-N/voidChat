@@ -392,7 +392,7 @@ export default function DebateThread() {
         )}
 
         {/* Arena Grid */}
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8 min-h-0 mb-20 overflow-hidden lg:overflow-visible">
+        <div className="flex-1 grid grid-cols-1 grid-rows-2 md:grid-rows-1 md:grid-cols-2 gap-4 md:gap-8 min-h-0 mb-36 md:mb-20 overflow-hidden lg:overflow-visible">
           {/* Side A */}
           <div className="flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-4">
