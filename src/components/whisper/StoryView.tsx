@@ -135,10 +135,10 @@ function PartInteractionBar({ part, story, isAuthor, votedIds, onVote }: {
     : '—';
 
   return (
-    <div className="relative mt-6 pt-4 border-t border-white/5">
-      <div className="flex items-center gap-2">
-        <div className="flex items-center bg-white/5 rounded-full p-1 border border-white/5 backdrop-blur-md">
-          <div className="flex items-center gap-0.5 bg-black/20 rounded-full p-0.5 mr-1">
+    <div className="relative mt-4 sm:mt-6 pt-4 border-t border-white/5">
+      <div className="flex items-center">
+        <div className="flex flex-wrap items-center justify-center sm:justify-start bg-white/5 rounded-xl sm:rounded-full p-1.5 border border-white/5 backdrop-blur-md gap-1 sm:gap-0">
+          <div className="flex items-center gap-0.5 bg-black/20 rounded-full p-0.5 sm:mr-1 shrink-0">
             <button 
               onClick={() => onVote(part.id, 'up')}
               className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full transition-all ${votedIds.has(`${part.id}_up`) ? 'text-orange-500 bg-orange-500/10' : 'text-slate-500 hover:text-orange-400 hover:bg-white/5'}`}
@@ -174,11 +174,11 @@ function PartInteractionBar({ part, story, isAuthor, votedIds, onVote }: {
             <span className="text-amber-300">{avgRating}</span>
           </button>
           
-          <div className="w-[1px] h-4 bg-white/10" />
+          <div className="hidden sm:block w-[1px] h-4 bg-white/10" />
           
           <button 
             onClick={() => setIsReportModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-slate-400 hover:text-amber-400 transition-all hover:bg-amber-500/10"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-slate-400 hover:text-amber-400 transition-all hover:bg-amber-500/10 shrink-0"
             title="Report Part"
           >
             <AlertTriangle size={14} className="text-slate-500 hover:text-amber-400" />
@@ -281,20 +281,20 @@ function PlotRating({ partId, authorId, existingRatings }: { partId: string; aut
   if (isAuthor || submitted) return null; // We'll show the result in the interaction bar pop-up instead of a permanent box if already submitted
 
   return (
-    <div className="mt-4 p-6 rounded-2xl bg-[#080810] border border-fuchsia-500/20 backdrop-blur-xl relative overflow-hidden group">
-      <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+    <div className="mt-4 p-4 sm:p-6 rounded-2xl bg-[#080810] border border-fuchsia-500/20 backdrop-blur-xl relative overflow-hidden group">
+      <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity hidden sm:block">
         <Sparkles size={64} className="text-fuchsia-500" />
       </div>
 
-      <div className="relative z-10 mb-4">
-        <h5 className="text-sm font-bold text-white mb-1 uppercase tracking-widest" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+      <div className="relative z-10 mb-4 text-center sm:text-left">
+        <h5 className="text-xs sm:text-sm font-bold text-white mb-1 uppercase tracking-widest" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
           Calculate Complexity
         </h5>
-        <p className="text-[11px] text-slate-500">How predictable was this development?</p>
+        <p className="text-[10px] sm:text-[11px] text-slate-500">How predictable was this development?</p>
       </div>
 
       <div className="relative z-10">
-        <div className="flex flex-wrap gap-1.5 justify-between">
+        <div className="flex flex-wrap gap-2 justify-center sm:justify-between">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
             <button
               key={num}
@@ -653,11 +653,11 @@ export default function StoryView() {
           >
             {story.title}
           </h1>
-          <div className="flex items-center gap-3 mt-2 text-sm text-slate-500 flex-wrap">
-            <span className="flex items-center gap-2">By <span className="text-fuchsia-400 font-bold">@{story.authorName}</span>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-4 text-sm text-slate-500 border-t border-white/5 pt-4 sm:border-0 sm:pt-0">
+            <span className="flex items-center gap-2 flex-wrap">By <span className="text-fuchsia-400 font-bold">@{story.authorName}</span></span>
               {user && user.uid !== story.authorId && (
-                <>
-                  <button onClick={toggleFollow} disabled={togglingFollow} className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all border ${isFollowing ? 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30 hover:bg-fuchsia-500/30' : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'}`}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button onClick={toggleFollow} disabled={togglingFollow} className={`px-2 py-0.5 h-9 rounded-lg text-[10px] font-bold transition-all border ${isFollowing ? 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30 hover:bg-fuchsia-500/30' : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'}`}>
                     {isFollowing ? '✓ Following' : '+ Follow'}
                   </button>
                   <button 
@@ -666,31 +666,31 @@ export default function StoryView() {
                     className={`h-9 px-4 rounded-xl flex items-center gap-2 text-xs font-bold transition-all border shadow-[0_4px_12px_rgba(0,0,0,0.5)] ${isLiked ? 'bg-pink-500/20 text-pink-400 border-pink-500/40 hover:bg-pink-500/30' : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'}`}
                   >
                     <Heart size={14} className={isLiked ? 'fill-current' : ''} />
-                    {isLiked ? 'Story Liked' : 'Like this Story'}
-                    <span className="ml-1 opacity-60">· {story.likes || 0}</span>
+                    {isLiked ? 'Liked' : 'Like'} <span className="ml-1 opacity-60">· {story.likes || 0}</span>
                   </button>
                   <button 
                     onClick={() => setIsStoryReportModalOpen(true)}
-                    className="h-9 px-4 rounded-xl flex items-center gap-2 text-xs font-bold transition-all border shadow-[0_4px_12px_rgba(0,0,0,0.5)] bg-white/5 text-slate-300 border-white/10 hover:bg-amber-500/10 hover:text-amber-400 hover:border-amber-500/30"
-                    title="Report Story"
+                    className="h-9 px-3 rounded-xl flex items-center gap-2 text-xs font-bold transition-all border shadow-[0_4px_12px_rgba(0,0,0,0.5)] bg-white/5 text-slate-300 border-white/10 hover:bg-amber-500/10 hover:text-amber-400 hover:border-amber-500/30"
+                    title="Report"
                   >
                     <AlertTriangle size={14} />
-                    Report
+                    <span className="hidden sm:inline">Report</span>
                   </button>
                   {profile?.is_admin && (
                     <button 
                       onClick={handleDeleteStory}
-                      className="px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 border border-red-500/30 text-[10px] font-bold hover:bg-red-500/20 transition-all ml-1 flex items-center gap-1"
+                      className="h-9 px-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/30 text-[10px] font-bold hover:bg-red-500/20 transition-all flex items-center gap-1"
                     >
-                      <Trash2 size={10} /> Delete
+                      <Trash2 size={12} /> <span className="hidden sm:inline">Delete</span>
                     </button>
                   )}
-                </>
+                </div>
               )}
-            </span>
-            <span className="flex items-center gap-1"><Users size={13} className="text-cyan-400" /> {story.followers} following</span>
-            <span className="text-slate-700">·</span>
-            <span className="text-slate-500">{parts.length} {parts.length === 1 ? 'part' : 'parts'}</span>
+            <div className="flex items-center gap-2 flex-wrap text-xs sm:text-sm mt-1 sm:mt-0">
+              <span className="flex items-center gap-1"><Users size={13} className="text-cyan-400" /> {story.followers} following</span>
+              <span className="text-slate-700 hidden sm:inline">·</span>
+              <span className="text-slate-500">{parts.length} {parts.length === 1 ? 'part' : 'parts'}</span>
+            </div>
           </div>
         </div>
       </div>

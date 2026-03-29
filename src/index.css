@@ -775,11 +775,22 @@
     margin: 0 auto;
     padding: 0 2rem;
   }
+  @media (max-width: 640px) {
+    .storyboard-container {
+      padding: 0 0.5rem;
+    }
+  }
 
   .storyboard-part {
     position: relative;
     padding-left: 2.5rem;
     margin-bottom: 4rem;
+  }
+  @media (max-width: 640px) {
+    .storyboard-part {
+      padding-left: 1.75rem;
+      margin-bottom: 2.5rem;
+    }
   }
 
   .storyboard-part::before {
@@ -791,6 +802,12 @@
     width: 2px;
     background: linear-gradient(to bottom, rgba(124, 58, 237, 0.4), transparent);
     z-index: 0;
+  }
+  @media (max-width: 640px) {
+    .storyboard-part::before {
+      left: 7px;
+      bottom: -1.5rem;
+    }
   }
 
   .storyboard-part:last-child::before {
@@ -813,6 +830,14 @@
     border-radius: 4px;
     box-shadow: 0 0 12px rgba(191, 90, 242, 0.4);
     z-index: 10;
+  }
+  @media (max-width: 640px) {
+    .storyboard-number {
+      width: 16px;
+      height: 16px;
+      font-size: 0.55rem;
+      border-radius: 2px;
+    }
   }
 
   .story-card-premium {
