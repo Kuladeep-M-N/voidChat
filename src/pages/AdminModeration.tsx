@@ -573,9 +573,16 @@ export default function AdminModeration() {
     try {
       // Use the administrative backend endpoint to purge from Auth + Firestore + Revoke session
       await api.delete(`/auth/users/${userId}`);
-      toast.success("User fully purged: Session revoked & Auth record deleted.");
-      // If the deleted user was in the flagged list, remove them
+      toast.success("User fully purged: Session revoked & Database record deleted.");
+      
+      // Update all local lists immediately for instant feedback
+      setAllUsers(prev => prev.filter(u => u.id !== userId));
       setFlaggedUsers(prev => prev.filter(u => u.id !== userId));
+      setBlockedUsers(prev => prev.filter(u => u.id !== userId));
+      
+      if (selectedUser?.id === userId) {
+        setSelectedUser(null);
+      }
     } catch (err: any) {
       console.error('Delete user error:', err);
       if (err.message?.includes('Unauthorized session')) {
