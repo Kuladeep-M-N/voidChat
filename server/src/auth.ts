@@ -56,15 +56,18 @@ router.post('/signup', async (req: Request, res: Response) => {
     const sanitizedAnon = sanitize(anonymousUsername);
     const virtualEmail = `${sanitizedReal.toLowerCase().replace(/[^a-z0-9]/g, '')}@voidchat.internal`;
 
-    // 0. Check if anonymous name is taken in Firestore
+    // 0. Check if names are taken in Firestore
     const db = admin.firestore();
-    const anonCheck = await db.collection('users')
-      .where('anonymous_username', '==', sanitizedAnon)
-      .limit(1)
-      .get();
+    const [anonCheck, realCheck] = await Promise.all([
+      db.collection('users').where('anonymous_username', '==', sanitizedAnon).limit(1).get(),
+      db.collection('users').where('real_username', '==', sanitizedReal).limit(1).get()
+    ]);
 
     if (!anonCheck.empty) {
       return res.status(400).json({ error: 'Anonymous name taken. Try another!' });
+    }
+    if (!realCheck.empty) {
+      return res.status(400).json({ error: 'Username taken. Try another!' });
     }
 
     // 1. Create User in Firebase Auth
@@ -93,6 +96,12 @@ router.post('/signup', async (req: Request, res: Response) => {
     res.status(201).json({ status: 'success', uid: userRecord.uid, customToken });
   } catch (error: any) {
     console.warn(`[AuthFailure] Signup failed from IP: ${ip}. Error: ${error.message}`);
+    
+    // Map Firebase "email already in use" to "Username taken" since we use virtual emails
+    if (error.code === 'auth/email-already-exists') {
+      return res.status(400).json({ error: 'Username taken. Try another!' });
+    }
+    
     res.status(400).json({ error: error.message });
   }
 });
