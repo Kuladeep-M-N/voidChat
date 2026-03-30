@@ -5,6 +5,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword,
+  signInWithCustomToken,
   updateProfile
 } from 'firebase/auth';
 import { 
@@ -30,7 +31,7 @@ const api = {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `Request failed with status ${response.status}`);
+      throw new Error(errorData.message || errorData.error || `Request failed with status ${response.status}`);
     }
 
     const text = await response.text();
@@ -163,40 +164,28 @@ export default function Join() {
 
     if (code !== validCode) { setError('Invalid invite code'); return; }
     if (real.length < 3) { setError('Username must be at least 3 characters'); return; }
-    if (anon.length < 3) { setError('Anonymous name must be at least 3 characters'); return; }
+    if (anon.length < 3) { setError('Anonymous name must be at least 5 characters'); return; }
     if (pw.length < 8) { setError('Password must be at least 8 characters'); return; }
 
     setLoading(true);
 
     try {
-      // 1. Check if anonymous name is taken in Firestore
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('anonymous_username', '==', anon), limit(1));
-      const querySnapshot = await getDocs(q);
-      
-      if (!querySnapshot.empty) { 
-        setError('Anonymous name taken. Try another!'); 
-        setLoading(false); 
-        return; 
-      }
-
-      // 2. Call Backend Signup
-      await api.post('/auth/signup', {
+      // 1. Call Backend Signup (now also checks if anon name is taken)
+      const signupResult = await api.post('/auth/signup', {
         realUsername: real,
         anonymousUsername: anon,
         password: pw
       });
 
-      // 3. Sign in on client to get ID token (even though we have session cookie, JS SDK needs it for Firestore)
-      const virtualEmail = `${real.toLowerCase()}@voidchat.internal`;
-      const userCredential = await signInWithEmailAndPassword(auth, virtualEmail, pw);
+      // 2. Sign in with Custom Token (faster than password auth)
+      const userCredential = await signInWithCustomToken(auth, signupResult.customToken);
       const idToken = await userCredential.user.getIdToken();
 
-      // 4. Exchange for Session Cookie
+      // 3. Exchange for Session Cookie
       await api.post('/auth/login', { idToken });
 
       setStep('success');
-      setTimeout(() => navigate('/dashboard'), 1200);
+      navigate('/dashboard');
     } catch (err: any) {
       if (err.code === 'auth/email-already-in-use') {
         setError('Username taken. Try another!');
@@ -322,7 +311,7 @@ export default function Join() {
                   <div>
                     <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex justify-between items-end">
                       <span>Anonymous name</span>
-                      <span className="text-[10px] lowercase text-slate-600">min 3 chars</span>
+                      <span className="text-[10px] lowercase text-slate-600">min 5 chars</span>
                     </label>
                     <div className="relative">
                       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm font-mono">@</span>

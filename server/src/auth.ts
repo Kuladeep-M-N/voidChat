@@ -56,6 +56,17 @@ router.post('/signup', async (req: Request, res: Response) => {
     const sanitizedAnon = sanitize(anonymousUsername);
     const virtualEmail = `${sanitizedReal.toLowerCase().replace(/[^a-z0-9]/g, '')}@voidchat.internal`;
 
+    // 0. Check if anonymous name is taken in Firestore
+    const db = admin.firestore();
+    const anonCheck = await db.collection('users')
+      .where('anonymous_username', '==', sanitizedAnon)
+      .limit(1)
+      .get();
+
+    if (!anonCheck.empty) {
+      return res.status(400).json({ error: 'Anonymous name taken. Try another!' });
+    }
+
     // 1. Create User in Firebase Auth
     const userRecord = await admin.auth().createUser({
       email: virtualEmail,
@@ -67,7 +78,6 @@ router.post('/signup', async (req: Request, res: Response) => {
     await admin.auth().setCustomUserClaims(userRecord.uid, { role: 'user' });
 
     // 3. Create Firestore profile (exclude password)
-    const db = admin.firestore();
     await db.collection('users').doc(userRecord.uid).set({
       id: userRecord.uid,
       anonymous_username: sanitizedAnon,
@@ -76,8 +86,11 @@ router.post('/signup', async (req: Request, res: Response) => {
       role: 'user'
     });
 
+    // 4. Generate Custom Token for instant client-side login
+    const customToken = await admin.auth().createCustomToken(userRecord.uid);
+
     console.info(`[AuthSuccess] Signup for User: ${userRecord.uid} (${sanitizedReal}) from IP: ${ip}`);
-    res.status(201).json({ status: 'success', uid: userRecord.uid });
+    res.status(201).json({ status: 'success', uid: userRecord.uid, customToken });
   } catch (error: any) {
     console.warn(`[AuthFailure] Signup failed from IP: ${ip}. Error: ${error.message}`);
     res.status(400).json({ error: error.message });
