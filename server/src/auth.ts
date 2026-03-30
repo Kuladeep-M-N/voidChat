@@ -56,11 +56,11 @@ router.post('/signup', async (req: Request, res: Response) => {
     const sanitizedAnon = sanitize(anonymousUsername);
     const virtualEmail = `${sanitizedReal.toLowerCase().replace(/[^a-z0-9]/g, '')}@voidchat.internal`;
 
-    // 0. Check if names are taken in Firestore
+    // 0. Check if names are taken in Firestore (Case-insensitive for real_username)
     const db = admin.firestore();
     const [anonCheck, realCheck] = await Promise.all([
       db.collection('users').where('anonymous_username', '==', sanitizedAnon).limit(1).get(),
-      db.collection('users').where('real_username', '==', sanitizedReal).limit(1).get()
+      db.collection('users').where('real_username_lower', '==', sanitizedReal.toLowerCase()).limit(1).get()
     ]);
 
     if (!anonCheck.empty) {
@@ -85,6 +85,7 @@ router.post('/signup', async (req: Request, res: Response) => {
       id: userRecord.uid,
       anonymous_username: sanitizedAnon,
       real_username: sanitizedReal,
+      real_username_lower: sanitizedReal.toLowerCase(), // Store lowercase for fast case-insensitive checks
       joined_at: admin.firestore.FieldValue.serverTimestamp(),
       role: 'user'
     });
@@ -95,10 +96,13 @@ router.post('/signup', async (req: Request, res: Response) => {
     console.info(`[AuthSuccess] Signup for User: ${userRecord.uid} (${sanitizedReal}) from IP: ${ip}`);
     res.status(201).json({ status: 'success', uid: userRecord.uid, customToken });
   } catch (error: any) {
-    console.warn(`[AuthFailure] Signup failed from IP: ${ip}. Error: ${error.message}`);
+    console.warn(`[AuthFailure] Signup failed from IP: ${ip}. Error: ${error.message} (Code: ${error.code})`);
     
-    // Map Firebase "email already in use" to "Username taken" since we use virtual emails
-    if (error.code === 'auth/email-already-exists') {
+    // Comprehensive mapping for Firebase email/user errors
+    if (error.code === 'auth/email-already-exists' || 
+        error.code === 'auth/uid-already-exists' || 
+        error.message?.toLowerCase().includes('already in use') || 
+        error.message?.toLowerCase().includes('already exists')) {
       return res.status(400).json({ error: 'Username taken. Try another!' });
     }
     
