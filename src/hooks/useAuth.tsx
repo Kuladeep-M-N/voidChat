@@ -63,6 +63,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
             if (docSnap.exists()) {
               setProfile({ id: docSnap.id, ...docSnap.data() } as UserProfile);
+            } else {
+              // Profile was deleted (e.g. by admin) - force client logout
+              setProfile(null);
+              firebaseSignOut(auth);
             }
             setLoading(false);
           });
