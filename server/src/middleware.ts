@@ -14,12 +14,31 @@ export const verifySession = async (req: AuthenticatedRequest, res: Response, ne
     if (idToken) {
       // Priority 1: Bearer Token (More reliable for cross-site requests)
       const decodedClaims = await admin.auth().verifyIdToken(idToken);
-      req.user = decodedClaims;
+      const userClaims = decodedClaims as any;
+      
+      // Fallback: If role is missing from token, check Firestore profile
+      if (!userClaims.role) {
+        const userDoc = await admin.firestore().collection('users').doc(decodedClaims.uid).get();
+        if (userDoc.exists) {
+          userClaims.role = userDoc.data()?.role;
+        }
+      }
+      
+      req.user = userClaims;
       next();
     } else if (sessionCookie) {
       // Priority 2: Session Cookie (Legacy fallback)
       const decodedClaims = await admin.auth().verifySessionCookie(sessionCookie, true);
-      req.user = decodedClaims;
+      const userClaims = decodedClaims as any;
+
+      if (!userClaims.role) {
+        const userDoc = await admin.firestore().collection('users').doc(decodedClaims.uid).get();
+        if (userDoc.exists) {
+          userClaims.role = userDoc.data()?.role;
+        }
+      }
+
+      req.user = userClaims;
       next();
     } else {
       res.status(401).json({ error: 'Unauthorized session' });
