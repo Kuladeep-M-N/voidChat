@@ -1,6 +1,7 @@
 import { Request, Response, Router } from 'express';
 import * as admin from 'firebase-admin';
 import { validateString, sanitize, handleValidationError } from './validation';
+import { verifySession, checkRole } from './middleware';
 
 const router = Router();
 
@@ -123,6 +124,35 @@ router.get('/session', async (req: Request, res: Response) => {
     res.status(200).json(decodedClaims);
   } catch (error) {
     res.status(401).send('Unauthorized');
+  }
+});
+
+router.delete('/users/:uid', verifySession, checkRole(['admin']), async (req: Request, res: Response) => {
+  const uid = req.params.uid as string;
+  const ip = req.ip as string;
+
+  try {
+    // 1. Check if target is admin (Safety check)
+    const targetUser = await admin.auth().getUser(uid);
+    if (targetUser.customClaims?.role === 'admin') {
+      return res.status(403).json({ error: 'Cannot delete administrative accounts via API.' });
+    }
+
+    // 2. Revoke Refresh Tokens (Force Logout)
+    await admin.auth().revokeRefreshTokens(uid);
+
+    // 3. Delete from Firebase Auth
+    await admin.auth().deleteUser(uid);
+
+    // 4. Delete from Firestore
+    const db = admin.firestore();
+    await db.collection('users').doc(uid).delete();
+
+    console.info(`[AuthSuccess] Deep Delete for User: ${uid} by Admin: ${(req as any).user?.uid} from IP: ${ip}`);
+    res.status(200).json({ status: 'success', message: 'User fully purged and logged out.' });
+  } catch (error: any) {
+    console.error(`[AuthFailure] Deep Delete failed for User: ${uid}. Error: ${error.message}`);
+    res.status(500).json({ error: error.message });
   }
 });
 

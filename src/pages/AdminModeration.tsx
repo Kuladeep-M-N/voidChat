@@ -98,6 +98,22 @@ export default function AdminModeration() {
   const navigate = useNavigate();
   const [reports, setReports] = useState<Report[]>([]);
   const [filter, setFilter] = useState<'all' | 'pending' | 'reviewed' | 'resolved' | 'ignored'>('pending');
+
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+  const api = {
+    delete: async (endpoint: string) => {
+      const response = await fetch(`${apiBaseUrl}${endpoint}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || errorData.error || `Request failed with status ${response.status}`);
+      }
+      return response.json();
+    }
+  };
   const [search, setSearch] = useState('');
   const [fetching, setFetching] = useState(true);
 
@@ -546,15 +562,17 @@ export default function AdminModeration() {
       return;
     }
 
-    if (!window.confirm("Are you sure you want to permanently delete this user? This action cannot be undone.")) return;
+    if (!window.confirm("Are you sure you want to PERMANENTLY purge this user? They will be logged out and removed from authentication. This cannot be undone.")) return;
+    
     try {
-      await deleteDoc(doc(db, 'users', userId));
-      toast.success("User permanently deleted from database.");
+      // Use the administrative backend endpoint to purge from Auth + Firestore + Revoke session
+      await api.delete(`/auth/users/${userId}`);
+      toast.success("User fully purged: Session revoked & Auth record deleted.");
       // If the deleted user was in the flagged list, remove them
       setFlaggedUsers(prev => prev.filter(u => u.id !== userId));
-    } catch (err) {
+    } catch (err: any) {
       console.error('Delete user error:', err);
-      toast.error('Failed to delete user.');
+      toast.error(`Failed to purge user: ${err.message}`);
     }
   };
 
