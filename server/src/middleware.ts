@@ -6,13 +6,26 @@ export interface AuthenticatedRequest extends Request {
 }
 
 export const verifySession = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-  const sessionCookie = req.cookies.session || '';
+  const sessionCookie = (req.cookies && req.cookies.session) ? req.cookies.session : '';
+  const authHeader = req.headers.authorization || '';
+  const idToken = authHeader.startsWith('Bearer ') ? authHeader.split('Bearer ')[1] : '';
 
   try {
-    const decodedClaims = await admin.auth().verifySessionCookie(sessionCookie, true);
-    req.user = decodedClaims;
-    next();
+    if (idToken) {
+      // Priority 1: Bearer Token (More reliable for cross-site requests)
+      const decodedClaims = await admin.auth().verifyIdToken(idToken);
+      req.user = decodedClaims;
+      next();
+    } else if (sessionCookie) {
+      // Priority 2: Session Cookie (Legacy fallback)
+      const decodedClaims = await admin.auth().verifySessionCookie(sessionCookie, true);
+      req.user = decodedClaims;
+      next();
+    } else {
+      res.status(401).json({ error: 'Unauthorized session' });
+    }
   } catch (error) {
+    console.error('Session verification error:', error);
     res.status(401).json({ error: 'Unauthorized session' });
   }
 };

@@ -102,9 +102,15 @@ export default function AdminModeration() {
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
   const api = {
     delete: async (endpoint: string) => {
+      // Get fresh ID token from Firebase SDK for reliable auth
+      const token = await auth.currentUser?.getIdToken(true);
+      
       const response = await fetch(`${apiBaseUrl}${endpoint}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         credentials: 'include',
       });
       if (!response.ok) {
@@ -572,7 +578,11 @@ export default function AdminModeration() {
       setFlaggedUsers(prev => prev.filter(u => u.id !== userId));
     } catch (err: any) {
       console.error('Delete user error:', err);
-      toast.error(`Failed to purge user: ${err.message}`);
+      if (err.message?.includes('Unauthorized session')) {
+        toast.error('Session Expired: Please log out and back in to refresh your administrative access.');
+      } else {
+        toast.error(`Failed to purge user: ${err.message}`);
+      }
     }
   };
 
