@@ -78,21 +78,20 @@ router.post('/signup', async (req: Request, res: Response) => {
       displayName: sanitizedReal,
     });
 
-    // 2. Set Custom Claims (Default role: user)
-    await admin.auth().setCustomUserClaims(userRecord.uid, { role: 'user' });
-
-    // 3. Create Firestore profile (exclude password)
-    await db.collection('users').doc(userRecord.uid).set({
-      id: userRecord.uid,
-      anonymous_username: sanitizedAnon,
-      real_username: sanitizedReal,
-      real_username_lower: sanitizedReal.toLowerCase(), // Store lowercase for fast case-insensitive checks
-      joined_at: admin.firestore.FieldValue.serverTimestamp(),
-      role: 'user'
-    });
-
-    // 4. Generate Custom Token for instant client-side login
-    const customToken = await admin.auth().createCustomToken(userRecord.uid);
+    // 2. Parallelize: Set Custom Claims, Firestore profile, and Create Custom Token (with embedded claims)
+    // This removes 2 sequential network roundtrips.
+    const [customToken] = await Promise.all([
+      admin.auth().createCustomToken(userRecord.uid, { role: 'user' }),
+      admin.auth().setCustomUserClaims(userRecord.uid, { role: 'user' }),
+      db.collection('users').doc(userRecord.uid).set({
+        id: userRecord.uid,
+        anonymous_username: sanitizedAnon,
+        real_username: sanitizedReal,
+        real_username_lower: sanitizedReal.toLowerCase(), // Store lowercase for fast case-insensitive checks
+        joined_at: admin.firestore.FieldValue.serverTimestamp(),
+        role: 'user'
+      })
+    ]);
 
     console.info(`[AuthSuccess] Signup for User: ${userRecord.uid} (${sanitizedReal}) from IP: ${ip}`);
     res.status(201).json({ status: 'success', uid: userRecord.uid, customToken });

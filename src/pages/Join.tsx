@@ -179,11 +179,15 @@ export default function Join() {
 
       // 2. Sign in with Custom Token (faster than password auth)
       const userCredential = await signInWithCustomToken(auth, signupResult.customToken);
-      const idToken = await userCredential.user.getIdToken();
+      
+      // 3. BACKGROUND: Exchange for Session Cookie (don't wait)
+      userCredential.user.getIdToken().then(idToken => {
+        api.post('/auth/login', { idToken }).catch(err => {
+          console.error("Background session setup failed:", err);
+        });
+      });
 
-      // 3. Exchange for Session Cookie
-      await api.post('/auth/login', { idToken });
-
+      // 4. Instant Navigation
       setStep('success');
       navigate('/dashboard');
     } catch (err: any) {
@@ -228,7 +232,7 @@ export default function Join() {
       await api.post('/auth/login', { idToken });
 
       setStep('success');
-      setTimeout(() => navigate('/dashboard'), 1200);
+      navigate('/dashboard'); // No delay here either
     } catch (err: any) {
       setError('Invalid anonymous name or password');
       setLoading(false);
