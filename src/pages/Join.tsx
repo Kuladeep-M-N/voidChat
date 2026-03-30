@@ -22,20 +22,34 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
 const api = {
   post: async (endpoint: string, data?: any) => {
-    const response = await fetch(`${apiBaseUrl}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: data ? JSON.stringify(data) : undefined,
-      credentials: 'include',
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s critical timeout
     
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || errorData.error || `Request failed with status ${response.status}`);
-    }
+    try {
+      const response = await fetch(`${apiBaseUrl}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: data ? JSON.stringify(data) : undefined,
+        credentials: 'include',
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || errorData.error || `Server returned error ${response.status}`);
+      }
 
-    const text = await response.text();
-    return text ? JSON.parse(text) : { status: 'success' };
+      const text = await response.text();
+      return text ? JSON.parse(text) : { status: 'success' };
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        throw new Error("Server is taking too long to respond. It might be sleeping—please wait a few seconds and try clicking 'Create Account' again.");
+      }
+      throw err;
+    }
   }
 };
 
@@ -142,7 +156,20 @@ export default function Join() {
   const [showInviteCode, setShowInviteCode] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState('');
   const [step, setStep] = useState<'form' | 'success'>('form');
+
+  // Handle server wakeup hint
+  useEffect(() => {
+    let timer: any;
+    if (loading) {
+      setLoadingText(mode === 'signup' ? 'Creating...' : 'Connecting...');
+      timer = setTimeout(() => {
+        setLoadingText("Waking up server...");
+      }, 3500); // Show hint if request takes > 3.5s
+    }
+    return () => clearTimeout(timer);
+  }, [loading, mode]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -377,7 +404,7 @@ export default function Join() {
                     {loading ? (
                       <span className="flex items-center justify-center gap-2">
                         <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
-                        {mode === 'signup' ? 'Creating...' : 'Connecting...'}
+                        {loadingText}
                       </span>
                     ) : (
                       <span className="flex items-center justify-center gap-2">
