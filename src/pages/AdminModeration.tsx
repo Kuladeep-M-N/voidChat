@@ -73,7 +73,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { ref, onValue, off } from 'firebase/database';
-import { db, rtdb } from '../lib/firebase';
+import { db, rtdb, auth } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { useSystemConfig, SystemConfig } from '../hooks/useSystemConfig';
 import { toast } from 'sonner';
