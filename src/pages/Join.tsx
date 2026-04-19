@@ -240,7 +240,8 @@ export default function Join() {
       const querySnapshot = await getDocs(q);
 
       if (querySnapshot.empty) {
-        setError('Invalid anonymous name or password');
+        setMode('signup');
+        setError("Looks like you're new here! Please create an account.");
         setLoading(false);
         return;
       }
