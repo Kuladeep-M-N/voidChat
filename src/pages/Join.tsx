@@ -148,7 +148,6 @@ export default function Join() {
       setMode(m as 'login' | 'signup');
     }
   }, [location.search]);
-  const [realUsername, setRealUsername] = useState('');
   const [anonymousUsername, setAnonymousUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -183,15 +182,14 @@ export default function Join() {
   };
 
   const handleSignup = async () => {
-    const real = realUsername.trim();
     const anon = anonymousUsername.trim();
+    const real = anon;
     const pw = password.trim();
     const code = inviteCode.trim().toUpperCase();
     const validCode = (import.meta.env.VITE_INVITE_CODE || 'VOIDCHAT').toUpperCase();
 
     if (code !== validCode) { setError('Invalid invite code'); return; }
-    if (real.length < 3) { setError('Username must be at least 3 characters'); return; }
-    if (anon.length < 3) { setError('Anonymous name must be at least 5 characters'); return; }
+    if (anon.length < 5) { setError('Anonymous name must be at least 5 characters'); return; }
     if (pw.length < 8) { setError('Password must be at least 8 characters'); return; }
 
     setLoading(true);
@@ -325,20 +323,6 @@ export default function Join() {
                 </div>
 
                 <form onSubmit={handleAuth} className="space-y-4">
-                  {mode === 'signup' && (
-                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
-                      <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">
-                        Real Username (Internal)
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm font-mono">ID</span>
-                        <input type="text" id="realUsername" name="realUsername" className="input-field pl-10" placeholder="johndoe"
-                          value={realUsername} onChange={e => { setRealUsername(e.target.value); setError(''); }}
-                          maxLength={30} autoComplete="off" />
-                      </div>
-                    </motion.div>
-                  )}
-
                   <div>
                     <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex justify-between items-end">
                       <span>Anonymous name</span>
